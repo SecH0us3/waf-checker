@@ -28,7 +28,7 @@ function escapeHtml(str: string): string {
 }
 
 async function handleApiCheck(url: string, page: number): Promise<any[]> {
-  const METHODS = ["GET"];
+  const METHODS = ["GET", "POST", "PUT", "DELETE"];
   const results: any[] = [];
   let baseUrl: string;
   let offset = 0;
