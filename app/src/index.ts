@@ -27,10 +27,14 @@ function escapeHtml(str: string): string {
   } as Record<string, string>)[s] || '');
 }
 
-async function handleApiCheck(url: string): Promise<any[]> {
+async function handleApiCheck(url: string, page: number): Promise<any[]> {
   const METHODS = ["GET"];
   const results: any[] = [];
   let baseUrl: string;
+  let offset = 0;
+  const limit = 50;
+  const start = page * limit;
+  const end = start + limit;
   try {
     const u = new URL(url);
     baseUrl = `${u.protocol}//${u.host}`;
@@ -43,53 +47,86 @@ async function handleApiCheck(url: string): Promise<any[]> {
     if (checkType === "ParamCheck") {
       for (const payload of payloads) {
         for (const method of METHODS) {
-          try {
-            let resp: Response;
-            if (method === "GET") {
-              resp = await fetch(url + `?test=${encodeURIComponent(payload)}`, { method });
-            } else if (method === "POST" || method === "PUT") {
-              resp = await fetch(url, { method, body: new URLSearchParams({ test: payload }) });
-            } else if (method === "DELETE") {
-              resp = await fetch(url + `?test=${encodeURIComponent(payload)}`, { method });
-            } else {
-              continue;
+          if (offset >= end) return results;
+          if (offset >= start && offset < end) {
+            try {
+              let resp: Response;
+              if (method === "GET") {
+                resp = await fetch(url + `?test=${encodeURIComponent(payload)}`, { method });
+              } else if (method === "POST" || method === "PUT") {
+                resp = await fetch(url, { method, body: new URLSearchParams({ test: payload }) });
+              } else if (method === "DELETE") {
+                resp = await fetch(url + `?test=${encodeURIComponent(payload)}`, { method });
+              } else {
+                continue;
+              }
+              results.push({
+                category,
+                payload,
+                method,
+                status: resp.status,
+                is_redirect: resp.status >= 300 && resp.status < 400
+              });
+            } catch (e) {
+              console.error(`Error for ${method} ${url} payload:`, payload, e);
+              results.push({ category, payload, method, status: 'ERR', is_redirect: false });
             }
-            results.push({
-              category,
-              payload,
-              method,
-              status: resp.status,
-              is_redirect: resp.status >= 300 && resp.status < 400
-            });
-          } catch (e) {
-            console.error(`Error for ${method} ${url} payload:`, payload, e);
-            results.push({ category, payload, method, status: 'ERR', is_redirect: false });
           }
+          offset++;
         }
       }
     } else if (checkType === "FileCheck") {
       for (const payload of payloads) {
-        const fileUrl = baseUrl.replace(/\/$/, '') + '/' + payload.replace(/^\//, '');
-        try {
-          const resp = await fetch(fileUrl);
-          results.push({
-            category,
-            payload,
-            method: 'GET',
-            status: resp.status,
-            is_redirect: resp.status >= 300 && resp.status < 400
-          });
-        } catch (e) {
-          console.error(`Error for FileCheck ${fileUrl}:`, e);
-          results.push({ category, payload, method: 'GET', status: 'ERR', is_redirect: false });
+        if (offset >= end) return results;
+        if (offset >= start && offset < end) {
+          const fileUrl = baseUrl.replace(/\/$/, '') + '/' + payload.replace(/^\//, '');
+          try {
+            const resp = await fetch(fileUrl);
+            results.push({
+              category,
+              payload,
+              method: 'GET',
+              status: resp.status,
+              is_redirect: resp.status >= 300 && resp.status < 400
+            });
+          } catch (e) {
+            console.error(`Error for FileCheck ${fileUrl}:`, e);
+            results.push({ category, payload, method: 'GET', status: 'ERR', is_redirect: false });
+          }
         }
+        offset++;
       }
     }
   }
   return results;
 }
 
+let INDEX_HTML = "";
+
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const urlObj = new URL(request.url);
+    if (urlObj.pathname === "/") {
+      if (INDEX_HTML !== undefined) {
+        return new Response(INDEX_HTML, { headers: { "content-type": "text/html; charset=UTF-8" } });
+      } else {
+        const htmlResp = await fetch('index.html');
+        return new Response(await htmlResp.text(), { headers: { "content-type": "text/html; charset=UTF-8" } });
+      }
+    }
+    if (urlObj.pathname === "/api/check") {
+      const url = urlObj.searchParams.get("url");
+      const page = parseInt(urlObj.searchParams.get("page") || "1", 10);
+      if (!url) return new Response("Missing url param", { status: 400 });
+      const results = await handleApiCheck(url, page);
+      return new Response(JSON.stringify(results), { headers: { "content-type": "application/json; charset=UTF-8" } });
+    }
+    return new Response("Not found", { status: 404 });
+  }
+};
+
 function renderReport(results: any[]): string {
+  if (!results || results.length === 0) return '';
   const statusCounter: Record<string, number> = {};
   for (const r of results) statusCounter[r.status] = (statusCounter[r.status] || 0) + 1;
   const totalRequests = results.length;
@@ -107,7 +144,8 @@ function renderReport(results: any[]): string {
     summaryHtml += `<div class='d-flex align-items-center mb-1'><div style='min-width:90px;text-align:left;'><b>Status ${code}</b></div><div class='${status_class}' style='height:24px;width:${percent.toFixed(2)}%;min-width:2px;line-height:24px;padding-left:8px;text-align:left;display:inline-block;border-radius:4px;'>${statusCounter[code]}</div></div>`;
   }
   summaryHtml += `</div>`;
-  let html = `<h3>Results</h3>${summaryHtml}<table border='1' cellpadding='5' class='w-100'><tr><th>Category</th><th>Method</th><th>Status</th><th>Payload</th></tr>`;
+  let html = `<h3>Results</h3>`;
+  html += `${summaryHtml}<table border='1' cellpadding='5' class='w-100'><tr><th>Category</th><th>Method</th><th>Status</th><th>Payload</th></tr>`;
   for (const r of results) {
     let status_class = '';
     const codeNum = parseInt(r.status, 10);
@@ -121,28 +159,3 @@ function renderReport(results: any[]): string {
   html += `</table>`;
   return html;
 }
-
-let INDEX_HTML = "";
-
-export default {
-  async fetch(request: Request): Promise<Response> {
-    const urlObj = new URL(request.url);
-    if (urlObj.pathname === "/") {
-      if (INDEX_HTML !== undefined) {
-        // Node.js: serve loaded HTML
-        return new Response(INDEX_HTML, { headers: { "content-type": "text/html; charset=UTF-8" } });
-      } else {
-        // Worker: fetch static asset
-        const htmlResp = await fetch('index.html');
-        return new Response(await htmlResp.text(), { headers: { "content-type": "text/html; charset=UTF-8" } });
-      }
-    }
-    if (urlObj.pathname === "/api/check") {
-      const url = urlObj.searchParams.get("url");
-      if (!url) return new Response("Missing url param", { status: 400 });
-      const results = await handleApiCheck(url);
-      return new Response(renderReport(results), { headers: { "content-type": "text/html; charset=UTF-8" } });
-    }
-    return new Response("Not found", { status: 404 });
-  }
-};
