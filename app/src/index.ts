@@ -52,11 +52,11 @@ async function handleApiCheck(url: string, page: number): Promise<any[]> {
             try {
               let resp: Response;
               if (method === "GET") {
-                resp = await fetch(url + `?test=${encodeURIComponent(payload)}`, { method });
+                resp = await fetch(url + `?test=${encodeURIComponent(payload)}`, { method, redirect: 'manual' });
               } else if (method === "POST" || method === "PUT") {
-                resp = await fetch(url, { method, body: new URLSearchParams({ test: payload }) });
+                resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload }) });
               } else if (method === "DELETE") {
-                resp = await fetch(url + `?test=${encodeURIComponent(payload)}`, { method });
+                resp = await fetch(url + `?test=${encodeURIComponent(payload)}`, { method, redirect: 'manual' });
               } else {
                 continue;
               }
@@ -80,8 +80,9 @@ async function handleApiCheck(url: string, page: number): Promise<any[]> {
         if (offset >= end) return results;
         if (offset >= start && offset < end) {
           const fileUrl = baseUrl.replace(/\/$/, '') + '/' + payload.replace(/^\//, '');
+          console.log(`Checking FileCheck URL: ${fileUrl}`);
           try {
-            const resp = await fetch(fileUrl);
+            const resp = await fetch(fileUrl, { redirect: 'manual' });
             results.push({
               category,
               payload,
@@ -124,38 +125,3 @@ export default {
     return new Response("Not found", { status: 404 });
   }
 };
-
-function renderReport(results: any[]): string {
-  if (!results || results.length === 0) return '';
-  const statusCounter: Record<string, number> = {};
-  for (const r of results) statusCounter[r.status] = (statusCounter[r.status] || 0) + 1;
-  const totalRequests = results.length;
-  let summaryHtml = `<div class='mb-3'>`;
-  summaryHtml += `<div class='d-flex align-items-center mb-1'><div style='min-width:90px;text-align:left;'><b>Total</b></div><div style='height:24px;width:100%;min-width:2px;line-height:24px;padding-left:8px;text-align:left;display:inline-block;border-radius:4px;background:#d5d6d7;color:#222;font-weight:bold;'>${totalRequests}</div></div>`;
-  for (const code of Object.keys(statusCounter).sort()) {
-    let status_class = '';
-    const codeNum = parseInt(code, 10);
-    if (!isNaN(codeNum) && codeNum >= 300 && codeNum < 400) status_class = 'status-redirect';
-    else if (codeNum === 403) status_class = 'status-green';
-    else if (!isNaN(codeNum) && ((codeNum >= 200 && codeNum < 300) || (codeNum >= 500 && codeNum < 600))) status_class = 'status-red';
-    else if (!isNaN(codeNum) && codeNum >= 400 && codeNum < 500) status_class = 'status-orange';
-    else status_class = 'status-gray';
-    const percent = totalRequests ? (statusCounter[code] / totalRequests * 100) : 0;
-    summaryHtml += `<div class='d-flex align-items-center mb-1'><div style='min-width:90px;text-align:left;'><b>Status ${code}</b></div><div class='${status_class}' style='height:24px;width:${percent.toFixed(2)}%;min-width:2px;line-height:24px;padding-left:8px;text-align:left;display:inline-block;border-radius:4px;'>${statusCounter[code]}</div></div>`;
-  }
-  summaryHtml += `</div>`;
-  let html = `<h3>Results</h3>`;
-  html += `${summaryHtml}<table border='1' cellpadding='5' class='w-100'><tr><th>Category</th><th>Method</th><th>Status</th><th>Payload</th></tr>`;
-  for (const r of results) {
-    let status_class = '';
-    const codeNum = parseInt(r.status, 10);
-    if (!isNaN(codeNum) && r.is_redirect) status_class = 'status-redirect';
-    else if (codeNum === 403) status_class = 'status-green';
-    else if (!isNaN(codeNum) && ((codeNum >= 200 && codeNum < 300) || (codeNum >= 500 && codeNum < 600))) status_class = 'status-red';
-    else if (!isNaN(codeNum) && codeNum >= 400 && codeNum < 500) status_class = 'status-orange';
-    else status_class = 'status-gray';
-    html += `<tr><td>${r.category}</td><td>${r.method}</td><td class='${status_class}'>${r.status}</td><td><code>${escapeHtml(r.payload)}</code></td></tr>`;
-  }
-  html += `</table>`;
-  return html;
-}
