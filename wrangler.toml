@@ -1,4 +1,4 @@
 name = "waf-checker"
-main = "app.py"
+main = "py/app.py"
 compatibility_flags = ["python_workers"]
 compatibility_date = "2024-03-29"
