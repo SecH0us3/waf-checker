@@ -8,6 +8,11 @@ import html as html_lib
 from payloads import PAYLOADS
 from report import render_report
 
+async def on_fetch(request, env):
+    import asgi
+
+    return await asgi.fetch(app, request, env)
+
 app = FastAPI()
 
 METHODS = ["GET", "POST", "PUT", "DELETE"]
