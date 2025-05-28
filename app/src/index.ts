@@ -1,4 +1,4 @@
-import { PAYLOADS, PayloadCategory } from '../../ts/payloads';
+import { PAYLOADS, PayloadCategory } from './payloads';
 
 /**
  * Welcome to Cloudflare Workers! This is your first worker.
@@ -28,7 +28,7 @@ function escapeHtml(str: string): string {
 }
 
 async function handleApiCheck(url: string): Promise<any[]> {
-  const METHODS = ["GET", "POST", "PUT", "DELETE"];
+  const METHODS = ["GET"];
   const results: any[] = [];
   let baseUrl: string;
   try {
@@ -61,7 +61,8 @@ async function handleApiCheck(url: string): Promise<any[]> {
               status: resp.status,
               is_redirect: resp.status >= 300 && resp.status < 400
             });
-          } catch {
+          } catch (e) {
+            console.error(`Error for ${method} ${url} payload:`, payload, e);
             results.push({ category, payload, method, status: 'ERR', is_redirect: false });
           }
         }
@@ -78,7 +79,8 @@ async function handleApiCheck(url: string): Promise<any[]> {
             status: resp.status,
             is_redirect: resp.status >= 300 && resp.status < 400
           });
-        } catch {
+        } catch (e) {
+          console.error(`Error for FileCheck ${fileUrl}:`, e);
           results.push({ category, payload, method: 'GET', status: 'ERR', is_redirect: false });
         }
       }
