@@ -3,67 +3,73 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
-function renderReport(results) {
-  if (!results || results.length === 0) return '';
+
+function getStatusClass(status, is_redirect) {
+  const codeNum = parseInt(status, 10);
+  if (!isNaN(codeNum) && is_redirect) return 'status-redirect';
+  if (codeNum === 403) return 'status-green';
+  if (!isNaN(codeNum) && ((codeNum >= 200 && codeNum < 300) || (codeNum >= 500 && codeNum < 600))) return 'status-red';
+  if (!isNaN(codeNum) && codeNum >= 400 && codeNum < 500) return 'status-orange';
+  return 'status-gray';
+}
+
+function renderSummary(results) {
+  if (!results || !results.length) return '';
   const statusCounter = {};
   for (const r of results) statusCounter[r.status] = (statusCounter[r.status] || 0) + 1;
   const totalRequests = results.length;
-  let summaryHtml = `<div class='mb-3'>`;
-  summaryHtml += `<div class='d-flex align-items-center mb-1'><div style='min-width:90px;text-align:left;'><b>Total</b></div><div style='height:24px;width:100%;min-width:2px;line-height:24px;padding-left:8px;text-align:left;display:inline-block;border-radius:4px;background:#d5d6d7;color:#222;font-weight:bold;'>${totalRequests}</div></div>`;
+  let html = `<div class='mb-3'>`;
+  html += `<div class='d-flex align-items-center mb-1'><div style='min-width:90px;text-align:left;'><b>Total</b></div><div style='height:24px;width:100%;min-width:2px;line-height:24px;padding-left:8px;text-align:left;display:inline-block;border-radius:4px;background:#d5d6d7;color:#222;font-weight:bold;'>${totalRequests}</div></div>`;
   for (const code of Object.keys(statusCounter).sort()) {
-    let status_class = '';
-    const codeNum = parseInt(code, 10);
-    if (!isNaN(codeNum) && codeNum >= 300 && codeNum < 400) status_class = 'status-redirect';
-    else if (codeNum === 403) status_class = 'status-green';
-    else if (!isNaN(codeNum) && ((codeNum >= 200 && codeNum < 300) || (codeNum >= 500 && codeNum < 600))) status_class = 'status-red';
-    else if (!isNaN(codeNum) && codeNum >= 400 && codeNum < 500) status_class = 'status-orange';
-    else status_class = 'status-gray';
     const percent = totalRequests ? (statusCounter[code] / totalRequests * 100) : 0;
-    summaryHtml += `<div class='d-flex align-items-center mb-1'><div style='min-width:90px;text-align:left;'><b>Status ${code}</b></div><div class='${status_class}' style='height:24px;width:${percent.toFixed(2)}%;min-width:2px;line-height:24px;padding-left:8px;text-align:left;display:inline-block;border-radius:4px;'>${statusCounter[code]}</div></div>`;
+    const status_class = getStatusClass(code, parseInt(code, 10) >= 300 && parseInt(code, 10) < 400);
+    html += `<div class='d-flex align-items-center mb-1'><div style='min-width:90px;text-align:left;'><b>Status ${code}</b></div><div class='${status_class}' style='height:24px;width:${percent.toFixed(2)}%;min-width:2px;line-height:24px;padding-left:8px;text-align:left;display:inline-block;border-radius:4px;'>${statusCounter[code]}</div></div>`;
   }
-  summaryHtml += `</div>`;
+  html += `</div>`;
+  return html;
+}
+
+function renderReport(results) {
+  if (!results || results.length === 0) return '';
   let html = `<h3>Results</h3>`;
-  html += `${summaryHtml}<table border='1' cellpadding='5' class='w-100'><tr><th>Category</th><th>Method</th><th>Status</th><th>Payload</th></tr>`;
+  html += renderSummary(results);
+  html += `<table border='1' cellpadding='5' class='w-100'><tr><th>Category</th><th>Method</th><th>Status</th><th>Payload</th></tr>`;
   for (const r of results) {
-    let status_class = '';
-    const codeNum = parseInt(r.status, 10);
-    if (!isNaN(codeNum) && r.is_redirect) status_class = 'status-redirect';
-    else if (codeNum === 403) status_class = 'status-green';
-    else if (!isNaN(codeNum) && ((codeNum >= 200 && codeNum < 300) || (codeNum >= 500 && codeNum < 600))) status_class = 'status-red';
-    else if (!isNaN(codeNum) && codeNum >= 400 && codeNum < 500) status_class = 'status-orange';
-    else status_class = 'status-gray';
+    const status_class = getStatusClass(r.status, r.is_redirect);
     html += `<tr><td>${r.category}</td><td>${r.method}</td><td class='${status_class}'>${r.status}</td><td><code>${escapeHtml(r.payload)}</code></td></tr>`;
   }
   html += `</table>`;
   return html;
 }
+
 async function fetchResults() {
-    const btn = document.getElementById('checkBtn');
-    btn.disabled = true;
-    const oldText = btn.textContent;
-    btn.textContent = 'Wait...';
-    const url = document.getElementById('url').value;
-    // Collect selected methods
-    const methodCheckboxes = document.querySelectorAll('#methodCheckboxes input[type=checkbox]');
-    const selectedMethods = Array.from(methodCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
-    let page = 0;
-    let allResults = [];
-    try {
-        while (true) {
-            const resp = await fetch(`/api/check?url=${encodeURIComponent(url)}&methods=${encodeURIComponent(selectedMethods.join(','))}&page=${page}`);
-            if (!resp.ok) break;
-            const results = await resp.json();
-            if (!results || !results.length) break;
-            allResults = allResults.concat(results);
-            page++;
-        }
-        document.getElementById('results').innerHTML = renderReport(allResults);
-        document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
-    } finally {
-        btn.disabled = false;
-        btn.textContent = oldText;
+  const btn = document.getElementById('checkBtn');
+  btn.disabled = true;
+  const oldText = btn.textContent;
+  btn.textContent = 'Wait...';
+  const url = document.getElementById('url').value;
+  // Collect selected methods
+  const methodCheckboxes = document.querySelectorAll('#methodCheckboxes input[type=checkbox]');
+  const selectedMethods = Array.from(methodCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+  let page = 0;
+  let allResults = [];
+  try {
+    while (true) {
+      const resp = await fetch(`/api/check?url=${encodeURIComponent(url)}&methods=${encodeURIComponent(selectedMethods.join(','))}&page=${page}`);
+      if (!resp.ok) break;
+      const results = await resp.json();
+      if (!results || !results.length) break;
+      allResults = allResults.concat(results);
+      page++;
     }
+    document.getElementById('results').innerHTML = renderReport(allResults);
+    document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+  } finally {
+    btn.disabled = false;
+    btn.textContent = oldText;
+  }
 }
+
 // Theme logic
 function setTheme(theme) {
   document.body.setAttribute('data-theme', theme);
@@ -81,19 +87,7 @@ function setTheme(theme) {
   }
   // Adjust input placeholder color for dark/light
   const urlInput = document.getElementById('url');
-  if (urlInput) {
-    if (theme === 'dark') {
-      urlInput.style.setProperty('color', '#f8f9fa');
-      urlInput.style.setProperty('background-color', '#181a1b');
-      urlInput.style.setProperty('caret-color', '#f8f9fa');
-      urlInput.classList.add('dark-placeholder');
-    } else {
-      urlInput.style.setProperty('color', '#212529');
-      urlInput.style.setProperty('background-color', '#f8f9fa');
-      urlInput.style.setProperty('caret-color', '#212529');
-      urlInput.classList.remove('dark-placeholder');
-    }
-  }
+  urlInput.classList.toggle('dark-placeholder', theme === 'dark');
 }
 function getPreferredTheme() {
   const stored = localStorage.getItem('theme');

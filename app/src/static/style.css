@@ -29,6 +29,9 @@ body[data-theme='light'] {
     background-color: var(--bs-card-bg) !important;
     color: var(--bs-card-color) !important;
 }
+body[data-theme='dark'] .shadow {
+    box-shadow: -1px -1px 1rem rgba(244, 67, 54, 0.25), 0 0.125rem 0.25rem rgba(244, 67, 54, 0.15) !important
+}
 #results table {
     width: 100%;
 }
