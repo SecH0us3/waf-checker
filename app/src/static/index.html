@@ -4,6 +4,36 @@
     <title>WAF Checker</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
+        :root {
+            --bs-body-bg: #f8f9fa;
+            --bs-body-color: #212529;
+            --bs-card-bg: #fff;
+            --bs-card-color: #212529;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bs-body-bg: #181a1b;
+                --bs-body-color: #f8f9fa;
+                --bs-card-bg: #23272b;
+                --bs-card-color: #f8f9fa;
+            }
+        }
+        body[data-theme='dark'] {
+            --bs-body-bg: #181a1b;
+            --bs-body-color: #f8f9fa;
+            --bs-card-bg: #23272b;
+            --bs-card-color: #f8f9fa;
+        }
+        body[data-theme='light'] {
+            --bs-body-bg: #f8f9fa;
+            --bs-body-color: #212529;
+            --bs-card-bg: #fff;
+            --bs-card-color: #212529;
+        }
+        .card {
+            background-color: var(--bs-card-bg) !important;
+            color: var(--bs-card-color) !important;
+        }
         #results table {
             width: 100%;
         }
@@ -19,9 +49,11 @@
         #results tr:nth-child(odd) {
             background: #e9ecef;
         }
-        #results td, #results th {
-            vertical-align: middle;
-            text-align: center;
+        body[data-theme='dark'] #results tr:nth-child(even) {
+            background: #23272b;
+        }
+        body[data-theme='dark'] #results tr:nth-child(odd) {
+            background: #181a1b;
         }
         .status-redirect {
             background: #2196F3 !important;
@@ -47,19 +79,34 @@
             background: #BDBDBD !important;
             color: #222;
         }
+        .theme-toggle {
+            position: absolute;
+            top: 1.5rem;
+            right: 2rem;
+            z-index: 10;
+            background: none;
+            border: none;
+            font-size: 1.7rem;
+            cursor: pointer;
+        }
+        .dark-placeholder::placeholder {
+          color: #bfc6ce !important;
+          opacity: 1;
+        }
     </style>
 </head>
-<body class="bg-light">
+<body class="bg-light" style="background-color: var(--bs-body-bg) !important; color: var(--bs-body-color) !important;">
+    <button class="theme-toggle" id="themeToggle" title="Toggle theme">🌙</button>
     <div class="container py-5">
         <div class="row justify-content-center">
             <div class="col-md-8 col-lg-6">
                 <div class="card shadow mb-4">
                     <div class="card-body">
                         <h1 class="mb-3 text-center">Test Your WAF</h1>
-                        <p class="text-center text-muted mb-4">Enter a target URL to check your Web Application Firewall against common attack payloads.</p>
+                        <p class="text-center mb-4" id="subtitle">Enter a target URL to check your Web Application Firewall against common attack payloads</p>
                         <!-- <form onsubmit="event.preventDefault(); fetchResults();"> -->
                         <div class="input-group mb-3">
-                            <input type="text" id="url" name="url" class="form-control" placeholder="Enter URL to test" required />
+                            <input type="text" id="url" name="url" class="form-control" placeholder="Enter URL to test" required style="color:var(--bs-body-color);background-color:var(--bs-body-bg);" />
                             <button type="button" id="checkBtn" class="btn btn-primary" onclick="fetchResults()">Check</button>
                         </div>
                         <!-- </form> -->
@@ -137,6 +184,48 @@
             btn.textContent = oldText;
         }
     }
+    // Theme logic
+    function setTheme(theme) {
+      document.body.setAttribute('data-theme', theme);
+      localStorage.setItem('theme', theme);
+      document.getElementById('themeToggle').textContent = theme === 'dark' ? '☀️' : '🌙';
+      // Adjust subtitle color for dark/light
+      const subtitle = document.getElementById('subtitle');
+      if (subtitle) {
+        if (theme === 'dark') {
+          subtitle.style.color = '#bfc6ce';
+        } else {
+          subtitle.style.color = '#6c757d';
+        }
+      }
+      // Adjust input placeholder color for dark/light
+      const urlInput = document.getElementById('url');
+      if (urlInput) {
+        if (theme === 'dark') {
+          urlInput.style.setProperty('color', '#f8f9fa');
+          urlInput.style.setProperty('background-color', '#181a1b');
+          urlInput.style.setProperty('caret-color', '#f8f9fa');
+          urlInput.classList.add('dark-placeholder');
+        } else {
+          urlInput.style.setProperty('color', '#212529');
+          urlInput.style.setProperty('background-color', '#f8f9fa');
+          urlInput.style.setProperty('caret-color', '#212529');
+          urlInput.classList.remove('dark-placeholder');
+        }
+      }
+    }
+    function getPreferredTheme() {
+      const stored = localStorage.getItem('theme');
+      if (stored) return stored;
+      return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    }
+    document.addEventListener('DOMContentLoaded', function() {
+      setTheme(getPreferredTheme());
+      document.getElementById('themeToggle').addEventListener('click', function() {
+        const current = document.body.getAttribute('data-theme') || getPreferredTheme();
+        setTheme(current === 'dark' ? 'light' : 'dark');
+      });
+    });
     </script>
 </body>
 </html>
