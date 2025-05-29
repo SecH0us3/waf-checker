@@ -11,11 +11,14 @@ async function sendRequest(url: string, method: string, payload?: string) {
         break;
       case "POST":
       case "PUT":
-        resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload }) });
+        resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload ?? "" }) });
         break;
       default:
         return null;
     }
+
+    console.log(`Request to ${url} with method ${method} and payload ${payload} returned status ${resp.status}`);
+    
     return {
       status: resp.status,
       is_redirect: resp.status >= 300 && resp.status < 400
@@ -87,15 +90,18 @@ export default {
   async fetch(request: Request): Promise<Response> {
     const urlObj = new URL(request.url);
     if (urlObj.pathname === "/") {
-      // INDEX_HTML всегда определён, можно просто возвращать
       return new Response(INDEX_HTML, { headers: { "content-type": "text/html; charset=UTF-8" } });
     }
     if (urlObj.pathname === "/api/check") {
       const url = urlObj.searchParams.get("url");
+      if (!url) return new Response("Missing url param", { status: 400 });
+      if (url.includes('secmy')) {
+        // Если параметр url содержит 'secmy', немедленно вернуть пустой массив
+        return new Response(JSON.stringify([]), { headers: { "content-type": "application/json; charset=UTF-8" } });
+      }
       const page = parseInt(urlObj.searchParams.get("page") || "0", 10);
       const methods = (urlObj.searchParams.get("methods") || "GET")
         .split(',').map(m => m.trim()).filter(Boolean);
-      if (!url) return new Response("Missing url param", { status: 400 });
       const results = await handleApiCheck(url, page, methods);
       return new Response(JSON.stringify(results), { headers: { "content-type": "application/json; charset=UTF-8" } });
     }
