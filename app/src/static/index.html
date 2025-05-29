@@ -96,7 +96,8 @@
     </style>
 </head>
 <body class="bg-light" style="background-color: var(--bs-body-bg) !important; color: var(--bs-body-color) !important;">
-    <button class="theme-toggle" id="themeToggle" title="Toggle theme">🌙</button>
+    <!-- Set initial icon -->
+<button class="theme-toggle" id="themeToggle" title="Toggle theme">☾</button>
     <div class="container py-5">
         <div class="row justify-content-center">
             <div class="col-md-8 col-lg-6">
@@ -110,26 +111,26 @@
                             <button type="button" id="checkBtn" class="btn btn-primary" onclick="fetchResults()">Check</button>
                         </div>
                         <div class="mb-3" id="methodCheckboxes">
-    <label class="form-label mb-1"><b>HTTP Methods:</b></label>
-    <div class="d-flex gap-3">
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" value="GET" id="methodGET" checked>
-            <label class="form-check-label" for="methodGET">GET</label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" value="POST" id="methodPOST">
-            <label class="form-check-label" for="methodPOST">POST</label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" value="PUT" id="methodPUT">
-            <label class="form-check-label" for="methodPUT">PUT</label>
-        </div>
-        <div class="form-check">
-            <input class="form-check-input" type="checkbox" value="DELETE" id="methodDELETE">
-            <label class="form-check-label" for="methodDELETE">DELETE</label>
-        </div>
-    </div>
-</div>
+                            <label class="form-label mb-1"><b>HTTP Methods:</b></label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="GET" id="methodGET" checked>
+                                    <label class="form-check-label" for="methodGET">GET</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="POST" id="methodPOST">
+                                    <label class="form-check-label" for="methodPOST">POST</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="PUT" id="methodPUT">
+                                    <label class="form-check-label" for="methodPUT">PUT</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="DELETE" id="methodDELETE">
+                                    <label class="form-check-label" for="methodDELETE">DELETE</label>
+                                </div>
+                            </div>
+                        </div>
                         <!-- </form> -->
                     </div>
                 </div>
@@ -212,7 +213,8 @@
     function setTheme(theme) {
       document.body.setAttribute('data-theme', theme);
       localStorage.setItem('theme', theme);
-      document.getElementById('themeToggle').textContent = theme === 'dark' ? '☀️' : '🌙';
+      // Use unicode sun/moon for theme toggle
+      document.getElementById('themeToggle').textContent = theme === 'dark' ? '\u2600' : '\u263E';
       // Adjust subtitle color for dark/light
       const subtitle = document.getElementById('subtitle');
       if (subtitle) {
