@@ -109,6 +109,27 @@
                             <input type="text" id="url" name="url" class="form-control" placeholder="Enter URL to test" required style="color:var(--bs-body-color);background-color:var(--bs-body-bg);" />
                             <button type="button" id="checkBtn" class="btn btn-primary" onclick="fetchResults()">Check</button>
                         </div>
+                        <div class="mb-3" id="methodCheckboxes">
+    <label class="form-label mb-1"><b>HTTP Methods:</b></label>
+    <div class="d-flex gap-3">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="GET" id="methodGET" checked>
+            <label class="form-check-label" for="methodGET">GET</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="POST" id="methodPOST">
+            <label class="form-check-label" for="methodPOST">POST</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="PUT" id="methodPUT">
+            <label class="form-check-label" for="methodPUT">PUT</label>
+        </div>
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" value="DELETE" id="methodDELETE">
+            <label class="form-check-label" for="methodDELETE">DELETE</label>
+        </div>
+    </div>
+</div>
                         <!-- </form> -->
                     </div>
                 </div>
@@ -166,11 +187,14 @@
         const oldText = btn.textContent;
         btn.textContent = 'Wait...';
         const url = document.getElementById('url').value;
+        // Collect selected methods
+        const methodCheckboxes = document.querySelectorAll('#methodCheckboxes input[type=checkbox]');
+        const selectedMethods = Array.from(methodCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
         let page = 0;
         let allResults = [];
         try {
             while (true) {
-                const resp = await fetch(`/api/check?url=${encodeURIComponent(url)}&page=${page}`);
+                const resp = await fetch(`/api/check?url=${encodeURIComponent(url)}&methods=${encodeURIComponent(selectedMethods.join(','))}&page=${page}`);
                 if (!resp.ok) break;
                 const results = await resp.json();
                 if (!results || !results.length) break;

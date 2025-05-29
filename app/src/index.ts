@@ -1,34 +1,7 @@
 import { PAYLOADS, PayloadCategory } from './payloads';
 
-/**
- * Welcome to Cloudflare Workers! This is your first worker.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your worker in action
- * - Run `npm run deploy` to publish your worker
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/workers/
- */
-
-function escapeHtml(str: string): string {
-  // Standard HTML escape (no DOM, safe for Workers)
-  return str.replace(/[&<>'"`=\\/]/g, (s) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    "'": '&#39;',
-    '"': '&quot;',
-    '`': '&#96;',
-    '=': '&#61;',
-    '/': '&#47;'
-  } as Record<string, string>)[s] || '');
-}
-
-async function handleApiCheck(url: string, page: number): Promise<any[]> {
-  const METHODS = ["GET", "POST", "PUT", "DELETE"];
+async function handleApiCheck(url: string, page: number, methods: string[]): Promise<any[]> {
+  const METHODS = methods && methods.length ? methods : ["GET"];
   const results: any[] = [];
   let baseUrl: string;
   let offset = 0;
@@ -117,9 +90,11 @@ export default {
     }
     if (urlObj.pathname === "/api/check") {
       const url = urlObj.searchParams.get("url");
-      const page = parseInt(urlObj.searchParams.get("page") || "1", 10);
+      const page = parseInt(urlObj.searchParams.get("page") || "0", 10);
+      const methodsParam = urlObj.searchParams.get("methods");
+      const methods = methodsParam ? methodsParam.split(',').map(m => m.trim()).filter(Boolean) : ["GET"];
       if (!url) return new Response("Missing url param", { status: 400 });
-      const results = await handleApiCheck(url, page);
+      const results = await handleApiCheck(url, page, methods);
       return new Response(JSON.stringify(results), { headers: { "content-type": "application/json; charset=UTF-8" } });
     }
     return new Response("Not found", { status: 404 });
