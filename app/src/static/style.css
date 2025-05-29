@@ -91,3 +91,6 @@ body[data-theme='dark'] #results tr:nth-child(odd) {
   color: #bfc6ce !important;
   opacity: 1;
 }
+div#results .mb-1 {
+    text-shadow: gray 1px 1px;
+}
