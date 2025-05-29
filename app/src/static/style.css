@@ -1,0 +1,90 @@
+/* Theme and layout styles for WAF Checker */
+:root {
+    --bs-body-bg: #f8f9fa;
+    --bs-body-color: #212529;
+    --bs-card-bg: #fff;
+    --bs-card-color: #212529;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bs-body-bg: #181a1b;
+        --bs-body-color: #f8f9fa;
+        --bs-card-bg: #23272b;
+        --bs-card-color: #f8f9fa;
+    }
+}
+body[data-theme='dark'] {
+    --bs-body-bg: #181a1b;
+    --bs-body-color: hsl(210, 17%, 98%);
+    --bs-card-bg: #23272b;
+    --bs-card-color: #f8f9fa;
+}
+body[data-theme='light'] {
+    --bs-body-bg: #f8f9fa;
+    --bs-body-color: #212529;
+    --bs-card-bg: #fff;
+    --bs-card-color: #212529;
+}
+.card {
+    background-color: var(--bs-card-bg) !important;
+    color: var(--bs-card-color) !important;
+}
+#results table {
+    width: 100%;
+}
+#results th {
+    background: hsl(210, 11%, 15%);
+    color: #fff;
+    font-weight: bold;
+    text-align: center;
+}
+#results tr:nth-child(even) {
+    background: #f8f9fa;
+}
+#results tr:nth-child(odd) {
+    background: #e9ecef;
+}
+body[data-theme='dark'] #results tr:nth-child(even) {
+    background: #23272b;
+}
+body[data-theme='dark'] #results tr:nth-child(odd) {
+    background: #181a1b;
+}
+.status-redirect {
+    background: #2196F3 !important;
+    color: #fff;
+    font-weight: bold;
+}
+.status-green {
+    background: #4CAF50 !important;
+    color: #fff;
+    font-weight: bold;
+}
+.status-red {
+    background: #F44336 !important;
+    color: #fff;
+    font-weight: bold;
+}
+.status-orange {
+    background: #FF9800 !important;
+    color: #fff;
+    font-weight: bold;
+}
+.status-gray {
+    background: #BDBDBD !important;
+    color: #222;
+}
+.theme-toggle {
+    position: absolute;
+    top: 1.5rem;
+    right: 2rem;
+    z-index: 10;
+    background: none;
+    border: none;
+    font-size: 1.7rem;
+    cursor: pointer;
+}
+.dark-placeholder::placeholder {
+  color: #bfc6ce !important;
+  opacity: 1;
+}
