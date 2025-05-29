@@ -89,6 +89,10 @@ let INDEX_HTML = "";
 export default {
   async fetch(request: Request): Promise<Response> {
     const urlObj = new URL(request.url);
+    if (request.url.includes('secmy')) {
+      // Если в URL запроса содержится 'secmy', немедленно вернуть пустой массив
+      return new Response(JSON.stringify([]), { headers: { "content-type": "application/json; charset=UTF-8" } });
+    }
     if (urlObj.pathname === "/") {
       // INDEX_HTML всегда определён, можно просто возвращать
       return new Response(INDEX_HTML, { headers: { "content-type": "text/html; charset=UTF-8" } });
