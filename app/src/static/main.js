@@ -6,7 +6,7 @@ function escapeHtml(str) {
 
 function getStatusClass(status, is_redirect) {
   const codeNum = parseInt(status, 10);
-  if (!isNaN(codeNum) && is_redirect) return 'status-redirect';
+  if (!isNaN(codeNum) && (is_redirect || codeNum === 405)) return 'status-redirect';
   if (codeNum === 403) return 'status-green';
   if (!isNaN(codeNum) && ((codeNum >= 200 && codeNum < 300) || (codeNum >= 500 && codeNum < 600))) return 'status-red';
   if (!isNaN(codeNum) && codeNum >= 400 && codeNum < 500) return 'status-orange';

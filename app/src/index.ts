@@ -11,11 +11,14 @@ async function sendRequest(url: string, method: string, payload?: string) {
         break;
       case "POST":
       case "PUT":
-        resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload }) });
+        resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload ?? "" }) });
         break;
       default:
         return null;
     }
+
+    console.log(`Request to ${url} with method ${method} and payload ${payload} returned status ${resp.status}`);
+    
     return {
       status: resp.status,
       is_redirect: resp.status >= 300 && resp.status < 400
