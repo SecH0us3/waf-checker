@@ -1,13 +1,38 @@
 import { PAYLOADS, PayloadCategory } from './payloads';
 
+// Вспомогательная функция для отправки запроса с нужным методом и payload
+async function sendRequest(url: string, method: string, payload?: string) {
+  try {
+    let resp: Response;
+    switch (method) {
+      case "GET":
+      case "DELETE":
+        resp = await fetch(payload !== undefined ? url + `?test=${encodeURIComponent(payload)}` : url, { method, redirect: 'manual' });
+        break;
+      case "POST":
+      case "PUT":
+        resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload }) });
+        break;
+      default:
+        return null;
+    }
+    return {
+      status: resp.status,
+      is_redirect: resp.status >= 300 && resp.status < 400
+    };
+  } catch (e) {
+    return { status: 'ERR', is_redirect: false };
+  }
+}
+
 async function handleApiCheck(url: string, page: number, methods: string[]): Promise<any[]> {
   const METHODS = methods && methods.length ? methods : ["GET"];
   const results: any[] = [];
   let baseUrl: string;
-  let offset = 0;
   const limit = 50;
   const start = page * limit;
   const end = start + limit;
+  let offset = 0;
   try {
     const u = new URL(url);
     baseUrl = `${u.protocol}//${u.host}`;
@@ -21,29 +46,15 @@ async function handleApiCheck(url: string, page: number, methods: string[]): Pro
       for (const payload of payloads) {
         for (const method of METHODS) {
           if (offset >= end) return results;
-          if (offset >= start && offset < end) {
-            try {
-              let resp: Response;
-              if (method === "GET") {
-                resp = await fetch(url + `?test=${encodeURIComponent(payload)}`, { method, redirect: 'manual' });
-              } else if (method === "POST" || method === "PUT") {
-                resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload }) });
-              } else if (method === "DELETE") {
-                resp = await fetch(url + `?test=${encodeURIComponent(payload)}`, { method, redirect: 'manual' });
-              } else {
-                continue;
-              }
-              results.push({
-                category,
-                payload,
-                method,
-                status: resp.status,
-                is_redirect: resp.status >= 300 && resp.status < 400
-              });
-            } catch (e) {
-              console.error(`Error for ${method} ${url} payload:`, payload, e);
-              results.push({ category, payload, method, status: 'ERR', is_redirect: false });
-            }
+          if (offset >= start) {
+            const res = await sendRequest(url, method, payload);
+            results.push({
+              category,
+              payload,
+              method,
+              status: res ? res.status : 'ERR',
+              is_redirect: res ? res.is_redirect : false
+            });
           }
           offset++;
         }
@@ -51,22 +62,16 @@ async function handleApiCheck(url: string, page: number, methods: string[]): Pro
     } else if (checkType === "FileCheck") {
       for (const payload of payloads) {
         if (offset >= end) return results;
-        if (offset >= start && offset < end) {
+        if (offset >= start) {
           const fileUrl = baseUrl.replace(/\/$/, '') + '/' + payload.replace(/^\//, '');
-          console.log(`Checking FileCheck URL: ${fileUrl}`);
-          try {
-            const resp = await fetch(fileUrl, { redirect: 'manual' });
-            results.push({
-              category,
-              payload,
-              method: 'GET',
-              status: resp.status,
-              is_redirect: resp.status >= 300 && resp.status < 400
-            });
-          } catch (e) {
-            console.error(`Error for FileCheck ${fileUrl}:`, e);
-            results.push({ category, payload, method: 'GET', status: 'ERR', is_redirect: false });
-          }
+          const res = await sendRequest(fileUrl, "GET");
+          results.push({
+            category,
+            payload,
+            method: 'GET',
+            status: res ? res.status : 'ERR',
+            is_redirect: res ? res.is_redirect : false
+          });
         }
         offset++;
       }
@@ -75,24 +80,21 @@ async function handleApiCheck(url: string, page: number, methods: string[]): Pro
   return results;
 }
 
+// Лучше сразу загрузить index.html при старте (если возможно)
 let INDEX_HTML = "";
 
 export default {
   async fetch(request: Request): Promise<Response> {
     const urlObj = new URL(request.url);
     if (urlObj.pathname === "/") {
-      if (INDEX_HTML !== undefined) {
-        return new Response(INDEX_HTML, { headers: { "content-type": "text/html; charset=UTF-8" } });
-      } else {
-        const htmlResp = await fetch('index.html');
-        return new Response(await htmlResp.text(), { headers: { "content-type": "text/html; charset=UTF-8" } });
-      }
+      // INDEX_HTML всегда определён, можно просто возвращать
+      return new Response(INDEX_HTML, { headers: { "content-type": "text/html; charset=UTF-8" } });
     }
     if (urlObj.pathname === "/api/check") {
       const url = urlObj.searchParams.get("url");
       const page = parseInt(urlObj.searchParams.get("page") || "0", 10);
-      const methodsParam = urlObj.searchParams.get("methods");
-      const methods = methodsParam ? methodsParam.split(',').map(m => m.trim()).filter(Boolean) : ["GET"];
+      const methods = (urlObj.searchParams.get("methods") || "GET")
+        .split(',').map(m => m.trim()).filter(Boolean);
       if (!url) return new Response("Missing url param", { status: 400 });
       const results = await handleApiCheck(url, page, methods);
       return new Response(JSON.stringify(results), { headers: { "content-type": "application/json; charset=UTF-8" } });
