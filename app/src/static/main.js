@@ -86,6 +86,10 @@ async function fetchResults() {
   // Collect selected categories
   const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
   const selectedCategories = Array.from(categoryCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+  // --- Сохраняем в localStorage ---
+  localStorage.setItem('wafchecker_url', url);
+  localStorage.setItem('wafchecker_methods', JSON.stringify(selectedMethods));
+  localStorage.setItem('wafchecker_categories', JSON.stringify(selectedCategories));
   let page = 0;
   let allResults = [];
   try {
@@ -102,6 +106,37 @@ async function fetchResults() {
   } finally {
     btn.disabled = false;
     btn.textContent = oldText;
+  }
+}
+
+function restoreStateFromLocalStorage() {
+  // URL
+  const url = localStorage.getItem('wafchecker_url');
+  if (url) {
+    const urlInput = document.getElementById('url');
+    if (urlInput) urlInput.value = url;
+  }
+  // Methods
+  const methods = localStorage.getItem('wafchecker_methods');
+  if (methods) {
+    try {
+      const arr = JSON.parse(methods);
+      const methodCheckboxes = document.querySelectorAll('#methodCheckboxes input[type=checkbox]');
+      methodCheckboxes.forEach(cb => {
+        cb.checked = arr.includes(cb.value);
+      });
+    } catch {}
+  }
+  // Categories
+  const categories = localStorage.getItem('wafchecker_categories');
+  if (categories) {
+    try {
+      const arr = JSON.parse(categories);
+      const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
+      categoryCheckboxes.forEach(cb => {
+        cb.checked = arr.includes(cb.value);
+      });
+    } catch {}
   }
 }
 
@@ -161,4 +196,6 @@ document.addEventListener('DOMContentLoaded', function() {
       }
     });
   }
+  // --- Восстановить состояние ---
+  restoreStateFromLocalStorage();
 });
