@@ -56,7 +56,14 @@ const PAYLOAD_CATEGORIES = [
   "Open Redirect",
   "Sensitive Files",
   "CRLF Injection",
-  "UTF8/Unicode Bypass"
+  "UTF8/Unicode Bypass",
+  "XXE",
+  "SSTI",
+  "HTTP Parameter Pollution",
+  "Host Header Injection",
+  "Web Cache Poisoning",
+  "IP Bypass",
+  "User-Agent"
 ];
 
 function renderCategoryCheckboxes() {

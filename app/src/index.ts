@@ -1,23 +1,24 @@
 import { PAYLOADS, PayloadCategory } from './payloads';
 
 // Вспомогательная функция для отправки запроса с нужным методом и payload
-async function sendRequest(url: string, method: string, payload?: string) {
+async function sendRequest(url: string, method: string, payload?: string, headersObj?: Record<string, string>) {
   try {
     let resp: Response;
+    const headers = headersObj ? new Headers(headersObj) : undefined;
     switch (method) {
       case "GET":
       case "DELETE":
-        resp = await fetch(payload !== undefined ? url + `?test=${encodeURIComponent(payload)}` : url, { method, redirect: 'manual' });
+        resp = await fetch(payload !== undefined ? url + `?test=${encodeURIComponent(payload)}` : url, { method, redirect: 'manual', headers });
         break;
       case "POST":
       case "PUT":
-        resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload ?? "" }) });
+        resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload ?? "" }), headers });
         break;
       default:
         return null;
     }
 
-    console.log(`Request to ${url} with method ${method} and payload ${payload} returned status ${resp.status}`);
+    console.log(`Request to ${url} with method ${method} and payload ${payload} and headers ${JSON.stringify(headersObj)} returned status ${resp.status}`);
     
     return {
       status: resp.status,
@@ -77,6 +78,33 @@ async function handleApiCheck(url: string, page: number, methods: string[]): Pro
           });
         }
         offset++;
+      }
+    } else if (checkType === "Header") {
+      for (const payload of payloads) {
+        // payload может быть строкой вида 'Header-Name: value' или несколькими заголовками через \r\n
+        const headersObj: Record<string, string> = {};
+        for (const line of payload.split(/\r?\n/)) {
+          const idx = line.indexOf(":");
+          if (idx > 0) {
+            const name = line.slice(0, idx).trim();
+            const value = line.slice(idx + 1).trim();
+            headersObj[name] = value;
+          }
+        }
+        for (const method of METHODS) {
+          if (offset >= end) return results;
+          if (offset >= start) {
+            const res = await sendRequest(url, method, undefined, headersObj);
+            results.push({
+              category,
+              payload,
+              method,
+              status: res ? res.status : 'ERR',
+              is_redirect: res ? res.is_redirect : false
+            });
+          }
+          offset++;
+        }
       }
     }
   }
@@ -169,6 +197,32 @@ async function handleApiCheckFiltered(url: string, page: number, methods: string
           });
         }
         offset++;
+      }
+    } else if (checkType === "Header") {
+      for (const payload of payloads) {
+        const headersObj: Record<string, string> = {};
+        for (const line of payload.split(/\r?\n/)) {
+          const idx = line.indexOf(":");
+          if (idx > 0) {
+            const name = line.slice(0, idx).trim();
+            const value = line.slice(idx + 1).trim();
+            headersObj[name] = value;
+          }
+        }
+        for (const method of METHODS) {
+          if (offset >= end) return results;
+          if (offset >= start) {
+            const res = await sendRequest(url, method, undefined, headersObj);
+            results.push({
+              category,
+              payload,
+              method,
+              status: res ? res.status : 'ERR',
+              is_redirect: res ? res.is_redirect : false
+            });
+          }
+          offset++;
+        }
       }
     }
   }

