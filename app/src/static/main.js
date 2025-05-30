@@ -63,11 +63,12 @@ function renderCategoryCheckboxes() {
   const container = document.getElementById('categoryCheckboxes');
   if (!container) return;
   container.innerHTML = '';
+  const defaultChecked = ["SQL Injection", "XSS"];
   PAYLOAD_CATEGORIES.forEach((cat, idx) => {
     const id = 'cat_' + idx;
     const div = document.createElement('div');
     div.className = 'form-check';
-    div.innerHTML = `<input class="form-check-input" type="checkbox" value="${cat}" id="${id}" checked>
+    div.innerHTML = `<input class="form-check-input" type="checkbox" value="${cat}" id="${id}"${defaultChecked.includes(cat) ? ' checked' : ''}>
       <label class="form-check-label" for="${id}">${cat}</label>`;
     container.appendChild(div);
   });
