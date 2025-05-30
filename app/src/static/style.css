@@ -97,3 +97,12 @@ div#results .mb-1 {
 .category-label-danger {
   text-shadow: 0 0 2px #f44336, 0 0 1px #f44336;
 }
+.description-waf-check {
+  color: #222;
+  font-size: 0.88em;
+  text-align: center;
+  text-shadow: #787878 0px 0px;
+}
+body[data-theme='dark'] .description-waf-check {
+  color: #e0e0e0;
+}
