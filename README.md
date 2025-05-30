@@ -1,6 +1,6 @@
 # WAF Checker (Cloudflare Worker Style)
 
-This project is a web application for testing the security of web applications against various attacks using typical payloads. It is implemented in a Cloudflare Worker style using TypeScript and provides a convenient web interface for WAF (Web Application Firewall) testing.
+This project helps you check how well your Web Application Firewall (WAF) protects your product against common web attacks. It is a web application implemented in a Cloudflare Worker style using TypeScript and provides a convenient web interface for WAF testing with a wide range of attack payloads.
 
 ## Main Features
 - Web interface for entering the target URL and selecting HTTP methods (GET, POST, PUT, DELETE).
