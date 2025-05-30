@@ -151,4 +151,14 @@ document.addEventListener('DOMContentLoaded', function() {
       checkboxes.forEach(cb => { cb.checked = false; });
     });
   }
+  // --- Enter в поле URL ---
+  const urlInput = document.getElementById('url');
+  if (urlInput) {
+    urlInput.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        fetchResults();
+      }
+    });
+  }
 });
