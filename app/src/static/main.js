@@ -74,6 +74,29 @@ function renderCategoryCheckboxes() {
   });
 }
 
+function highlightCategoryCheckboxesByResults(results) {
+  // Собираем категории, где есть хотя бы один статус 200
+  const categoriesWith200 = new Set();
+  if (Array.isArray(results)) {
+    results.forEach(r => {
+      if (r.status === 200 || r.status === '200') {
+        categoriesWith200.add(r.category);
+      }
+    });
+  }
+  // Пробегаем по чекбоксам и выделяем нужные label
+  const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
+  categoryCheckboxes.forEach(cb => {
+    const label = cb.parentElement.querySelector('.form-check-label');
+    if (!label) return;
+    if (categoriesWith200.has(cb.value)) {
+      label.classList.add('category-label-danger');
+    } else {
+      label.classList.remove('category-label-danger');
+    }
+  });
+}
+
 async function fetchResults() {
   const btn = document.getElementById('checkBtn');
   btn.disabled = true;
@@ -103,6 +126,7 @@ async function fetchResults() {
     }
     document.getElementById('results').innerHTML = renderReport(allResults);
     document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
+    highlightCategoryCheckboxesByResults(allResults);
   } finally {
     btn.disabled = false;
     btn.textContent = oldText;

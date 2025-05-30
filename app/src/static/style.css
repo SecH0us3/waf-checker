@@ -94,3 +94,6 @@ body[data-theme='dark'] #results tr:nth-child(odd) {
 div#results .mb-1 {
     text-shadow: gray 1px 1px;
 }
+.category-label-danger {
+  text-shadow: 0 0 2px #f44336, 0 0 1px #f44336;
+}
