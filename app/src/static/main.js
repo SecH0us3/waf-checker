@@ -42,6 +42,37 @@ function renderReport(results) {
   return html;
 }
 
+// --- PAYLOAD CATEGORIES LOGIC ---
+const PAYLOAD_CATEGORIES = [
+  "SQL Injection",
+  "XSS",
+  "Path Traversal",
+  "Command Injection",
+  "SSRF",
+  "NoSQL Injection",
+  "Local File Inclusion",
+  "LDAP Injection",
+  "HTTP Request Smuggling",
+  "Open Redirect",
+  "Sensitive Files",
+  "CRLF Injection",
+  "UTF8/Unicode Bypass"
+];
+
+function renderCategoryCheckboxes() {
+  const container = document.getElementById('categoryCheckboxes');
+  if (!container) return;
+  container.innerHTML = '';
+  PAYLOAD_CATEGORIES.forEach((cat, idx) => {
+    const id = 'cat_' + idx;
+    const div = document.createElement('div');
+    div.className = 'form-check';
+    div.innerHTML = `<input class="form-check-input" type="checkbox" value="${cat}" id="${id}" checked>
+      <label class="form-check-label" for="${id}">${cat}</label>`;
+    container.appendChild(div);
+  });
+}
+
 async function fetchResults() {
   const btn = document.getElementById('checkBtn');
   btn.disabled = true;
@@ -51,11 +82,14 @@ async function fetchResults() {
   // Collect selected methods
   const methodCheckboxes = document.querySelectorAll('#methodCheckboxes input[type=checkbox]');
   const selectedMethods = Array.from(methodCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+  // Collect selected categories
+  const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
+  const selectedCategories = Array.from(categoryCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
   let page = 0;
   let allResults = [];
   try {
     while (true) {
-      const resp = await fetch(`/api/check?url=${encodeURIComponent(url)}&methods=${encodeURIComponent(selectedMethods.join(','))}&page=${page}`);
+      const resp = await fetch(`/api/check?url=${encodeURIComponent(url)}&methods=${encodeURIComponent(selectedMethods.join(','))}&categories=${encodeURIComponent(selectedCategories.join(','))}&page=${page}`);
       if (!resp.ok) break;
       const results = await resp.json();
       if (!results || !results.length) break;
@@ -100,4 +134,20 @@ document.addEventListener('DOMContentLoaded', function() {
     const current = document.body.getAttribute('data-theme') || getPreferredTheme();
     setTheme(current === 'dark' ? 'light' : 'dark');
   });
+  renderCategoryCheckboxes();
+  // --- Кнопки select all/deselect all ---
+  const selectAllBtn = document.getElementById('selectAllCategoriesBtn');
+  const deselectAllBtn = document.getElementById('deselectAllCategoriesBtn');
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', function() {
+      const checkboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
+      checkboxes.forEach(cb => { cb.checked = true; });
+    });
+  }
+  if (deselectAllBtn) {
+    deselectAllBtn.addEventListener('click', function() {
+      const checkboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
+      checkboxes.forEach(cb => { cb.checked = false; });
+    });
+  }
 });

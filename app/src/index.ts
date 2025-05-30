@@ -102,9 +102,75 @@ export default {
       const page = parseInt(urlObj.searchParams.get("page") || "0", 10);
       const methods = (urlObj.searchParams.get("methods") || "GET")
         .split(',').map(m => m.trim()).filter(Boolean);
-      const results = await handleApiCheck(url, page, methods);
+      // Получить выбранные категории
+      const categoriesParam = urlObj.searchParams.get("categories");
+      let categories: string[] | undefined = undefined;
+      if (categoriesParam) {
+        categories = categoriesParam.split(',').map(c => c.trim()).filter(Boolean);
+      }
+      const results = await handleApiCheckFiltered(url, page, methods, categories);
       return new Response(JSON.stringify(results), { headers: { "content-type": "application/json; charset=UTF-8" } });
     }
     return new Response("Not found", { status: 404 });
   }
 };
+
+// Новая функция для фильтрации по категориям
+async function handleApiCheckFiltered(url: string, page: number, methods: string[], categories?: string[]): Promise<any[]> {
+  const METHODS = methods && methods.length ? methods : ["GET"];
+  const results: any[] = [];
+  let baseUrl: string;
+  const limit = 50;
+  const start = page * limit;
+  const end = start + limit;
+  let offset = 0;
+  try {
+    const u = new URL(url);
+    baseUrl = `${u.protocol}//${u.host}`;
+  } catch {
+    baseUrl = url;
+  }
+  // Если категории не заданы, использовать все
+  const payloadEntries = categories && categories.length
+    ? Object.entries(PAYLOADS).filter(([cat]) => categories.includes(cat))
+    : Object.entries(PAYLOADS);
+  for (const [category, info] of payloadEntries) {
+    const checkType = info.type || "ParamCheck";
+    const payloads = info.payloads || [];
+    if (checkType === "ParamCheck") {
+      for (const payload of payloads) {
+        for (const method of METHODS) {
+          if (offset >= end) return results;
+          if (offset >= start) {
+            const res = await sendRequest(url, method, payload);
+            results.push({
+              category,
+              payload,
+              method,
+              status: res ? res.status : 'ERR',
+              is_redirect: res ? res.is_redirect : false
+            });
+          }
+          offset++;
+        }
+      }
+    } else if (checkType === "FileCheck") {
+      for (const payload of payloads) {
+        if (offset >= end) return results;
+        if (offset >= start) {
+          const fileUrl = baseUrl.replace(/\/$/, '') + '/' + payload.replace(/^\//, '');
+          const res = await sendRequest(fileUrl, "GET");
+          results.push({
+            category,
+            payload,
+            method: 'GET',
+            status: res ? res.status : 'ERR',
+            is_redirect: res ? res.is_redirect : false
+          });
+        }
+        offset++;
+      }
+    }
+  }
+  return results;
+}
