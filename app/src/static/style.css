@@ -133,3 +133,75 @@ body[data-theme='dark'] .description-waf-check {
 .payload-green {
   color: green;
 }
+
+/* --- Mobile Responsive Styles --- */
+@media (max-width: 600px) {
+  body, .container {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .container {
+    width: 100% !important;
+    max-width: 100vw !important;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+  .card {
+    margin: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  .card-body {
+    padding: 1rem !important;
+  }
+  h1, .card-title {
+    font-size: 1.3rem !important;
+  }
+  .input-group, .mb-3, .mb-4 {
+    flex-direction: column !important;
+    gap: 0.5rem !important;
+  }
+  .input-group > * {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .form-control, .btn {
+    font-size: 1rem !important;
+    padding: 0.5rem !important;
+  }
+  #categoryCheckboxes .form-check {
+    min-width: 45vw !important;
+    font-size: 0.95em !important;
+  }
+  #categoryCheckboxes.row {
+    --bs-gutter-x: 0 !important;
+    --bs-gutter-y: 0.25rem !important;
+  }
+  #results th, #results td {
+    font-size: 0.95em !important;
+    padding: 0.3em !important;
+  }
+  #results table {
+    display: block;
+    overflow-x: auto;
+    width: 100% !important;
+  }
+  .theme-toggle {
+    top: 0.5rem !important;
+    right: 0.5rem !important;
+    font-size: 1.3rem !important;
+  }
+  .description-waf-check {
+    font-size: 0.95em !important;
+    padding: 0.5em !important;
+  }
+  footer {
+    font-size: 0.9em !important;
+    margin-bottom: 1em !important;
+  }
+  #results td:nth-child(4), #results th:nth-child(4) {
+    word-break: break-all !important;
+    white-space: normal !important;
+    font-size: 0.90em !important;
+  }
+}
