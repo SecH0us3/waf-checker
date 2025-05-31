@@ -60,7 +60,6 @@ const PAYLOAD_CATEGORIES = [
   "XXE",
   "SSTI",
   "HTTP Parameter Pollution",
-  "Host Header Injection",
   "Web Cache Poisoning",
   "IP Bypass",
   "User-Agent"
@@ -104,6 +103,19 @@ function highlightCategoryCheckboxesByResults(results) {
   });
 }
 
+// --- Toggle payload template panel ---
+function updatePayloadTemplatePanel() {
+  const methodPOST = document.getElementById('methodPOST');
+  const methodPUT = document.getElementById('methodPUT');
+  const panel = document.getElementById('payloadTemplatePanel');
+  if (!panel) return;
+  if ((methodPOST && methodPOST.checked) || (methodPUT && methodPUT.checked)) {
+    panel.style.display = '';
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
 async function fetchResults() {
   const btn = document.getElementById('checkBtn');
   btn.disabled = true;
@@ -120,11 +132,22 @@ async function fetchResults() {
   localStorage.setItem('wafchecker_url', url);
   localStorage.setItem('wafchecker_methods', JSON.stringify(selectedMethods));
   localStorage.setItem('wafchecker_categories', JSON.stringify(selectedCategories));
+  // --- Получаем шаблон ---
+  let payloadTemplate = '';
+  const templateEl = document.getElementById('payloadTemplate');
+  if (templateEl) {
+    payloadTemplate = templateEl.value;
+    localStorage.setItem('wafchecker_payloadTemplate', payloadTemplate);
+  }
   let page = 0;
   let allResults = [];
   try {
     while (true) {
-      const resp = await fetch(`/api/check?url=${encodeURIComponent(url)}&methods=${encodeURIComponent(selectedMethods.join(','))}&categories=${encodeURIComponent(selectedCategories.join(','))}&page=${page}`);
+      const resp = await fetch(`/api/check?url=${encodeURIComponent(url)}&methods=${encodeURIComponent(selectedMethods.join(','))}&categories=${encodeURIComponent(selectedCategories.join(','))}&page=${page}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ payloadTemplate })
+      });
       if (!resp.ok) break;
       const results = await resp.json();
       if (!results || !results.length) break;
@@ -168,6 +191,12 @@ function restoreStateFromLocalStorage() {
         cb.checked = arr.includes(cb.value);
       });
     } catch {}
+  }
+  // Payload template
+  const payloadTemplate = localStorage.getItem('wafchecker_payloadTemplate');
+  if (payloadTemplate) {
+    const templateEl = document.getElementById('payloadTemplate');
+    if (templateEl) templateEl.value = payloadTemplate;
   }
 }
 
@@ -229,4 +258,10 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   // --- Восстановить состояние ---
   restoreStateFromLocalStorage();
+  // --- Toggle payload template panel on method change ---
+  const methodCheckboxes = document.querySelectorAll('#methodCheckboxes input[type=checkbox]');
+  methodCheckboxes.forEach(cb => {
+    cb.addEventListener('change', updatePayloadTemplatePanel);
+  });
+  updatePayloadTemplatePanel();
 });

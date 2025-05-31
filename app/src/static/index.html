@@ -47,6 +47,14 @@
                                 </div>
                             </div>
                         </div>
+                        <!-- Панель шаблона для POST -->
+                        <div class="mb-3" id="payloadTemplatePanel" style="display:none;">
+                            <label for="payloadTemplate" class="form-label">POST/PUT Payload Template (use <code>{{$$}}</code> for payload):</label>
+                            <textarea id="payloadTemplate" class="form-control" rows="4">{
+  "test": "{{$$}}"
+}</textarea>
+                            <div class="form-text">You can edit the JSON template. <code>{{$$}}</code> will be replaced with the test payload.</div>
+                        </div>
                         <!-- Категории пейлоадов -->
                         <div class="mb-3" id="categoryCheckboxesContainer">
                             <hr>

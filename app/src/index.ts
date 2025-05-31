@@ -1,7 +1,7 @@
 import { PAYLOADS, PayloadCategory } from './payloads';
 
 // Вспомогательная функция для отправки запроса с нужным методом и payload
-async function sendRequest(url: string, method: string, payload?: string, headersObj?: Record<string, string>) {
+async function sendRequest(url: string, method: string, payload?: string, headersObj?: Record<string, string>, payloadTemplate?: string) {
   try {
     let resp: Response;
     const headers = headersObj ? new Headers(headersObj) : undefined;
@@ -12,7 +12,18 @@ async function sendRequest(url: string, method: string, payload?: string, header
         break;
       case "POST":
       case "PUT":
-        resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload ?? "" }), headers });
+        if (payloadTemplate) {
+          let jsonObj;
+          try {
+            jsonObj = JSON.parse(payloadTemplate);
+            jsonObj = substitutePayload(jsonObj, payload ?? "");
+          } catch {
+            jsonObj = { test: payload ?? "" };
+          }
+          resp = await fetch(url, { method, redirect: 'manual', body: JSON.stringify(jsonObj), headers: new Headers({ ...(headersObj || {}), 'Content-Type': 'application/json' }) });
+        } else {
+          resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload ?? "" }), headers });
+        }
         break;
       default:
         return null;
@@ -136,7 +147,16 @@ export default {
       if (categoriesParam) {
         categories = categoriesParam.split(',').map(c => c.trim()).filter(Boolean);
       }
-      const results = await handleApiCheckFiltered(url, page, methods, categories);
+      let payloadTemplate: string | undefined = undefined;
+      if (request.method === 'POST') {
+        try {
+          const body: any = await request.json();
+          if (body && typeof body.payloadTemplate === 'string') {
+            payloadTemplate = body.payloadTemplate;
+          }
+        } catch {}
+      }
+      const results = await handleApiCheckFiltered(url, page, methods, categories, payloadTemplate);
       return new Response(JSON.stringify(results), { headers: { "content-type": "application/json; charset=UTF-8" } });
     }
     return new Response("Not found", { status: 404 });
@@ -144,7 +164,7 @@ export default {
 };
 
 // Новая функция для фильтрации по категориям
-async function handleApiCheckFiltered(url: string, page: number, methods: string[], categories?: string[]): Promise<any[]> {
+async function handleApiCheckFiltered(url: string, page: number, methods: string[], categories?: string[], payloadTemplate?: string): Promise<any[]> {
   const METHODS = methods && methods.length ? methods : ["GET"];
   const results: any[] = [];
   let baseUrl: string;
@@ -170,7 +190,7 @@ async function handleApiCheckFiltered(url: string, page: number, methods: string
         for (const method of METHODS) {
           if (offset >= end) return results;
           if (offset >= start) {
-            const res = await sendRequest(url, method, payload);
+            const res = await sendRequest(url, method, payload, undefined, payloadTemplate);
             results.push({
               category,
               payload,
@@ -212,7 +232,7 @@ async function handleApiCheckFiltered(url: string, page: number, methods: string
         for (const method of METHODS) {
           if (offset >= end) return results;
           if (offset >= start) {
-            const res = await sendRequest(url, method, undefined, headersObj);
+            const res = await sendRequest(url, method, undefined, headersObj, payloadTemplate);
             results.push({
               category,
               payload,
@@ -227,4 +247,20 @@ async function handleApiCheckFiltered(url: string, page: number, methods: string
     }
   }
   return results;
+}
+
+// Рекурсивная функция для замены всех значений "{{$$}}" на payload
+function substitutePayload(obj: any, payload: string): any {
+  if (typeof obj === 'string') {
+    return obj === '{{$$}}' ? payload : obj;
+  } else if (Array.isArray(obj)) {
+    return obj.map(item => substitutePayload(item, payload));
+  } else if (typeof obj === 'object' && obj !== null) {
+    const res: any = {};
+    for (const [k, v] of Object.entries(obj)) {
+      res[k] = substitutePayload(v, payload);
+    }
+    return res;
+  }
+  return obj;
 }
