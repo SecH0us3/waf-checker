@@ -19,11 +19,11 @@ function renderSummary(results) {
   for (const r of results) statusCounter[r.status] = (statusCounter[r.status] || 0) + 1;
   const totalRequests = results.length;
   let html = `<div class='mb-3'>`;
-  html += `<div class='d-flex align-items-center mb-1'><div style='min-width:90px;text-align:left;'><b>Total</b></div><div style='height:24px;width:100%;min-width:2px;line-height:24px;padding-left:8px;text-align:left;display:inline-block;border-radius:4px;background:#d5d6d7;color:#222;font-weight:bold;'>${totalRequests}</div></div>`;
+  html += `<div class='d-flex align-items-left mb-1'><div style='min-width:112px;'><label><input type='checkbox' id='statusSelectAll' checked style='margin-right:4px;vertical-align:middle;'> <b>Total</b></label></div><div style='height:24px;width:100%;min-width:2px;line-height:24px;padding-left:8px;display:inline-block;border-radius:4px;background:#d5d6d7;color:#222;font-weight:bold;'>${totalRequests}</div></div>`;
   for (const code of Object.keys(statusCounter).sort()) {
     const percent = totalRequests ? (statusCounter[code] / totalRequests * 100) : 0;
     const status_class = getStatusClass(code, parseInt(code, 10) >= 300 && parseInt(code, 10) < 400);
-    html += `<div class='d-flex align-items-center mb-1'><div style='min-width:90px;text-align:left;'><b>Status ${code}</b></div><div class='${status_class}' style='height:24px;width:${percent.toFixed(2)}%;min-width:2px;line-height:24px;padding-left:8px;text-align:left;display:inline-block;border-radius:4px;'>${statusCounter[code]}</div></div>`;
+    html += `<div class='d-flex align-items-left mb-1'><div style='min-width:112px;'><label><input type='checkbox' class='status-filter-checkbox' data-status='${code}' checked style='margin-right:4px;vertical-align:middle;'> <b>Status ${code}</b></label></div><div class='${status_class}' style='height:24px;width:${percent.toFixed(2)}%;min-width:2px;line-height:24px;padding-left:8px;display:inline-block;border-radius:4px;'>${statusCounter[code]}</div></div>`;
   }
   html += `</div>`;
   return html;
@@ -33,12 +33,21 @@ function renderReport(results) {
   if (!results || results.length === 0) return '';
   let html = `<h3>Results</h3>`;
   html += renderSummary(results);
-  html += `<table border='1' cellpadding='5' class='w-100'><tr><th>Category</th><th>Method</th><th>Status</th><th>Payload</th></tr>`;
+  html += `<table border='1' cellpadding='5' class='w-100' id='resultsTable'><tr><th>Category</th><th>Method</th><th>Status</th><th>Payload</th></tr>`;
   for (const r of results) {
     const status_class = getStatusClass(r.status, r.is_redirect);
-    html += `<tr><td>${r.category}</td><td>${r.method}</td><td class='${status_class}'>${r.status}</td><td><code>${escapeHtml(r.payload)}</code></td></tr>`;
+    html += `<tr data-status='${r.status}'><td>${r.category}</td><td>${r.method}</td><td class='${status_class}'>${r.status}</td><td><code>${escapeHtml(r.payload)}</code></td></tr>`;
   }
   html += `</table>`;
+  setTimeout(() => {
+    filterResultsTableByStatus();
+    const all = document.querySelectorAll('.status-filter-checkbox');
+    const checkedCount = Array.from(all).filter(cb => cb.checked).length;
+    const selectAll = document.getElementById('statusSelectAll');
+    if (selectAll) {
+      selectAll.checked = checkedCount === all.length;
+    }
+  }, 0);
   return html;
 }
 
@@ -264,4 +273,42 @@ document.addEventListener('DOMContentLoaded', function() {
     cb.addEventListener('change', updatePayloadTemplatePanel);
   });
   updatePayloadTemplatePanel();
+  // Делегированный обработчик на #results
+  const resultsDiv = document.getElementById('results');
+  if (resultsDiv) {
+    resultsDiv.addEventListener('change', function(e) {
+      const target = e.target;
+      // Select all statuses
+      if (target && target.id === 'statusSelectAll') {
+        const checked = target.checked;
+        document.querySelectorAll('.status-filter-checkbox').forEach(cb => {
+          cb.checked = checked;
+        });
+        filterResultsTableByStatus();
+      }
+      // Обычные чекбоксы статусов
+      if (target && target.classList.contains('status-filter-checkbox')) {
+        // Если хотя бы один снят — select all снимается, если все включены — включается
+        const all = document.querySelectorAll('.status-filter-checkbox');
+        const checkedCount = Array.from(all).filter(cb => cb.checked).length;
+        const selectAll = document.getElementById('statusSelectAll');
+        if (selectAll) {
+          selectAll.checked = checkedCount === all.length;
+        }
+        filterResultsTableByStatus();
+      }
+    });
+  }
 });
+
+function filterResultsTableByStatus() {
+  const checkedStatuses = Array.from(document.querySelectorAll('.status-filter-checkbox:checked')).map(cb => cb.getAttribute('data-status'));
+  const rows = document.querySelectorAll('#resultsTable tr[data-status]');
+  rows.forEach(row => {
+    if (checkedStatuses.includes(row.getAttribute('data-status'))) {
+      row.style.display = '';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
