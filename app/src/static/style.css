@@ -106,3 +106,30 @@ div#results .mb-1 {
 body[data-theme='dark'] .description-waf-check {
   color: #e0e0e0;
 }
+.min-width-112 {
+  min-width: 112px;
+}
+.checkbox-align {
+  margin-right: 4px;
+  vertical-align: middle;
+}
+.status-bar {
+  height: 24px;
+  min-width: 2px;
+  line-height: 24px;
+  padding-left: 8px;
+  display: inline-block;
+  border-radius: 4px;
+  font-weight: bold;
+}
+.status-bar-total {
+  width: 100%;
+  background: #d5d6d7;
+  color: #222;
+}
+.text-center {
+  text-align: center;
+}
+.payload-green {
+  color: green;
+}

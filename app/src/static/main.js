@@ -19,11 +19,11 @@ function renderSummary(results) {
   for (const r of results) statusCounter[r.status] = (statusCounter[r.status] || 0) + 1;
   const totalRequests = results.length;
   let html = `<div class='mb-3'>`;
-  html += `<div class='d-flex align-items-left mb-1'><div style='min-width:112px;'><label><input type='checkbox' id='statusSelectAll' checked style='margin-right:4px;vertical-align:middle;'> <b>Total</b></label></div><div style='height:24px;width:100%;min-width:2px;line-height:24px;padding-left:8px;display:inline-block;border-radius:4px;background:#d5d6d7;color:#222;font-weight:bold;'>${totalRequests}</div></div>`;
+  html += `<div class='d-flex align-items-left mb-1'><div class='min-width-112'><label><input type='checkbox' id='statusSelectAll' checked class='checkbox-align'> <b>Total</b></label></div><div class='status-bar status-bar-total'>${totalRequests}</div></div>`;
   for (const code of Object.keys(statusCounter).sort()) {
     const percent = totalRequests ? (statusCounter[code] / totalRequests * 100) : 0;
     const status_class = getStatusClass(code, parseInt(code, 10) >= 300 && parseInt(code, 10) < 400);
-    html += `<div class='d-flex align-items-left mb-1'><div style='min-width:112px;'><label><input type='checkbox' class='status-filter-checkbox' data-status='${code}' checked style='margin-right:4px;vertical-align:middle;'> <b>Status ${code}</b></label></div><div class='${status_class}' style='height:24px;width:${percent.toFixed(2)}%;min-width:2px;line-height:24px;padding-left:8px;display:inline-block;border-radius:4px;'>${statusCounter[code]}</div></div>`;
+    html += `<div class='d-flex align-items-left mb-1'><div class='min-width-112'><label><input type='checkbox' class='status-filter-checkbox checkbox-align' data-status='${code}' checked> <b>Status ${code}</b></label></div><div class='status-bar ${status_class}' style='width:${percent.toFixed(2)}%;'>${statusCounter[code]}</div></div>`;
   }
   html += `</div>`;
   return html;
@@ -36,12 +36,12 @@ function renderReport(results) {
   html += `<table border='1' cellpadding='5' class='w-100' id='resultsTable'><tr><th>Category</th><th>Method</th><th>Status</th><th>Payload</th></tr>`;
   for (const r of results) {
     const status_class = getStatusClass(r.status, r.is_redirect);
-    const codeStyle = r.status == 403 || r.status == '403' ? " style='color:green'" : '';
+    const codeClass = r.status == 403 || r.status == '403' ? ' payload-green' : '';
     html += `<tr data-status='${r.status}'>` +
       `<td>${r.category}</td>` +
-      `<td style='text-align:center;'>${r.method}</td>` +
-      `<td class='${status_class}' style='text-align:center;'>${r.status}</td>` +
-      `<td>&nbsp;<code${codeStyle}>${escapeHtml(r.payload)}</code></td>` +
+      `<td class='text-center'>${r.method}</td>` +
+      `<td class='${status_class} text-center'>${r.status}</td>` +
+      `<td>&nbsp;<code class='${codeClass}'>${escapeHtml(r.payload)}</code></td>` +
       `</tr>`;
   }
   html += `</table>`;
