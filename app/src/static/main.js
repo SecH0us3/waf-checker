@@ -36,7 +36,13 @@ function renderReport(results) {
   html += `<table border='1' cellpadding='5' class='w-100' id='resultsTable'><tr><th>Category</th><th>Method</th><th>Status</th><th>Payload</th></tr>`;
   for (const r of results) {
     const status_class = getStatusClass(r.status, r.is_redirect);
-    html += `<tr data-status='${r.status}'><td>${r.category}</td><td>${r.method}</td><td class='${status_class}'>${r.status}</td><td><code>${escapeHtml(r.payload)}</code></td></tr>`;
+    const codeStyle = r.status == 403 || r.status == '403' ? " style='color:green'" : '';
+    html += `<tr data-status='${r.status}'>` +
+      `<td>${r.category}</td>` +
+      `<td style='text-align:center;'>${r.method}</td>` +
+      `<td class='${status_class}' style='text-align:center;'>${r.status}</td>` +
+      `<td>&nbsp;<code${codeStyle}>${escapeHtml(r.payload)}</code></td>` +
+      `</tr>`;
   }
   html += `</table>`;
   setTimeout(() => {
