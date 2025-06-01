@@ -5,7 +5,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "proud-haze-2d74",
-	"main": "src/index.ts",
+	"main": "src/api.ts",
 	"compatibility_date": "2025-05-28",
 	"observability": {
 		"enabled": true

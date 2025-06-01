@@ -15,15 +15,16 @@ This project helps you check how well your Web Application Firewall (WAF) protec
 - Easily extendable payload list (see `app/src/payloads.ts`).
 
 ## How to Use
-1. Start the server (for example, via Cloudflare Worker or a dev server).
-2. Open your browser and go to `/` (e.g., http://localhost:8000).
-3. Enter the URL to test, select HTTP methods and attack categories.
-4. Click "Check" — results will appear below.
+1. Install wrangler https://developers.cloudflare.com/workers/wrangler/install-and-update/ (dependencies: node & npx)
+2. Run `npx wrangler dev`
+   ![](./img/1-run.png)
 
 ## Project Structure
-- `app/src/static/index.html` — main web interface (Bootstrap, JS).
-- `app/src/payloads.ts` — all attack categories and payloads.
-- `app/src/index.ts` — server logic: request handling, payload sending, `/api/check` API.
+- `app/src/api.ts` — server logic: request handling, payload sending, `/api/check` API
+- `app/src/payloads.ts` — all attack categories and payloads
+- `app/src/static/index.html` — main web interface (Bootstrap, JS)
+- `app/src/static/main.js` — frontend logic and UI handlers
+- `app/src/static/style.css` — custom styling and theme support
 
 ## Extending Payloads
 To add or modify payloads, edit the `app/src/payloads.ts` file. You can add new categories, payloads, and check types (in parameters, headers, as file).
