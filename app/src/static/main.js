@@ -137,9 +137,11 @@ async function fetchResults() {
   const oldText = btn.textContent;
   btn.textContent = 'Wait...';
   const url = document.getElementById('url').value;
-  // Collect selected methods
-  const methodCheckboxes = document.querySelectorAll('#methodCheckboxes input[type=checkbox]');
+  // Collect selected methods — ТОЛЬКО из .http-methods!
+  const methodCheckboxes = document.querySelectorAll('.http-methods input[type=checkbox]');
   const selectedMethods = Array.from(methodCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+  // Follow redirect
+  const followRedirect = document.getElementById('followRedirect')?.checked ? true : false;
   // Collect selected categories
   const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
   const selectedCategories = Array.from(categoryCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
@@ -147,6 +149,7 @@ async function fetchResults() {
   localStorage.setItem('wafchecker_url', url);
   localStorage.setItem('wafchecker_methods', JSON.stringify(selectedMethods));
   localStorage.setItem('wafchecker_categories', JSON.stringify(selectedCategories));
+  localStorage.setItem('wafchecker_followRedirect', followRedirect ? "1" : "0");
   // --- Получаем шаблон ---
   let payloadTemplate = '';
   const templateEl = document.getElementById('payloadTemplate');
@@ -158,7 +161,14 @@ async function fetchResults() {
   let allResults = [];
   try {
     while (true) {
-      const resp = await fetch(`/api/check?url=${encodeURIComponent(url)}&methods=${encodeURIComponent(selectedMethods.join(','))}&categories=${encodeURIComponent(selectedCategories.join(','))}&page=${page}`, {
+      const params = new URLSearchParams({
+        url,
+        methods: selectedMethods.join(','),
+        categories: selectedCategories.join(','),
+        page: page,
+        followRedirect: followRedirect ? "1" : "0"
+      });
+      const resp = await fetch(`/api/check?${params.toString()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payloadTemplate })
@@ -190,12 +200,19 @@ function restoreStateFromLocalStorage() {
   if (methods) {
     try {
       const arr = JSON.parse(methods);
-      const methodCheckboxes = document.querySelectorAll('#methodCheckboxes input[type=checkbox]');
+      const methodCheckboxes = document.querySelectorAll('.http-methods input[type=checkbox]');
       methodCheckboxes.forEach(cb => {
         cb.checked = arr.includes(cb.value);
       });
     } catch {}
   }
+  // Follow redirect
+  const followRedirect = localStorage.getItem('wafchecker_followRedirect');
+  if (followRedirect !== null) {
+    const el = document.getElementById('followRedirect');
+    if (el) el.checked = !!parseInt(followRedirect, 10);
+  }
+
   // Categories
   const categories = localStorage.getItem('wafchecker_categories');
   if (categories) {

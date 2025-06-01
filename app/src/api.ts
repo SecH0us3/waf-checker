@@ -1,14 +1,22 @@
 import { PAYLOADS, PayloadCategory } from './payloads';
 
 // Вспомогательная функция для отправки запроса с нужным методом и payload
-async function sendRequest(url: string, method: string, payload?: string, headersObj?: Record<string, string>, payloadTemplate?: string) {
+async function sendRequest(
+  url: string, 
+  method: string, 
+  payload?: string, 
+  headersObj?: Record<string, string>, 
+  payloadTemplate?: string, 
+  followRedirect: boolean = false
+) {
   try {
     let resp: Response;
     const headers = headersObj ? new Headers(headersObj) : undefined;
+    const redirectOption = followRedirect ? 'follow' : 'manual';
     switch (method) {
       case "GET":
       case "DELETE":
-        resp = await fetch(payload !== undefined ? url + `?test=${encodeURIComponent(payload)}` : url, { method, redirect: 'manual', headers });
+        resp = await fetch(payload !== undefined ? url + `?test=${encodeURIComponent(payload)}` : url, { method, redirect: redirectOption, headers });
         break;
       case "POST":
       case "PUT":
@@ -20,9 +28,9 @@ async function sendRequest(url: string, method: string, payload?: string, header
           } catch {
             jsonObj = { test: payload ?? "" };
           }
-          resp = await fetch(url, { method, redirect: 'manual', body: JSON.stringify(jsonObj), headers: new Headers({ ...(headersObj || {}), 'Content-Type': 'application/json' }) });
+          resp = await fetch(url, { method, redirect: redirectOption, body: JSON.stringify(jsonObj), headers: new Headers({ ...(headersObj || {}), 'Content-Type': 'application/json' }) });
         } else {
-          resp = await fetch(url, { method, redirect: 'manual', body: new URLSearchParams({ test: payload ?? "" }), headers });
+          resp = await fetch(url, { method, redirect: redirectOption, body: new URLSearchParams({ test: payload ?? "" }), headers });
         }
         break;
       default:
@@ -135,13 +143,11 @@ export default {
       const url = urlObj.searchParams.get("url");
       if (!url) return new Response("Missing url param", { status: 400 });
       if (url.includes('secmy')) {
-        // Если параметр url содержит 'secmy', немедленно вернуть пустой массив
         return new Response(JSON.stringify([]), { headers: { "content-type": "application/json; charset=UTF-8" } });
       }
       const page = parseInt(urlObj.searchParams.get("page") || "0", 10);
       const methods = (urlObj.searchParams.get("methods") || "GET")
         .split(',').map(m => m.trim()).filter(Boolean);
-      // Получить выбранные категории
       const categoriesParam = urlObj.searchParams.get("categories");
       let categories: string[] | undefined = undefined;
       if (categoriesParam) {
@@ -156,15 +162,23 @@ export default {
           }
         } catch {}
       }
-      const results = await handleApiCheckFiltered(url, page, methods, categories, payloadTemplate);
+      // Новый параметр followRedirect
+      const followRedirect = urlObj.searchParams.get('followRedirect') === "1";
+      const results = await handleApiCheckFiltered(url, page, methods, categories, payloadTemplate, followRedirect);
       return new Response(JSON.stringify(results), { headers: { "content-type": "application/json; charset=UTF-8" } });
     }
     return new Response("Not found", { status: 404 });
   }
 };
 
-// Новая функция для фильтрации по категориям
-async function handleApiCheckFiltered(url: string, page: number, methods: string[], categories?: string[], payloadTemplate?: string): Promise<any[]> {
+async function handleApiCheckFiltered(
+  url: string, 
+  page: number, 
+  methods: string[], 
+  categories?: string[], 
+  payloadTemplate?: string, 
+  followRedirect: boolean = false
+): Promise<any[]> {
   const METHODS = methods && methods.length ? methods : ["GET"];
   const results: any[] = [];
   let baseUrl: string;
@@ -178,7 +192,6 @@ async function handleApiCheckFiltered(url: string, page: number, methods: string
   } catch {
     baseUrl = url;
   }
-  // Если категории не заданы, использовать все
   const payloadEntries = categories && categories.length
     ? Object.entries(PAYLOADS).filter(([cat]) => categories.includes(cat))
     : Object.entries(PAYLOADS);
@@ -190,7 +203,7 @@ async function handleApiCheckFiltered(url: string, page: number, methods: string
         for (const method of METHODS) {
           if (offset >= end) return results;
           if (offset >= start) {
-            const res = await sendRequest(url, method, payload, undefined, payloadTemplate);
+            const res = await sendRequest(url, method, payload, undefined, payloadTemplate, followRedirect);
             results.push({
               category,
               payload,
@@ -207,7 +220,7 @@ async function handleApiCheckFiltered(url: string, page: number, methods: string
         if (offset >= end) return results;
         if (offset >= start) {
           const fileUrl = baseUrl.replace(/\/$/, '') + '/' + payload.replace(/^\//, '');
-          const res = await sendRequest(fileUrl, "GET");
+          const res = await sendRequest(fileUrl, "GET", undefined, undefined, undefined, followRedirect);
           results.push({
             category,
             payload,
@@ -232,7 +245,7 @@ async function handleApiCheckFiltered(url: string, page: number, methods: string
         for (const method of METHODS) {
           if (offset >= end) return results;
           if (offset >= start) {
-            const res = await sendRequest(url, method, undefined, headersObj, payloadTemplate);
+            const res = await sendRequest(url, method, undefined, headersObj, payloadTemplate, followRedirect);
             results.push({
               category,
               payload,
