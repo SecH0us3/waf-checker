@@ -48,88 +48,6 @@ async function sendRequest(
   }
 }
 
-async function handleApiCheck(url: string, page: number, methods: string[]): Promise<any[]> {
-  const METHODS = methods && methods.length ? methods : ["GET"];
-  const results: any[] = [];
-  let baseUrl: string;
-  const limit = 50;
-  const start = page * limit;
-  const end = start + limit;
-  let offset = 0;
-  try {
-    const u = new URL(url);
-    baseUrl = `${u.protocol}//${u.host}`;
-  } catch {
-    baseUrl = url;
-  }
-  for (const [category, info] of Object.entries(PAYLOADS)) {
-    const checkType = info.type || "ParamCheck";
-    const payloads = info.payloads || [];
-    if (checkType === "ParamCheck") {
-      for (const payload of payloads) {
-        for (const method of METHODS) {
-          if (offset >= end) return results;
-          if (offset >= start) {
-            const res = await sendRequest(url, method, payload);
-            results.push({
-              category,
-              payload,
-              method,
-              status: res ? res.status : 'ERR',
-              is_redirect: res ? res.is_redirect : false
-            });
-          }
-          offset++;
-        }
-      }
-    } else if (checkType === "FileCheck") {
-      for (const payload of payloads) {
-        if (offset >= end) return results;
-        if (offset >= start) {
-          const fileUrl = baseUrl.replace(/\/$/, '') + '/' + payload.replace(/^\//, '');
-          const res = await sendRequest(fileUrl, "GET");
-          results.push({
-            category,
-            payload,
-            method: 'GET',
-            status: res ? res.status : 'ERR',
-            is_redirect: res ? res.is_redirect : false
-          });
-        }
-        offset++;
-      }
-    } else if (checkType === "Header") {
-      for (const payload of payloads) {
-        // payload может быть строкой вида 'Header-Name: value' или несколькими заголовками через \r\n
-        const headersObj: Record<string, string> = {};
-        for (const line of payload.split(/\r?\n/)) {
-          const idx = line.indexOf(":");
-          if (idx > 0) {
-            const name = line.slice(0, idx).trim();
-            const value = line.slice(idx + 1).trim();
-            headersObj[name] = value;
-          }
-        }
-        for (const method of METHODS) {
-          if (offset >= end) return results;
-          if (offset >= start) {
-            const res = await sendRequest(url, method, undefined, headersObj);
-            results.push({
-              category,
-              payload,
-              method,
-              status: res ? res.status : 'ERR',
-              is_redirect: res ? res.is_redirect : false
-            });
-          }
-          offset++;
-        }
-      }
-    }
-  }
-  return results;
-}
-
 // Лучше сразу загрузить index.html при старте (если возможно)
 let INDEX_HTML = "";
 
@@ -154,17 +72,23 @@ export default {
         categories = categoriesParam.split(',').map(c => c.trim()).filter(Boolean);
       }
       let payloadTemplate: string | undefined = undefined;
+      let customHeaders: string | undefined = undefined;
       if (request.method === 'POST') {
         try {
           const body: any = await request.json();
           if (body && typeof body.payloadTemplate === 'string') {
             payloadTemplate = body.payloadTemplate;
           }
-        } catch {}
+          if (body && typeof body.customHeaders === 'string') {
+            customHeaders = body.customHeaders;
+          }
+        } catch (e) {
+          console.error("Error parsing request body:", e);
+        }
       }
       // Новый параметр followRedirect
       const followRedirect = urlObj.searchParams.get('followRedirect') === "1";
-      const results = await handleApiCheckFiltered(url, page, methods, categories, payloadTemplate, followRedirect);
+      const results = await handleApiCheckFiltered(url, page, methods, categories, payloadTemplate, followRedirect, customHeaders);
       return new Response(JSON.stringify(results), { headers: { "content-type": "application/json; charset=UTF-8" } });
     }
     return new Response("Not found", { status: 404 });
@@ -177,7 +101,8 @@ async function handleApiCheckFiltered(
   methods: string[], 
   categories?: string[], 
   payloadTemplate?: string, 
-  followRedirect: boolean = false
+  followRedirect: boolean = false,
+  customHeaders?: string
 ): Promise<any[]> {
   const METHODS = methods && methods.length ? methods : ["GET"];
   const results: any[] = [];
@@ -203,7 +128,9 @@ async function handleApiCheckFiltered(
         for (const method of METHODS) {
           if (offset >= end) return results;
           if (offset >= start) {
-            const res = await sendRequest(url, method, payload, undefined, payloadTemplate, followRedirect);
+            // Process custom headers if provided
+            const headersObj = customHeaders ? processCustomHeaders(customHeaders, payload) : undefined;
+            const res = await sendRequest(url, method, payload, headersObj, payloadTemplate, followRedirect);
             results.push({
               category,
               payload,
@@ -220,7 +147,9 @@ async function handleApiCheckFiltered(
         if (offset >= end) return results;
         if (offset >= start) {
           const fileUrl = baseUrl.replace(/\/$/, '') + '/' + payload.replace(/^\//, '');
-          const res = await sendRequest(fileUrl, "GET", undefined, undefined, undefined, followRedirect);
+          // Process custom headers if provided
+          const headersObj = customHeaders ? processCustomHeaders(customHeaders, payload) : undefined;
+          const res = await sendRequest(fileUrl, "GET", undefined, headersObj, undefined, followRedirect);
           results.push({
             category,
             payload,
@@ -233,6 +162,7 @@ async function handleApiCheckFiltered(
       }
     } else if (checkType === "Header") {
       for (const payload of payloads) {
+        // Create headers from payload
         const headersObj: Record<string, string> = {};
         for (const line of payload.split(/\r?\n/)) {
           const idx = line.indexOf(":");
@@ -242,6 +172,14 @@ async function handleApiCheckFiltered(
             headersObj[name] = value;
           }
         }
+        
+        // Add custom headers if provided
+        if (customHeaders) {
+          const customHeadersObj = processCustomHeaders(customHeaders, payload);
+          // Merge headers (custom headers override payload headers if same name)
+          Object.assign(headersObj, customHeadersObj);
+        }
+        
         for (const method of METHODS) {
           if (offset >= end) return results;
           if (offset >= start) {
@@ -260,6 +198,26 @@ async function handleApiCheckFiltered(
     }
   }
   return results;
+}
+
+// Helper function to parse and process custom headers
+function processCustomHeaders(customHeadersStr: string, payload?: string): Record<string, string> {
+  const headersObj: Record<string, string> = {};
+  if (!customHeadersStr || !customHeadersStr.trim()) return headersObj;
+  
+  for (const line of customHeadersStr.split(/\r?\n/)) {
+    const idx = line.indexOf(":");
+    if (idx > 0) {
+      const name = line.slice(0, idx).trim();
+      let value = line.slice(idx + 1).trim();
+      // Replace payload placeholder in headers if payload provided
+      if (payload && value.includes('{{$$}}')) {
+        value = value.replace(/\{\{\$\$\}\}/g, payload);
+      }
+      headersObj[name] = value;
+    }
+  }
+  return headersObj;
 }
 
 // Рекурсивная функция для замены всех вхождений "{{$$}}" на payload

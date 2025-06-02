@@ -204,6 +204,22 @@ body[data-theme='dark'] .description-waf-check {
     white-space: normal !important;
     font-size: 0.90em !important;
   }
+  
+  #payloadTemplatePanel hr {
+    border-color: rgba(120, 120, 120, 0.3);
+  }
+  
+  #payloadTemplatePanel .form-text {
+    margin-top: 0.25rem;
+    font-size: 0.85em;
+  }
+}
+
+/* Custom headers textarea styling */
+#customHeaders {
+  margin-top: 0.5rem;
+  font-family: monospace;
+  font-size: 0.9em;
 }
 
 .github-corner-link {
@@ -238,4 +254,14 @@ body[data-theme='dark'] .description-waf-check {
 
 .py-5{
   padding-bottom:0px !important;
+}
+
+body[data-theme='dark'] #customHeaders {
+  background-color: #2b3035;
+  color: #f8f9fa;
+  border-color: #6c757d;
+}
+
+body[data-theme='dark'] #payloadTemplatePanel hr {
+  border-color: rgba(200, 200, 200, 0.2);
 }

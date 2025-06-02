@@ -122,9 +122,12 @@ function highlightCategoryCheckboxesByResults(results) {
 function updatePayloadTemplatePanel() {
   const methodPOST = document.getElementById('methodPOST');
   const methodPUT = document.getElementById('methodPUT');
+  const methodGET = document.getElementById('methodGET');
+  const methodDELETE = document.getElementById('methodDELETE');
   const panel = document.getElementById('payloadTemplatePanel');
   if (!panel) return;
-  if ((methodPOST && methodPOST.checked) || (methodPUT && methodPUT.checked)) {
+  if ((methodPOST && methodPOST.checked) || (methodPUT && methodPUT.checked) || 
+      (methodGET && methodGET.checked) || (methodDELETE && methodDELETE.checked)) {
     panel.style.display = '';
   } else {
     panel.style.display = 'none';
@@ -150,12 +153,19 @@ async function fetchResults() {
   localStorage.setItem('wafchecker_methods', JSON.stringify(selectedMethods));
   localStorage.setItem('wafchecker_categories', JSON.stringify(selectedCategories));
   localStorage.setItem('wafchecker_followRedirect', followRedirect ? "1" : "0");
-  // --- Получаем шаблон ---
+  // --- Получаем шаблон и заголовки ---
   let payloadTemplate = '';
   const templateEl = document.getElementById('payloadTemplate');
   if (templateEl) {
     payloadTemplate = templateEl.value;
     localStorage.setItem('wafchecker_payloadTemplate', payloadTemplate);
+  }
+  
+  let customHeaders = '';
+  const headersEl = document.getElementById('customHeaders');
+  if (headersEl) {
+    customHeaders = headersEl.value;
+    localStorage.setItem('wafchecker_customHeaders', customHeaders);
   }
   let page = 0;
   let allResults = [];
@@ -171,7 +181,7 @@ async function fetchResults() {
       const resp = await fetch(`/api/check?${params.toString()}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payloadTemplate })
+        body: JSON.stringify({ payloadTemplate, customHeaders })
       });
       if (!resp.ok) break;
       const results = await resp.json();
@@ -229,6 +239,13 @@ function restoreStateFromLocalStorage() {
   if (payloadTemplate) {
     const templateEl = document.getElementById('payloadTemplate');
     if (templateEl) templateEl.value = payloadTemplate;
+  }
+  
+  // Custom headers
+  const customHeaders = localStorage.getItem('wafchecker_customHeaders');
+  if (customHeaders) {
+    const headersEl = document.getElementById('customHeaders');
+    if (headersEl) headersEl.value = customHeaders;
   }
 }
 
