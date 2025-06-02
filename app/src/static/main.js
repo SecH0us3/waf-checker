@@ -118,19 +118,59 @@ function highlightCategoryCheckboxesByResults(results) {
   });
 }
 
-// --- Toggle payload template panel ---
-function updatePayloadTemplatePanel() {
+// --- Toggle payload template section within Additional Settings ---
+function updatePayloadTemplateSection() {
   const methodPOST = document.getElementById('methodPOST');
   const methodPUT = document.getElementById('methodPUT');
-  const methodGET = document.getElementById('methodGET');
-  const methodDELETE = document.getElementById('methodDELETE');
-  const panel = document.getElementById('payloadTemplatePanel');
-  if (!panel) return;
-  if ((methodPOST && methodPOST.checked) || (methodPUT && methodPUT.checked) || 
-      (methodGET && methodGET.checked) || (methodDELETE && methodDELETE.checked)) {
-    panel.style.display = '';
+  const section = document.getElementById('payloadTemplateSection');
+  if (!section) return;
+  if ((methodPOST && methodPOST.checked) || (methodPUT && methodPUT.checked)) {
+    section.style.display = '';
   } else {
-    panel.style.display = 'none';
+    section.style.display = 'none';
+  }
+}
+
+// --- Toggle More Settings panel ---
+function toggleMoreSettings() {
+  const panel = document.getElementById('moreSettingsPanel');
+  const button = document.getElementById('moreSettingsToggle');
+  if (!panel || !button) return;
+  
+  const isVisible = panel.style.display !== 'none';
+  if (isVisible) {
+    // Start closing animation
+    panel.style.maxHeight = panel.scrollHeight + 'px';
+    panel.offsetHeight; // Force reflow
+    panel.style.maxHeight = '0';
+    panel.style.opacity = '0';
+    panel.style.transform = 'translateY(-10px)';
+    
+    setTimeout(() => {
+      panel.style.display = 'none';
+    }, 300);
+    
+    button.innerHTML = '▼ More Settings';
+    localStorage.setItem('wafchecker_moreSettingsExpanded', 'false');
+  } else {
+    // Start opening animation
+    panel.style.display = '';
+    panel.style.maxHeight = '0';
+    panel.style.opacity = '0';
+    panel.style.transform = 'translateY(-10px)';
+    
+    panel.offsetHeight; // Force reflow
+    panel.style.maxHeight = panel.scrollHeight + 'px';
+    panel.style.opacity = '1';
+    panel.style.transform = 'translateY(0)';
+    
+    // Clean up after animation
+    setTimeout(() => {
+      panel.style.maxHeight = '';
+    }, 300);
+    
+    button.innerHTML = '▲ More Settings';
+    localStorage.setItem('wafchecker_moreSettingsExpanded', 'true');
   }
 }
 
@@ -247,6 +287,20 @@ function restoreStateFromLocalStorage() {
     const headersEl = document.getElementById('customHeaders');
     if (headersEl) headersEl.value = customHeaders;
   }
+  
+  // More Settings panel state
+  const moreSettingsExpanded = localStorage.getItem('wafchecker_moreSettingsExpanded');
+  if (moreSettingsExpanded === 'true') {
+    const panel = document.getElementById('moreSettingsPanel');
+    const button = document.getElementById('moreSettingsToggle');
+    if (panel && button) {
+      panel.style.display = '';
+      panel.style.maxHeight = '';
+      panel.style.opacity = '1';
+      panel.style.transform = 'translateY(0)';
+      button.innerHTML = '▲ More Settings';
+    }
+  }
 }
 
 // Theme logic
@@ -307,12 +361,12 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   // --- Восстановить состояние ---
   restoreStateFromLocalStorage();
-  // --- Toggle payload template panel on method change ---
+  // --- Toggle payload template section on method change ---
   const methodCheckboxes = document.querySelectorAll('#methodCheckboxes input[type=checkbox]');
   methodCheckboxes.forEach(cb => {
-    cb.addEventListener('change', updatePayloadTemplatePanel);
+    cb.addEventListener('change', updatePayloadTemplateSection);
   });
-  updatePayloadTemplatePanel();
+  updatePayloadTemplateSection();
   // Делегированный обработчик на #results
   const resultsDiv = document.getElementById('results');
   if (resultsDiv) {
