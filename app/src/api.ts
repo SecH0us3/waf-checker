@@ -262,10 +262,10 @@ async function handleApiCheckFiltered(
   return results;
 }
 
-// Рекурсивная функция для замены всех значений "{{$$}}" на payload
+// Рекурсивная функция для замены всех вхождений "{{$$}}" на payload
 function substitutePayload(obj: any, payload: string): any {
   if (typeof obj === 'string') {
-    return obj === '{{$$}}' ? payload : obj;
+    return obj.includes('{{$$}}') ? obj.replace(/\{\{\$\$\}\}/g, payload) : obj;
   } else if (Array.isArray(obj)) {
     return obj.map(item => substitutePayload(item, payload));
   } else if (typeof obj === 'object' && obj !== null) {
