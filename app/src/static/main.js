@@ -150,7 +150,7 @@ function toggleMoreSettings() {
       panel.style.display = 'none';
     }, 300);
     
-    button.innerHTML = '▼ More';
+    button.innerHTML = '⚙️';
     localStorage.setItem('wafchecker_moreSettingsExpanded', 'false');
   } else {
     // Start opening animation
@@ -169,7 +169,7 @@ function toggleMoreSettings() {
       panel.style.maxHeight = '';
     }, 300);
     
-    button.innerHTML = '▲ More';
+    button.innerHTML = '⚙️';
     localStorage.setItem('wafchecker_moreSettingsExpanded', 'true');
   }
 }
@@ -298,7 +298,7 @@ function restoreStateFromLocalStorage() {
       panel.style.maxHeight = '';
       panel.style.opacity = '1';
       panel.style.transform = 'translateY(0)';
-      button.innerHTML = '▲ More';
+      button.innerHTML = '⚙️';
     }
   }
 }
