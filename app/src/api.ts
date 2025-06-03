@@ -88,7 +88,9 @@ export default {
       }
       // Новый параметр followRedirect
       const followRedirect = urlObj.searchParams.get('followRedirect') === "1";
-      const results = await handleApiCheckFiltered(url, page, methods, categories, payloadTemplate, followRedirect, customHeaders);
+      // Новый параметр falsePositiveTest
+      const falsePositiveTest = urlObj.searchParams.get('falsePositiveTest') === "1";
+      const results = await handleApiCheckFiltered(url, page, methods, categories, payloadTemplate, followRedirect, customHeaders, falsePositiveTest);
       return new Response(JSON.stringify(results), { headers: { "content-type": "application/json; charset=UTF-8" } });
     }
     return new Response("Not found", { status: 404 });
@@ -102,7 +104,8 @@ async function handleApiCheckFiltered(
   categories?: string[], 
   payloadTemplate?: string, 
   followRedirect: boolean = false,
-  customHeaders?: string
+  customHeaders?: string,
+  falsePositiveTest: boolean = false
 ): Promise<any[]> {
   const METHODS = methods && methods.length ? methods : ["GET"];
   const results: any[] = [];
@@ -122,7 +125,7 @@ async function handleApiCheckFiltered(
     : Object.entries(PAYLOADS);
   for (const [category, info] of payloadEntries) {
     const checkType = info.type || "ParamCheck";
-    const payloads = info.payloads || [];
+    const payloads = falsePositiveTest ? (info.falsePayloads || []) : (info.payloads || []);
     if (checkType === "ParamCheck") {
       for (const payload of payloads) {
         for (const method of METHODS) {
