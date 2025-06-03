@@ -470,12 +470,6 @@ body[data-theme='dark'] #moreSettingsPanel hr {
 	transform: rotate(30deg);
 }
 
-#moreSettingsToggle:focus {
-	outline: none;
-	box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
-	border-radius: 0.25rem;
-}
-
 body[data-theme='dark'] #moreSettingsToggle {
 	color: #adb5bd;
 }
