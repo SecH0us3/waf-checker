@@ -245,6 +245,8 @@ async function fetchResults() {
 	const followRedirect = document.getElementById('followRedirect')?.checked ? true : false;
 	// False positive test
 	const falsePositiveTest = document.getElementById('falsePositiveTest')?.checked ? true : false;
+	// Case sensitive test
+	const caseSensitiveTest = document.getElementById('caseSensitiveTest')?.checked ? true : false;
 	// Collect selected categories
 	const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
 	const selectedCategories = Array.from(categoryCheckboxes)
@@ -256,7 +258,8 @@ async function fetchResults() {
 	localStorage.setItem('wafchecker_categories', JSON.stringify(selectedCategories));
 	localStorage.setItem('wafchecker_followRedirect', followRedirect ? '1' : '0');
 	localStorage.setItem('wafchecker_falsePositiveTest', falsePositiveTest ? '1' : '0');
-	// --- Получаем шаблон и заголовки ---
+	localStorage.setItem('wafchecker_caseSensitiveTest', caseSensitiveTest ? '1' : '0');
+	// --- Получаем шаблон и заголовки ---\n
 	let payloadTemplate = '';
 	const templateEl = document.getElementById('payloadTemplate');
 	if (templateEl) {
@@ -281,6 +284,7 @@ async function fetchResults() {
 				page: page,
 				followRedirect: followRedirect ? '1' : '0',
 				falsePositiveTest: falsePositiveTest ? '1' : '0',
+				caseSensitiveTest: caseSensitiveTest ? '1' : '0',
 			});
 			const resp = await fetch(`/api/check?${params.toString()}`, {
 				method: 'POST',
