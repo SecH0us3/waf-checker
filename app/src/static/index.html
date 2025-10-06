@@ -62,6 +62,9 @@
 								>
 									HTTP Tests
 								</button>
+								<button type="button" id="batchTestBtn" class="btn btn-outline-success" onclick="showBatchModal()">
+									Batch Test
+								</button>
 							</div>
 
 							<!-- WAF Detection Results Panel -->
@@ -215,9 +218,155 @@
 				<div class="col-12">
 					<div class="text-muted small mb-2 description-waf-check text-center"></div>
 					<div id="results" class="mt-3"></div>
+
+					<!-- Export Controls -->
+					<div id="exportControls" class="card mt-4" style="display: none">
+						<div class="card-header">
+							<h5 class="mb-0">📊 Export Results</h5>
+						</div>
+						<div class="card-body">
+							<div class="d-flex flex-wrap gap-2">
+								<button type="button" class="btn btn-outline-primary btn-sm" onclick="exportResults('json')">
+									📄 Export JSON
+								</button>
+								<button type="button" class="btn btn-outline-success btn-sm" onclick="exportResults('csv')">
+									📊 Export CSV
+								</button>
+								<button type="button" class="btn btn-outline-danger btn-sm" onclick="exportResults('pdf')">
+									📋 Export HTML Report
+								</button>
+								<button type="button" class="btn btn-outline-info btn-sm" onclick="showAnalytics()">
+									📈 Show Analytics
+								</button>
+							</div>
+							<div class="form-check mt-2">
+								<input class="form-check-input" type="checkbox" id="includeAnalysis" checked />
+								<label class="form-check-label" for="includeAnalysis"> Include vulnerability analysis in exports </label>
+							</div>
+						</div>
+					</div>
+
+					<!-- Analytics Dashboard -->
+					<div id="analyticsDashboard" class="card mt-4" style="display: none">
+						<div class="card-header d-flex justify-content-between align-items-center">
+							<h5 class="mb-0">📈 Test Analytics</h5>
+							<button type="button" class="btn-close" onclick="hideAnalytics()"></button>
+						</div>
+						<div class="card-body">
+							<div id="analyticsContent"></div>
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
+
+		<!-- Batch Testing Modal -->
+		<div class="modal fade" id="batchModal" tabindex="-1">
+			<div class="modal-dialog modal-lg">
+				<div class="modal-content">
+					<div class="modal-header">
+						<h5 class="modal-title">🔄 Batch Testing</h5>
+						<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+					</div>
+					<div class="modal-body">
+						<div class="mb-3">
+							<label for="batchUrls" class="form-label">URLs to Test (one per line, max 100):</label>
+							<textarea
+								id="batchUrls"
+								class="form-control"
+								rows="8"
+								placeholder="https://example1.com&#10;https://example2.com&#10;https://example3.com"
+							></textarea>
+							<div class="form-text">Enter HTTP/HTTPS URLs, one per line. Invalid URLs will be ignored.</div>
+						</div>
+
+						<div class="row">
+							<div class="col-md-6">
+								<div class="mb-3">
+									<label for="batchMaxConcurrent" class="form-label">Max Concurrent Requests:</label>
+									<select id="batchMaxConcurrent" class="form-select">
+										<option value="1">1 (Slow)</option>
+										<option value="2">2</option>
+										<option value="3" selected>3 (Recommended)</option>
+										<option value="5">5 (Fast)</option>
+									</select>
+								</div>
+							</div>
+							<div class="col-md-6">
+								<div class="mb-3">
+									<label for="batchDelay" class="form-label">Delay Between Requests (ms):</label>
+									<select id="batchDelay" class="form-select">
+										<option value="0">0 (No delay)</option>
+										<option value="500">500</option>
+										<option value="1000" selected>1000 (Recommended)</option>
+										<option value="2000">2000</option>
+										<option value="5000">5000 (Very slow)</option>
+									</select>
+									<div class="form-text">Client-side delay to avoid overwhelming target servers</div>
+								</div>
+							</div>
+						</div>
+
+						<div class="mb-3">
+							<div class="form-check">
+								<input class="form-check-input" type="checkbox" id="batchInheritSettings" />
+								<label class="form-check-label" for="batchInheritSettings">
+									Use current test settings (methods, categories, advanced options)
+								</label>
+							</div>
+						</div>
+
+						<div id="batchProgress" style="display: none">
+							<div class="mb-3">
+								<div class="d-flex justify-content-between mb-1">
+									<small class="text-muted">Progress</small>
+									<small class="text-muted" id="batchProgressText">0%</small>
+								</div>
+								<div class="progress">
+									<div id="batchProgressBar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+								</div>
+							</div>
+							<div class="mb-2">
+								<small class="text-muted">Current URL: <span id="batchCurrentUrl">-</span></small>
+							</div>
+							<div class="mb-2">
+								<small class="text-muted"
+									>Completed: <span id="batchCompleted">0</span> / <span id="batchTotal">0</span></small
+								>
+							</div>
+							<div class="mb-2">
+								<small class="text-muted">Estimated time remaining: <span id="batchETA">-</span></small>
+							</div>
+						</div>
+
+						<div id="batchResults" style="display: none">
+							<h6>Batch Results Summary</h6>
+							<div id="batchSummary"></div>
+						</div>
+					</div>
+					<div class="modal-footer">
+						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+						<button type="button" id="startBatchBtn" class="btn btn-success" onclick="startBatchTest()">
+							▶️ Start Batch Test
+						</button>
+						<button type="button" id="stopBatchBtn" class="btn btn-danger" style="display: none" onclick="stopBatchTest()">
+							⏹️ Stop Test
+						</button>
+						<button
+							type="button"
+							id="exportBatchBtn"
+							class="btn btn-outline-primary"
+							style="display: none"
+							onclick="exportBatchResults()"
+						>
+							📊 Export Results
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 		<script src="main.js"></script>
 		<footer class="text-center mt-5 mb-3">
 			<small>Read my blog at <a href="https://yoursec.substack.com/" target="_blank" rel="noopener">yoursec.substack.com</a></small>
