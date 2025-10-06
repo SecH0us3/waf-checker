@@ -67,8 +67,16 @@ function renderReport(results, falsePositiveMode = false) {
     </div>`;
 	}
 
+	// Add WAF detection info if available
+	if (results.length > 0 && results[0].wafDetected) {
+		html += `<div class="alert alert-info mb-3">
+			<strong>🛡️ WAF Detected:</strong> ${results[0].wafType}
+			<small class="text-muted"> (Auto-detection enabled)</small>
+		</div>`;
+	}
+
 	html += renderSummary(results, falsePositiveMode);
-	html += `<table border='1' cellpadding='5' class='w-100' id='resultsTable'><tr><th>Category</th><th>Method</th><th>Status</th><th>Payload</th></tr>`;
+	html += `<table border='1' cellpadding='5' class='w-100' id='resultsTable'><tr><th>Category</th><th>Method</th><th>Status</th><th>Response Time</th><th>Payload</th></tr>`;
 	for (const r of results) {
 		const status_class = getStatusClass(r.status, r.is_redirect, falsePositiveMode);
 		let codeClass = '';
@@ -77,11 +85,13 @@ function renderReport(results, falsePositiveMode = false) {
 		} else {
 			codeClass = r.status == 403 || r.status == '403' ? ' payload-green' : '';
 		}
+		const responseTime = r.responseTime || 0;
 		html +=
 			`<tr data-status='${r.status}'>` +
 			`<td>${r.category}</td>` +
 			`<td class='text-center'>${r.method}</td>` +
 			`<td class='${status_class} text-center'>${r.status}</td>` +
+			`<td class='text-center'>${responseTime}ms</td>` +
 			`<td><code class='${codeClass}'>${escapeHtml(r.payload)}</code></td>` +
 			`</tr>`;
 	}
@@ -247,6 +257,16 @@ async function fetchResults() {
 	const falsePositiveTest = document.getElementById('falsePositiveTest')?.checked ? true : false;
 	// Case sensitive test
 	const caseSensitiveTest = document.getElementById('caseSensitiveTest')?.checked ? true : false;
+	// Enhanced payloads
+	const enhancedPayloads = document.getElementById('enhancedPayloads')?.checked ? true : false;
+	// Use advanced WAF bypass payloads
+	const useAdvancedPayloads = document.getElementById('useAdvancedPayloadsCheckbox')?.checked ? true : false;
+	// Auto detect WAF
+	const autoDetectWAF = document.getElementById('autoDetectWAF')?.checked ? true : false;
+	// Use encoding variations
+	const useEncodingVariations = document.getElementById('useEncodingVariations')?.checked ? true : false;
+	// HTTP Manipulation
+	const httpManipulation = document.getElementById('httpManipulation')?.checked ? true : false;
 	// Collect selected categories
 	const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
 	const selectedCategories = Array.from(categoryCheckboxes)
@@ -259,6 +279,11 @@ async function fetchResults() {
 	localStorage.setItem('wafchecker_followRedirect', followRedirect ? '1' : '0');
 	localStorage.setItem('wafchecker_falsePositiveTest', falsePositiveTest ? '1' : '0');
 	localStorage.setItem('wafchecker_caseSensitiveTest', caseSensitiveTest ? '1' : '0');
+	localStorage.setItem('wafchecker_enhancedPayloads', enhancedPayloads ? '1' : '0');
+	localStorage.setItem('wafchecker_useAdvancedPayloads', useAdvancedPayloads ? '1' : '0');
+	localStorage.setItem('wafchecker_autoDetectWAF', autoDetectWAF ? '1' : '0');
+	localStorage.setItem('wafchecker_useEncodingVariations', useEncodingVariations ? '1' : '0');
+	localStorage.setItem('wafchecker_httpManipulation', httpManipulation ? '1' : '0');
 	// --- Получаем шаблон и заголовки ---\n
 	let payloadTemplate = '';
 	const templateEl = document.getElementById('payloadTemplate');
@@ -275,6 +300,25 @@ async function fetchResults() {
 	}
 	let page = 0;
 	let allResults = [];
+	let detectedWAFType = window.detectedWAF || null;
+
+	// Auto-detect WAF first if enabled
+	if (autoDetectWAF && !detectedWAFType) {
+		try {
+			const wafResponse = await fetch(`/api/waf-detect?url=${encodeURIComponent(url)}`);
+			if (wafResponse.ok) {
+				const wafData = await wafResponse.json();
+				if (wafData.detection && wafData.detection.detected) {
+					detectedWAFType = wafData.detection.wafType;
+					window.detectedWAF = detectedWAFType;
+					showWAFPanel(wafData);
+				}
+			}
+		} catch (error) {
+			console.warn('WAF detection failed, continuing with regular test:', error);
+		}
+	}
+
 	try {
 		while (true) {
 			const params = new URLSearchParams({
@@ -285,11 +329,21 @@ async function fetchResults() {
 				followRedirect: followRedirect ? '1' : '0',
 				falsePositiveTest: falsePositiveTest ? '1' : '0',
 				caseSensitiveTest: caseSensitiveTest ? '1' : '0',
+				enhancedPayloads: enhancedPayloads ? '1' : '0',
+				useAdvancedPayloads: useAdvancedPayloads ? '1' : '0',
+				autoDetectWAF: autoDetectWAF ? '1' : '0',
+				useEncodingVariations: useEncodingVariations ? '1' : '0',
+				httpManipulation: httpManipulation ? '1' : '0',
+				detectedWAF: detectedWAFType || '',
 			});
 			const resp = await fetch(`/api/check?${params.toString()}`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ payloadTemplate, customHeaders }),
+				body: JSON.stringify({
+					payloadTemplate,
+					customHeaders,
+					detectedWAF: detectedWAFType,
+				}),
 			});
 			if (!resp.ok) break;
 			const results = await resp.json();
@@ -337,6 +391,42 @@ function restoreStateFromLocalStorage() {
 		const el = document.getElementById('falsePositiveTest');
 		if (el) {
 			el.checked = !!parseInt(falsePositiveTest, 10);
+		}
+	}
+
+	// Case sensitive test
+	const caseSensitiveTest = localStorage.getItem('wafchecker_caseSensitiveTest');
+	if (caseSensitiveTest !== null) {
+		const el = document.getElementById('caseSensitiveTest');
+		if (el) {
+			el.checked = caseSensitiveTest === '1';
+		}
+	}
+
+	// Enhanced payloads
+	const enhancedPayloads = localStorage.getItem('wafchecker_enhancedPayloads');
+	if (enhancedPayloads !== null) {
+		const el = document.getElementById('enhancedPayloads');
+		if (el) {
+			el.checked = enhancedPayloads === '1';
+		}
+	}
+
+	// Auto detect WAF
+	const autoDetectWAF = localStorage.getItem('wafchecker_autoDetectWAF');
+	if (autoDetectWAF !== null) {
+		const el = document.getElementById('autoDetectWAF');
+		if (el) {
+			el.checked = autoDetectWAF === '1';
+		}
+	}
+
+	// HTTP Manipulation
+	const httpManipulation = localStorage.getItem('wafchecker_httpManipulation');
+	if (httpManipulation !== null) {
+		const el = document.getElementById('httpManipulation');
+		if (el) {
+			el.checked = httpManipulation === '1';
 		}
 	}
 
@@ -404,7 +494,298 @@ function getPreferredTheme() {
 	if (stored) return stored;
 	return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
-document.addEventListener('DOMContentLoaded', function () {
+
+// WAF Detection functionality
+async function detectWAF() {
+	const btn = document.getElementById('detectWafBtn');
+	const url = document.getElementById('url').value;
+
+	if (!url) {
+		alert('Please enter a URL first');
+		return;
+	}
+
+	btn.disabled = true;
+	const oldText = btn.textContent;
+	btn.textContent = 'Detecting...';
+
+	try {
+		const response = await fetch(`/api/waf-detect?url=${encodeURIComponent(url)}`);
+		const data = await response.json();
+
+		if (response.ok) {
+			displayWAFDetectionResults(data);
+			showWAFPanel(data);
+		} else {
+			alert(`WAF Detection failed: ${data.error || 'Unknown error'}`);
+		}
+	} catch (error) {
+		console.error('WAF Detection error:', error);
+		alert('WAF Detection failed. Please check the console for details.');
+	} finally {
+		btn.disabled = false;
+		btn.textContent = oldText;
+	}
+}
+
+function displayWAFDetectionResults(data) {
+	const resultsDiv = document.getElementById('results');
+	let html = '<div class="card mb-4"><div class="card-header"><h3>🛡️ WAF Detection Results</h3></div><div class="card-body">';
+
+	// Detection results
+	if (data.detection && data.detection.detected) {
+		html += `<div class="alert alert-success mb-3">
+			<h5><strong>WAF Detected: ${data.detection.wafType}</strong></h5>
+			<p><strong>Confidence:</strong> ${data.detection.confidence}%</p>
+		</div>`;
+
+		if (data.detection.evidence && data.detection.evidence.length > 0) {
+			html += '<h6>Evidence:</h6><ul>';
+			data.detection.evidence.forEach((evidence) => {
+				html += `<li><code>${escapeHtml(evidence)}</code></li>`;
+			});
+			html += '</ul>';
+		}
+
+		if (data.detection.suggestedBypassTechniques && data.detection.suggestedBypassTechniques.length > 0) {
+			html += '<h6>Suggested Bypass Techniques:</h6><ul>';
+			data.detection.suggestedBypassTechniques.forEach((technique) => {
+				html += `<li>${escapeHtml(technique)}</li>`;
+			});
+			html += '</ul>';
+		}
+	} else {
+		html += '<div class="alert alert-warning">No WAF detected or low confidence detection.</div>';
+	}
+
+	// Bypass opportunities
+	if (data.bypassOpportunities) {
+		html += '<h6>Detected Bypass Opportunities:</h6>';
+		html += '<div class="row">';
+
+		const opportunities = [
+			{ key: 'httpMethodsBypass', label: 'HTTP Method Bypass', icon: '🔄' },
+			{ key: 'headerBypass', label: 'Header Bypass', icon: '📋' },
+			{ key: 'encodingBypass', label: 'Encoding Bypass', icon: '🔤' },
+			{ key: 'parameterPollution', label: 'Parameter Pollution', icon: '🔀' },
+		];
+
+		opportunities.forEach((opp) => {
+			const status = data.bypassOpportunities[opp.key];
+			const badgeClass = status ? 'bg-success' : 'bg-secondary';
+			const statusText = status ? 'Possible' : 'Not detected';
+
+			html += `<div class="col-6 mb-2">
+				<span class="badge ${badgeClass}">${opp.icon} ${opp.label}: ${statusText}</span>
+			</div>`;
+		});
+
+		html += '</div>';
+	}
+
+	html += `<div class="mt-3">
+		<button class="btn btn-primary btn-sm" onclick="useAdvancedPayloads()">Use Advanced Payloads</button>
+		<button class="btn btn-outline-secondary btn-sm" onclick="clearWAFResults()">Clear</button>
+	</div>`;
+
+	html += '</div></div>';
+	resultsDiv.innerHTML = html + resultsDiv.innerHTML;
+}
+
+function showWAFPanel(data) {
+	const panel = document.getElementById('wafDetectionPanel');
+	const resultsDiv = document.getElementById('wafDetectionResults');
+
+	if (!panel || !resultsDiv) return;
+
+	let html = '';
+
+	if (data.detection && data.detection.detected) {
+		html = `<div class="d-flex align-items-center justify-content-between">
+			<div>
+				<strong>${data.detection.wafType}</strong> detected
+				<span class="badge bg-success ms-2">${data.detection.confidence}% confidence</span>
+			</div>
+			<small class="text-muted">Auto-detection enabled</small>
+		</div>`;
+
+		// Store detected WAF info for later use
+		window.detectedWAF = data.detection.wafType;
+
+		// Auto-enable advanced payloads if WAF detected
+		const advancedCheckbox = document.getElementById('useAdvancedPayloadsCheckbox');
+		if (advancedCheckbox) {
+			advancedCheckbox.checked = true;
+		}
+	} else {
+		html = '<div>No WAF detected with high confidence</div>';
+		window.detectedWAF = null;
+	}
+
+	resultsDiv.innerHTML = html;
+	panel.style.display = 'block';
+}
+
+function hideWAFPanel() {
+	const panel = document.getElementById('wafDetectionPanel');
+	if (panel) {
+		panel.style.display = 'none';
+	}
+}
+
+function useAdvancedPayloads() {
+	const checkbox = document.getElementById('useAdvancedPayloadsCheckbox');
+	const encodingCheckbox = document.getElementById('useEncodingVariations');
+
+	if (checkbox) checkbox.checked = true;
+	if (encodingCheckbox) encodingCheckbox.checked = true;
+
+	alert('Advanced payloads enabled! Run the test to see WAF-specific bypass techniques.');
+}
+
+function clearWAFResults() {
+	const resultsDiv = document.getElementById('results');
+	const wafCards = resultsDiv.querySelectorAll('.card:has(.card-header h3:contains("WAF Detection"))');
+	wafCards.forEach((card) => card.remove());
+
+	hideWAFPanel();
+	window.detectedWAF = null;
+}
+
+// HTTP Manipulation Testing
+async function testHTTPManipulation() {
+	const btn = document.getElementById('httpManipulationBtn');
+	const url = document.getElementById('url').value;
+
+	if (!url) {
+		alert('Please enter a URL first');
+		return;
+	}
+
+	btn.disabled = true;
+	const oldText = btn.textContent;
+	btn.textContent = 'Testing...';
+
+	try {
+		const response = await fetch(`/api/http-manipulation?url=${encodeURIComponent(url)}`);
+		const data = await response.json();
+
+		if (response.ok) {
+			displayHTTPManipulationResults(data);
+		} else {
+			alert(`HTTP Manipulation test failed: ${data.error || 'Unknown error'}`);
+		}
+	} catch (error) {
+		console.error('HTTP Manipulation test error:', error);
+		alert('HTTP Manipulation test failed. Please check the console for details.');
+	} finally {
+		btn.disabled = false;
+		btn.textContent = oldText;
+	}
+}
+
+function displayHTTPManipulationResults(data) {
+	const resultsDiv = document.getElementById('results');
+	let html = '<div class="card mb-4"><div class="card-header"><h3>🔄 HTTP Manipulation Test Results</h3></div><div class="card-body">';
+
+	if (data.results && data.results.length > 0) {
+		html += '<div class="table-responsive">';
+		html += '<table class="table table-sm"><thead><tr><th>Test Type</th><th>Method</th><th>Status</th><th>Result</th></tr></thead><tbody>';
+
+		data.results.forEach((result) => {
+			const statusClass = getStatusClass(result.status, result.is_redirect);
+			const resultText = result.bypassed ? 'Potential Bypass' : 'Blocked/Failed';
+			const resultBadge = result.bypassed ? 'badge bg-warning' : 'badge bg-success';
+
+			html += `<tr>
+				<td>${result.testType}</td>
+				<td class="text-center">${result.method}</td>
+				<td class="text-center"><span class="badge ${statusClass}">${result.status}</span></td>
+				<td><span class="${resultBadge}">${resultText}</span></td>
+			</tr>`;
+		});
+
+		html += '</tbody></table></div>';
+	} else {
+		html += '<div class="alert alert-info">No HTTP manipulation tests performed.</div>';
+	}
+
+	html += '</div></div>';
+	resultsDiv.innerHTML = html + resultsDiv.innerHTML;
+}
+
+// HTTP Manipulation Testing functionality
+async function testHTTPManipulation() {
+	const btn = document.getElementById('httpManipulationBtn');
+	const url = document.getElementById('url').value;
+
+	if (!url) {
+		alert('Please enter a URL first');
+		return;
+	}
+
+	btn.disabled = true;
+	const oldText = btn.textContent;
+	btn.textContent = 'Testing...';
+
+	try {
+		const response = await fetch(`/api/http-manipulation?url=${encodeURIComponent(url)}`);
+		const data = await response.json();
+
+		if (response.ok) {
+			displayHTTPManipulationResults(data);
+		} else {
+			alert(`HTTP Manipulation test failed: ${data.error || 'Unknown error'}`);
+		}
+	} catch (error) {
+		console.error('HTTP Manipulation test error:', error);
+		alert('HTTP Manipulation test failed. Please check the console for details.');
+	} finally {
+		btn.disabled = false;
+		btn.textContent = oldText;
+	}
+}
+
+function displayHTTPManipulationResults(data) {
+	const resultsDiv = document.getElementById('results');
+	let html = '<div class="card mb-4"><div class="card-header"><h3>🔄 HTTP Manipulation Test Results</h3></div><div class="card-body">';
+
+	// Summary
+	html += `<div class="alert alert-info">
+		<p><strong>Total Techniques:</strong> ${data.total_techniques || 'N/A'}</p>
+		<p><strong>Tested:</strong> ${data.tested_techniques || 'N/A'}</p>
+		<p><strong>Results:</strong> ${data.results ? data.results.length : 0}</p>
+	</div>`;
+
+	// Results table
+	if (data.results && data.results.length > 0) {
+		html += '<div class="table-responsive">';
+		html += '<table class="table table-sm"><thead><tr><th>Technique</th><th>Method</th><th>Status</th><th>Result</th></tr></thead><tbody>';
+
+		data.results.forEach((result) => {
+			const statusClass = getStatusClass(result.status, result.is_redirect);
+			const resultText = result.bypassed ? 'Potential Bypass' : 'Blocked/Failed';
+			const resultBadge = result.bypassed ? 'badge bg-warning' : 'badge bg-success';
+
+			html += `<tr>
+				<td>${result.technique || result.testType || 'Unknown'}</td>
+				<td class="text-center">${result.method}</td>
+				<td class="text-center"><span class="badge ${statusClass}">${result.status}</span></td>
+				<td><span class="${resultBadge}">${resultText}</span></td>
+			</tr>`;
+		});
+
+		html += '</tbody></table></div>';
+	} else {
+		html += '<div class="alert alert-info">No HTTP manipulation tests performed.</div>';
+	}
+
+	html += '</div></div>';
+	resultsDiv.innerHTML = html + resultsDiv.innerHTML;
+}
+
+// Initialize application
+function initApp() {
 	setTheme(getPreferredTheme());
 	document.getElementById('themeToggle').addEventListener('click', function () {
 		const current = document.body.getAttribute('data-theme') || getPreferredTheme();
@@ -477,7 +858,10 @@ document.addEventListener('DOMContentLoaded', function () {
 			}
 		});
 	}
-});
+}
+
+// Initialize the application when DOM is loaded
+document.addEventListener('DOMContentLoaded', initApp);
 
 // Function to toggle help content
 function toggleHelp(helpId) {

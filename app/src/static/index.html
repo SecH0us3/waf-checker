@@ -51,6 +51,29 @@
 									style="color: var(--bs-body-color); background-color: var(--bs-body-bg)"
 								/>
 								<button type="button" id="checkBtn" class="btn btn-primary" onclick="fetchResults()">Check</button>
+								<button type="button" id="detectWafBtn" class="btn btn-outline-info" onclick="detectWAF()">
+									Detect WAF
+								</button>
+								<button
+									type="button"
+									id="httpManipulationBtn"
+									class="btn btn-outline-warning"
+									onclick="testHTTPManipulation()"
+								>
+									HTTP Tests
+								</button>
+							</div>
+
+							<!-- WAF Detection Results Panel -->
+							<div id="wafDetectionPanel" class="alert alert-info mb-3" style="display: none">
+								<h6 class="fw-bold mb-2">🛡️ WAF Detection Results</h6>
+								<div id="wafDetectionResults"></div>
+								<div class="mt-2">
+									<button type="button" class="btn btn-sm btn-outline-primary" onclick="useAdvancedPayloads()">
+										Use Advanced Payloads
+									</button>
+									<button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideWAFPanel()">Hide</button>
+								</div>
 							</div>
 							<div class="mb-3" id="methodCheckboxes">
 								<div class="d-flex gap-3 align-items-center justify-content-between flex-wrap">
@@ -85,6 +108,44 @@
 											<div class="form-check">
 												<input class="form-check-input" type="checkbox" id="followRedirect" />
 												<label class="form-check-label" for="followRedirect">Follow 3xx redirects</label>
+											</div>
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox" id="useAdvancedPayloadsCheckbox" />
+												<label class="form-check-label" for="useAdvancedPayloadsCheckbox"
+													>Use Advanced WAF Bypass Payloads</label
+												>
+											</div>
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox" id="autoDetectWAF" />
+												<label class="form-check-label" for="autoDetectWAF">Auto-detect WAF before testing</label>
+											</div>
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox" id="useEncodingVariations" />
+												<label class="form-check-label" for="useEncodingVariations"
+													>Generate encoding variations</label
+												>
+											</div>
+										</div>
+										<div class="mb-3">
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox" id="enhancedPayloads" />
+												<label class="form-check-label" for="enhancedPayloads"
+													>Enhanced Payloads (modern bypass techniques)</label
+												>
+											</div>
+										</div>
+										<div class="mb-3">
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox" id="autoDetectWAF" />
+												<label class="form-check-label" for="autoDetectWAF">Auto-detect WAF</label>
+											</div>
+										</div>
+										<div class="mb-3">
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox" id="httpManipulation" />
+												<label class="form-check-label" for="httpManipulation"
+													>HTTP Protocol Manipulation (Parameter Pollution, Verb Tampering)</label
+												>
 											</div>
 										</div>
 										<div class="mb-3">

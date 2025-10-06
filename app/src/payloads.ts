@@ -1,3 +1,5 @@
+import { ADVANCED_PAYLOADS, generateEncodedPayloads } from './advanced-payloads';
+
 export type PayloadCategory = {
 	type: 'ParamCheck' | 'FileCheck' | 'Header';
 	payloads: string[];
@@ -21,6 +23,13 @@ export const PAYLOADS: Record<string, PayloadCategory> = {
 			")) OR EXISTS(SELECT * FROM users WHERE username='admin')--",
 			'%2553%2527%2520OR%25201%253D1', // URL encoded bypass
 			'/**/OR/**/1=1', // Comment bypass
+			// Enhanced bypass techniques
+			'%2527%2520OR%25201%253D1--', // Double URL encoded
+			"'/**/OR/**/1=1--", // Comment obfuscation
+			"'%09OR%091=1--", // Tab characters
+			"'\\u0020OR\\u00201=1--", // Unicode spaces
+			'0x27204f52203120314431--', // Hex encoded ' OR 1=1--
+			"'UNION/*!50000SELECT*/1,2,3--", // Version comment
 		],
 		falsePayloads: [
 			"John O'Connor",
@@ -53,6 +62,13 @@ export const PAYLOADS: Record<string, PayloadCategory> = {
 			'<marquee onstart=alert(1)>',
 			"';alert(String.fromCharCode(88,83,83))//';alert(String.fromCharCode(88,83,83))//\"",
 			'<input onfocus=alert(1) autofocus>',
+			// Enhanced XSS bypasses
+			'%253Cscript%253Ealert%25281%2529%253C%252Fscript%253E', // Double URL encoded
+			'<img src=x onerror=\\u0061\\u006c\\u0065\\u0072\\u0074\\u0028\\u0031\\u0029>', // Unicode
+			'&#60;script&#62;alert&#40;1&#41;&#60;/script&#62;', // HTML entities
+			'<ScRiPt>AlErT(1)</ScRiPt>', // Mixed case
+			'javascript:\\u0061\\u006c\\u0065\\u0072\\u0074\\u0028\\u0031\\u0029', // Unicode JS
+			'<details open ontoggle=alert(1)>', // Modern HTML5
 		],
 		falsePayloads: [
 			'<p>Hello World</p>',
@@ -430,4 +446,12 @@ export const PAYLOADS: Record<string, PayloadCategory> = {
 			'User-Agent: Apache-HttpClient/4.5.13',
 		],
 	},
+	// Merge advanced payloads
+	...ADVANCED_PAYLOADS,
+};
+
+// Export enhanced payload collection with all encoding variations
+export const ENHANCED_PAYLOADS = {
+	...PAYLOADS,
+	...generateEncodedPayloads(PAYLOADS),
 };
