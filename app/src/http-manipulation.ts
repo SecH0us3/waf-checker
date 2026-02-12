@@ -40,6 +40,7 @@ export class HTTPManipulator {
       'UNLOCK',
       'CHECKOUT',
       'CHECKIN',
+      'UNCHECKOUT',
       'REPORT',
       'MKWORKSPACE',
       'UPDATE',
@@ -50,7 +51,22 @@ export class HTTPManipulator {
       'ORDERPATCH',
       'ACL',
       'SEARCH',
-      'VERSION-CONTROL'
+      'VERSION-CONTROL',
+      'BIND',
+      'UNBIND',
+      'REBIND',
+      'LINK',
+      'UNLINK',
+      'PURGE',
+      'M-SEARCH',
+      'NOTIFY',
+      'SUBSCRIBE',
+      'UNSUBSCRIBE',
+      'MKCALENDAR',
+      'MKREDIRECTREF',
+      'UPDATEREDIRECTREF',
+      'QUERY',
+      'SOURCE'
     ];
   }
 
@@ -247,6 +263,19 @@ export class HTTPManipulator {
 
     // HTTP Verb Tampering
     if (options.enableVerbTampering !== false) {
+      // Standard methods first
+      const standardMethods = ['GET', 'POST', 'PUT', 'DELETE'];
+      standardMethods.forEach(method => {
+        requests.push({
+          method,
+          url: originalUrl,
+          headers: {},
+          technique: 'HTTP Verb Tampering',
+          description: `Standard HTTP method: ${method}`
+        });
+      });
+
+      // Uncommon methods
       const uncommonMethods = this.getUncommonMethods();
       uncommonMethods.forEach(method => {
         requests.push({
@@ -254,21 +283,29 @@ export class HTTPManipulator {
           url: originalUrl,
           headers: {},
           technique: 'HTTP Verb Tampering',
-          description: `Using uncommon HTTP method: ${method}`
+          description: `Uncommon HTTP method: ${method}`
         });
       });
 
-      // Method override techniques
-      const overrides = this.generateMethodOverrides(originalMethod, 'POST');
-      overrides.forEach((headers, index) => {
-        requests.push({
-          method: originalMethod,
-          url: originalUrl,
-          headers,
-          technique: 'HTTP Method Override',
-          description: `Method override using headers: ${Object.keys(headers).join(', ')}`
-        });
-      });
+      // Method override techniques — test multiple target methods via override headers
+      const baseMethods = ['GET', 'POST'];
+      const targetMethods = ['POST', 'PUT', 'DELETE', 'PATCH'];
+      for (const baseMethod of baseMethods) {
+        for (const targetMethod of targetMethods) {
+          if (baseMethod === targetMethod) continue;
+          const overrides = this.generateMethodOverrides(baseMethod, targetMethod);
+          overrides.forEach((headers) => {
+            const headerName = Object.keys(headers)[0];
+            requests.push({
+              method: baseMethod,
+              url: originalUrl,
+              headers,
+              technique: 'HTTP Method via Header',
+              description: `${baseMethod} → ${targetMethod} via ${headerName}`
+            });
+          });
+        }
+      }
     }
 
     // Parameter Pollution
@@ -341,6 +378,7 @@ export class HTTPManipulator {
     followRedirects: boolean = false
   ): Promise<{
     status: number | string;
+    method: string;
     responseTime: number;
     headers: Record<string, string>;
     technique: string;
@@ -364,6 +402,7 @@ export class HTTPManipulator {
 
       return {
         status: response.status,
+        method: request.method,
         responseTime,
         headers: responseHeaders,
         technique: request.technique,
@@ -374,6 +413,7 @@ export class HTTPManipulator {
       const responseTime = Date.now() - startTime;
       return {
         status: 'ERR',
+        method: request.method,
         responseTime,
         headers: {},
         technique: request.technique,

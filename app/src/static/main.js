@@ -412,7 +412,7 @@ function restoreStateFromLocalStorage() {
 			methodCheckboxes.forEach((cb) => {
 				cb.checked = arr.includes(cb.value);
 			});
-		} catch {}
+		} catch { }
 	}
 	// Follow redirect
 	const followRedirect = localStorage.getItem('wafchecker_followRedirect');
@@ -475,7 +475,7 @@ function restoreStateFromLocalStorage() {
 			categoryCheckboxes.forEach((cb) => {
 				cb.checked = arr.includes(cb.value);
 			});
-		} catch {}
+		} catch { }
 	}
 	// Payload template
 	const payloadTemplate = localStorage.getItem('wafchecker_payloadTemplate');
@@ -796,16 +796,38 @@ function displayHTTPManipulationResults(data) {
 	// Results table
 	if (data.results && data.results.length > 0) {
 		html += '<div class="table-responsive">';
-		html += '<table class="table table-sm"><thead><tr><th>Technique</th><th>Method</th><th>Status</th><th>Result</th></tr></thead><tbody>';
+		html += '<table class="table table-sm"><thead><tr><th>Technique</th><th>Method</th><th>Details</th><th>Status</th><th>Result</th></tr></thead><tbody>';
 
 		data.results.forEach((result) => {
 			const statusClass = getStatusClass(result.status, result.is_redirect);
-			const resultText = result.bypassed ? 'Potential Bypass' : 'Blocked/Failed';
-			const resultBadge = result.bypassed ? 'badge bg-warning' : 'badge bg-success';
+
+			// Determine result based on status code
+			let resultText, resultBadge;
+			const st = typeof result.status === 'number' ? result.status : 0;
+			if (result.status === 'ERR') {
+				resultText = '❌ Connection Error';
+				resultBadge = 'badge bg-danger';
+			} else if (st >= 200 && st < 300) {
+				resultText = '⚠️ Potential Bypass';
+				resultBadge = 'badge bg-warning text-dark';
+			} else if (st >= 500) {
+				resultText = '⚠️ Server Error';
+				resultBadge = 'badge bg-warning text-dark';
+			} else if (st === 403) {
+				resultText = '🛡️ Blocked by WAF';
+				resultBadge = 'badge bg-success';
+			} else if (st >= 300 && st < 400) {
+				resultText = '↩️ Redirect';
+				resultBadge = 'badge bg-info';
+			} else {
+				resultText = '🚫 Rejected';
+				resultBadge = 'badge bg-secondary';
+			}
 
 			html += `<tr>
-				<td>${result.technique || result.testType || 'Unknown'}</td>
+				<td>${result.technique || 'Unknown'}</td>
 				<td class="text-center">${result.method}</td>
+				<td><small class="text-muted">${result.description || ''}</small></td>
 				<td class="text-center"><span class="badge ${statusClass}">${result.status}</span></td>
 				<td><span class="${resultBadge}">${resultText}</span></td>
 			</tr>`;
@@ -1128,16 +1150,15 @@ function generateHTMLReport(session, vulnerabilityScores, executiveSummary) {
         </div>
     </div>
 
-    ${
-			session.wafDetection?.detected
-				? `
+    ${session.wafDetection?.detected
+			? `
     <div class="summary-card">
         <h3>WAF Detection Results</h3>
         <p><strong>Detected WAF:</strong> ${session.wafDetection.wafType}</p>
         <p><strong>Confidence:</strong> ${session.wafDetection.confidence}%</p>
     </div>
     `
-				: ''
+			: ''
 		}
 
     <div class="summary-card">
@@ -1154,8 +1175,8 @@ function generateHTMLReport(session, vulnerabilityScores, executiveSummary) {
             </thead>
             <tbody>
                 ${vulnerabilityScores
-									.map(
-										(vuln) => `
+			.map(
+				(vuln) => `
                 <tr>
                     <td>${vuln.category}</td>
                     <td class="severity-${vuln.severity.toLowerCase()}">${vuln.severity}</td>
@@ -1164,8 +1185,8 @@ function generateHTMLReport(session, vulnerabilityScores, executiveSummary) {
                     <td>${vuln.bypassedCount}/${vuln.totalCount}</td>
                 </tr>
                 `,
-									)
-									.join('')}
+			)
+			.join('')}
             </tbody>
         </table>
     </div>
@@ -1388,8 +1409,8 @@ function generateAnalyticsHTML(session, vulnerabilityScores, summary) {
 					</thead>
 					<tbody>
 						${vulnerabilityScores
-							.map(
-								(vuln) => `
+			.map(
+				(vuln) => `
 						<tr>
 							<td>${vuln.category}</td>
 							<td><span class="badge bg-${vuln.severity === 'Critical' ? 'danger' : vuln.severity === 'High' ? 'warning' : vuln.severity === 'Medium' ? 'info' : 'success'}">${vuln.severity}</span></td>
@@ -1397,8 +1418,8 @@ function generateAnalyticsHTML(session, vulnerabilityScores, summary) {
 							<td>${vuln.bypassRate}%</td>
 						</tr>
 						`,
-							)
-							.join('')}
+			)
+			.join('')}
 					</tbody>
 				</table>
 			</div>
@@ -1501,9 +1522,8 @@ async function startBatchTest() {
 
 	// Show validation results
 	if (invalidUrls.length > 0) {
-		const message = `Found ${invalidUrls.length} invalid URL(s):\n\n${invalidUrls.slice(0, 5).join('\n')}${
-			invalidUrls.length > 5 ? `\n... and ${invalidUrls.length - 5} more` : ''
-		}\n\nContinue with ${validUrls.length} valid URLs?`;
+		const message = `Found ${invalidUrls.length} invalid URL(s):\n\n${invalidUrls.slice(0, 5).join('\n')}${invalidUrls.length > 5 ? `\n... and ${invalidUrls.length - 5} more` : ''
+			}\n\nContinue with ${validUrls.length} valid URLs?`;
 
 		if (!confirm(message)) {
 			return;

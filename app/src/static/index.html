@@ -14,6 +14,9 @@
 		/>
 		<meta name="robots" content="index, follow" />
 		<meta name="author" content="WAF Checker" />
+		<link rel="preconnect" href="https://fonts.googleapis.com" />
+		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
 		<link href="style.css" rel="stylesheet" />
 		<link rel="icon" type="image/svg+xml" href="favicon.svg" />
@@ -33,37 +36,47 @@
 		<div class="container py-5">
 			<div class="row justify-content-center">
 				<div class="col-md-8 col-lg-6">
-					<div class="card shadow mb-4">
+					<div class="card main-card shadow mb-4">
 						<div class="card-body">
-							<h1 class="mb-3 text-center">Test Your WAF</h1>
-							<p class="text-center mb-4" id="subtitle">
-								Enter a target URL to check your Web Application Firewall against common attack payloads
-							</p>
-							<!-- <form onsubmit="event.preventDefault(); fetchResults();"> -->
-							<div class="input-group mb-3">
+							<!-- Hero header -->
+							<div class="hero-header">
+								<h1 class="mb-2 text-center">Test Your WAF</h1>
+								<p class="text-center mb-0" id="subtitle">
+									Enter a target URL to check your Web Application Firewall against common attack payloads
+								</p>
+							</div>
+
+							<!-- URL Input -->
+							<div class="url-input-group mb-3">
 								<input
 									type="url"
 									id="url"
 									name="url"
 									class="form-control"
-									placeholder="Enter URL to test"
+									placeholder="https://example.com/api/endpoint"
 									required
 									style="color: var(--bs-body-color); background-color: var(--bs-body-bg)"
 								/>
-								<button type="button" id="checkBtn" class="btn btn-primary" onclick="fetchResults()">Check</button>
-								<button type="button" id="detectWafBtn" class="btn btn-outline-info" onclick="detectWAF()">
-									Detect WAF
+								<button type="button" id="checkBtn" class="btn btn-primary" onclick="fetchResults()">
+									<span class="btn-icon">▶</span> Check
+								</button>
+							</div>
+
+							<!-- Action buttons row -->
+							<div class="action-buttons-row mb-3">
+								<button type="button" id="detectWafBtn" class="btn btn-outline-info btn-sm" onclick="detectWAF()">
+									🛡️ Detect WAF
 								</button>
 								<button
 									type="button"
 									id="httpManipulationBtn"
-									class="btn btn-outline-warning"
+									class="btn btn-outline-warning btn-sm"
 									onclick="testHTTPManipulation()"
 								>
-									HTTP Tests
+									🔄 HTTP Tests
 								</button>
-								<button type="button" id="batchTestBtn" class="btn btn-outline-success" onclick="showBatchModal()">
-									Batch Test
+								<button type="button" id="batchTestBtn" class="btn btn-outline-success btn-sm" onclick="showBatchModal()">
+									📋 Batch Test
 								</button>
 							</div>
 
@@ -78,104 +91,115 @@
 									<button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideWAFPanel()">Hide</button>
 								</div>
 							</div>
-							<div class="mb-3" id="methodCheckboxes">
-								<div class="d-flex gap-3 align-items-center justify-content-between flex-wrap">
-									<div class="d-flex gap-3 http-methods">
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" value="GET" id="methodGET" checked />
-											<label class="form-check-label" for="methodGET">GET</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" value="POST" id="methodPOST" />
-											<label class="form-check-label" for="methodPOST">POST</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" value="PUT" id="methodPUT" />
-											<label class="form-check-label" for="methodPUT">PUT</label>
-										</div>
-										<div class="form-check">
-											<input class="form-check-input" type="checkbox" value="DELETE" id="methodDELETE" />
-											<label class="form-check-label" for="methodDELETE">DELETE</label>
-										</div>
-									</div>
-									<div class="ms-auto" style="text-align: right">
-										<button type="button" id="moreSettingsToggle" onclick="toggleMoreSettings()">⚙️</button>
-									</div>
+
+							<!-- HTTP Methods -->
+							<div class="settings-section mb-3" id="methodCheckboxes">
+								<div class="section-label">HTTP Methods</div>
+								<div class="d-flex gap-2 flex-wrap http-methods">
+									<label class="method-chip">
+										<input type="checkbox" value="GET" id="methodGET" checked />
+										<span>GET</span>
+									</label>
+									<label class="method-chip">
+										<input type="checkbox" value="POST" id="methodPOST" />
+										<span>POST</span>
+									</label>
+									<label class="method-chip">
+										<input type="checkbox" value="PUT" id="methodPUT" />
+										<span>PUT</span>
+									</label>
+									<label class="method-chip">
+										<input type="checkbox" value="DELETE" id="methodDELETE" />
+										<span>DELETE</span>
+									</label>
+									<button
+										type="button"
+										id="moreSettingsToggle"
+										onclick="toggleMoreSettings()"
+										class="ms-auto"
+										title="Advanced settings"
+									>⚙️</button>
 								</div>
 							</div>
+
 							<!-- More expandable panel -->
 							<div class="mb-3">
-								<div class="mt-3" id="moreSettingsPanel" style="display: none">
-									<div class="card">
-										<div class="mb-3">
-											<div class="form-check">
-												<input class="form-check-input" type="checkbox" id="followRedirect" />
-												<label class="form-check-label" for="followRedirect">Follow 3xx redirects</label>
-											</div>
-											<div class="form-check">
-												<input class="form-check-input" type="checkbox" id="useAdvancedPayloadsCheckbox" />
-												<label class="form-check-label" for="useAdvancedPayloadsCheckbox"
-													>Use Advanced WAF Bypass Payloads</label
-												>
-											</div>
-											<div class="form-check">
-												<input class="form-check-input" type="checkbox" id="autoDetectWAF" />
-												<label class="form-check-label" for="autoDetectWAF">Auto-detect WAF before testing</label>
-											</div>
-											<div class="form-check">
-												<input class="form-check-input" type="checkbox" id="useEncodingVariations" />
-												<label class="form-check-label" for="useEncodingVariations"
-													>Generate encoding variations</label
-												>
-											</div>
-										</div>
-										<div class="mb-3">
-											<div class="form-check">
-												<input class="form-check-input" type="checkbox" id="enhancedPayloads" />
-												<label class="form-check-label" for="enhancedPayloads"
-													>Enhanced Payloads (modern bypass techniques)</label
-												>
+								<div class="mt-0" id="moreSettingsPanel" style="display: none">
+									<div class="settings-panel-inner">
+										<!-- Testing Options -->
+										<div class="settings-section">
+											<div class="section-label">🎯 Testing Options</div>
+											<div class="settings-grid">
+												<div class="form-check">
+													<input class="form-check-input" type="checkbox" id="followRedirect" />
+													<label class="form-check-label" for="followRedirect">Follow 3xx redirects</label>
+												</div>
+												<div class="form-check">
+													<input
+														class="form-check-input case-sensitive-checkbox"
+														type="checkbox"
+														id="caseSensitiveTest"
+													/>
+													<label class="form-check-label" for="caseSensitiveTest">Case sensitive test</label>
+												</div>
+												<div class="form-check">
+													<input
+														class="form-check-input false-positive-checkbox"
+														type="checkbox"
+														id="falsePositiveTest"
+													/>
+													<label class="form-check-label" for="falsePositiveTest"
+														>False Positive Test (test legitimate payloads)</label
+													>
+												</div>
 											</div>
 										</div>
-										<div class="mb-3">
-											<div class="form-check">
-												<input class="form-check-input" type="checkbox" id="autoDetectWAF" />
-												<label class="form-check-label" for="autoDetectWAF">Auto-detect WAF</label>
+
+										<!-- Advanced Payloads -->
+										<div class="settings-section">
+											<div class="section-label">⚡ Advanced Payloads</div>
+											<div class="settings-grid">
+												<div class="form-check">
+													<input class="form-check-input" type="checkbox" id="useAdvancedPayloadsCheckbox" />
+													<label class="form-check-label" for="useAdvancedPayloadsCheckbox"
+														>WAF Bypass Payloads</label
+													>
+												</div>
+												<div class="form-check">
+													<input class="form-check-input" type="checkbox" id="enhancedPayloads" />
+													<label class="form-check-label" for="enhancedPayloads"
+														>Enhanced Payloads (modern techniques)</label
+													>
+												</div>
+												<div class="form-check">
+													<input class="form-check-input" type="checkbox" id="useEncodingVariations" />
+													<label class="form-check-label" for="useEncodingVariations"
+														>Encoding variations</label
+													>
+												</div>
 											</div>
 										</div>
-										<div class="mb-3">
-											<div class="form-check">
-												<input class="form-check-input" type="checkbox" id="httpManipulation" />
-												<label class="form-check-label" for="httpManipulation"
-													>HTTP Protocol Manipulation (Parameter Pollution, Verb Tampering)</label
-												>
+
+										<!-- Protocol Testing -->
+										<div class="settings-section">
+											<div class="section-label">🔌 Protocol Testing</div>
+											<div class="settings-grid">
+												<div class="form-check">
+													<input class="form-check-input" type="checkbox" id="autoDetectWAF" />
+													<label class="form-check-label" for="autoDetectWAF">Auto-detect WAF before testing</label>
+												</div>
+												<div class="form-check">
+													<input class="form-check-input" type="checkbox" id="httpManipulation" />
+													<label class="form-check-label" for="httpManipulation"
+														>HTTP Protocol Manipulation (Param Pollution, Verb Tampering)</label
+													>
+												</div>
 											</div>
 										</div>
-										<div class="mb-3">
-											<div class="form-check">
-												<input
-													class="form-check-input false-positive-checkbox"
-													type="checkbox"
-													id="falsePositiveTest"
-												/>
-												<label class="form-check-label" for="falsePositiveTest"
-													>False Positive Test (test legitimate payloads)</label
-												>
-											</div>
-										</div>
-										<!-- New Case Sensitive Test checkbox -->
-										<div class="mb-3">
-											<div class="form-check">
-												<input
-													class="form-check-input case-sensitive-checkbox"
-													type="checkbox"
-													id="caseSensitiveTest"
-												/>
-												<label class="form-check-label" for="caseSensitiveTest">Case sensitive test</label>
-											</div>
-										</div>
-										<div class="mb-3">
-											<label for="customHeaders" class="form-label">Custom Headers:</label>
+
+										<!-- Custom Headers -->
+										<div class="settings-section">
+											<div class="section-label">📝 Custom Headers</div>
 											<textarea
 												id="customHeaders"
 												class="form-control"
@@ -183,33 +207,35 @@
 												placeholder="Content-Type: application/json&#10;X-Custom-Header: value"
 											></textarea>
 										</div>
-										<div class="mb-0" id="payloadTemplateSection" style="display: none">
-											<label for="payloadTemplate" class="form-label"
-												>Request Body Template (use <code>{{$$}}</code> for payload):</label
-											>
+
+										<!-- Payload Template (conditional) -->
+										<div class="settings-section" id="payloadTemplateSection" style="display: none">
+											<div class="section-label">📄 Request Body Template</div>
+											<small class="text-muted d-block mb-2">Use <code>{{$$}}</code> as payload placeholder</small>
 											<textarea id="payloadTemplate" class="form-control" rows="4">
 {
 "test": "{{$$}}"
-}</textarea
-											>
+}</textarea>
 										</div>
 									</div>
 								</div>
 							</div>
+
 							<!-- Категории пейлоадов -->
 							<div class="mb-3" id="categoryCheckboxesContainer">
-								<hr />
-								<div id="categoryCheckboxes" class="row row-cols-2 g-1"></div>
-								<div class="mt-2 d-flex justify-content-end gap-2">
-									<button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllCategoriesBtn">
-										Select All
-									</button>
-									<button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllCategoriesBtn">
-										Deselect All
-									</button>
+								<div class="settings-section">
+									<div class="section-label">🗂️ Payload Categories</div>
+									<div id="categoryCheckboxes" class="category-grid"></div>
+									<div class="mt-2 d-flex justify-content-end gap-2">
+										<button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllCategoriesBtn">
+											Select All
+										</button>
+										<button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllCategoriesBtn">
+											Deselect All
+										</button>
+									</div>
 								</div>
 							</div>
-							<!-- </form> -->
 						</div>
 					</div>
 				</div>

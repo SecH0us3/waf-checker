@@ -71,7 +71,7 @@ async function sendRequest(
 
 		const responseTime = Date.now() - startTime;
 		console.log(
-			`Request to ${url} with method ${method} and payload ${payload} and headers ${JSON.stringify(headersObj)} returned status ${resp.status} in ${responseTime}ms`,
+			`Request to ${url} with method ${method} and payload ${payload ?? '(none)'} and headers ${JSON.stringify(headersObj)} returned status ${resp.status} in ${responseTime}ms`,
 		);
 
 		return {
@@ -170,10 +170,10 @@ export default {
 				detectedWAF,
 				enableHTTPManipulation
 					? {
-							enableParameterPollution: true,
-							enableVerbTampering: true,
-							enableContentTypeConfusion: true,
-						}
+						enableParameterPollution: true,
+						enableVerbTampering: true,
+						enableContentTypeConfusion: true,
+					}
 					: undefined,
 			);
 			return new Response(JSON.stringify(results), { headers: { 'content-type': 'application/json; charset=UTF-8' } });
@@ -456,23 +456,22 @@ async function handleHTTPManipulation(request: Request): Promise<Response> {
 		const testPayload = 'test_payload';
 		const manipulationOptions: HTTPManipulationOptions = {
 			enableVerbTampering: true,
-			enableParameterPollution: true,
-			enableContentTypeConfusion: true,
+			enableParameterPollution: false,
+			enableContentTypeConfusion: false,
 			enableRequestSmuggling: false,
-			enableHostHeaderInjection: true,
+			enableHostHeaderInjection: false,
 		};
 
 		// Generate manipulated requests
 		const manipulatedRequests = HTTPManipulator.generateManipulatedRequests(targetUrl, 'GET', testPayload, manipulationOptions);
 
-		// Execute limited number of requests for testing
-		const limitedRequests = manipulatedRequests.slice(0, 10);
-		const results = await HTTPManipulator.batchExecuteRequests(limitedRequests, false, 3);
+		// Execute all manipulated requests
+		const results = await HTTPManipulator.batchExecuteRequests(manipulatedRequests, false, 5);
 
 		return new Response(
 			JSON.stringify({
 				total_techniques: manipulatedRequests.length,
-				tested_techniques: limitedRequests.length,
+				tested_techniques: manipulatedRequests.length,
 				results,
 				timestamp: new Date().toISOString(),
 			}),
@@ -962,10 +961,10 @@ async function testSingleUrlForBatch(url: string, config: any): Promise<any[]> {
 				undefined,
 				config.httpManipulation
 					? {
-							enableParameterPollution: true,
-							enableVerbTampering: true,
-							enableContentTypeConfusion: true,
-						}
+						enableParameterPollution: true,
+						enableVerbTampering: true,
+						enableContentTypeConfusion: true,
+					}
 					: undefined,
 			);
 
