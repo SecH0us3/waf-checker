@@ -322,7 +322,7 @@ export class WAFDetector {
       if (responseTime && signature.responseTime) {
         const { min, max } = signature.responseTime;
         if ((min === undefined || responseTime >= min) &&
-            (max === undefined || responseTime <= max)) {
+          (max === undefined || responseTime <= max)) {
           confidence += 10;
           matchEvidence.push(`Response time: ${responseTime}ms`);
         }
@@ -365,8 +365,9 @@ export class WAFDetector {
 
     for (const payload of probePayloads) {
       try {
+        const separator = url.includes('?') ? '&' : '?';
         const startTime = Date.now();
-        const response = await fetch(`${url}?test=${encodeURIComponent(payload)}`, {
+        const response = await fetch(`${url}${separator}test=${encodeURIComponent(payload)}`, {
           method: 'GET',
           redirect: 'manual',
         });
@@ -486,7 +487,8 @@ export class WAFDetector {
 
       // Test encoding bypass
       const encodedPayload = '%2527%2520OR%25201%253D1';
-      const encodingResponse = await fetch(`${url}?test=${encodedPayload}`, {
+      const encodingSeparator = url.includes('?') ? '&' : '?';
+      const encodingResponse = await fetch(`${url}${encodingSeparator}test=${encodedPayload}`, {
         method: 'GET',
         redirect: 'manual',
       });
@@ -495,7 +497,8 @@ export class WAFDetector {
       }
 
       // Test parameter pollution
-      const pollutionResponse = await fetch(`${url}?test=safe&test=malicious`, {
+      const pollutionSeparator = url.includes('?') ? '&' : '?';
+      const pollutionResponse = await fetch(`${url}${pollutionSeparator}test=safe&test=malicious`, {
         method: 'GET',
         redirect: 'manual',
       });

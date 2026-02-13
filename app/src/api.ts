@@ -262,7 +262,7 @@ async function handleApiCheckFiltered(
 	let wafDetectionResult: WAFDetectionResult | undefined;
 	if (autoDetectWAF) {
 		try {
-			wafDetectionResult = await WAFDetector.activeDetection(url);
+			wafDetectionResult = await WAFDetector.activeDetection(url.replace(/\{PAYLOAD\}/g, ''));
 			console.log(`WAF Detection Result: ${JSON.stringify(wafDetectionResult)}`);
 		} catch (e) {
 			console.error('WAF detection failed:', e);
@@ -474,8 +474,13 @@ async function handleHTTPManipulation(request: Request): Promise<Response> {
 			enableHostHeaderInjection: false,
 		};
 
+		// Substitute {PAYLOAD} in the URL if present
+		const resolvedUrl = targetUrl.includes('{PAYLOAD}')
+			? targetUrl.replace(/\{PAYLOAD\}/g, encodeURIComponent(testPayload))
+			: targetUrl;
+
 		// Generate manipulated requests
-		const manipulatedRequests = HTTPManipulator.generateManipulatedRequests(targetUrl, 'GET', testPayload, manipulationOptions);
+		const manipulatedRequests = HTTPManipulator.generateManipulatedRequests(resolvedUrl, 'GET', testPayload, manipulationOptions);
 
 		// Execute all manipulated requests
 		const results = await HTTPManipulator.batchExecuteRequests(manipulatedRequests, false, 5);
@@ -518,8 +523,10 @@ async function handleWAFDetection(request: Request): Promise<Response> {
 	}
 
 	try {
-		const detection = await WAFDetector.activeDetection(targetUrl);
-		const bypassOpportunities = await WAFDetector.detectBypassOpportunities(targetUrl);
+		// Strip {PAYLOAD} from URL if present — WAF detection uses its own probe payloads
+		const resolvedUrl = targetUrl.replace(/\{PAYLOAD\}/g, '');
+		const detection = await WAFDetector.activeDetection(resolvedUrl);
+		const bypassOpportunities = await WAFDetector.detectBypassOpportunities(resolvedUrl);
 
 		return new Response(
 			JSON.stringify({
