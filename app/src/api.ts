@@ -36,10 +36,22 @@ async function sendRequest(
 			}
 		}
 
+		// Build the final URL: if it contains {PAYLOAD}, substitute directly;
+		// otherwise append as a query parameter using ? or &
+		let finalUrl = url;
+		if (finalPayload !== undefined) {
+			if (url.includes('{PAYLOAD}')) {
+				finalUrl = url.replace(/\{PAYLOAD\}/g, encodeURIComponent(finalPayload));
+			} else if (method === 'GET' || method === 'DELETE') {
+				const separator = url.includes('?') ? '&' : '?';
+				finalUrl = url + `${separator}test=${encodeURIComponent(finalPayload)}`;
+			}
+		}
+
 		switch (method) {
 			case 'GET':
 			case 'DELETE':
-				resp = await fetch(finalPayload !== undefined ? url + `?test=${encodeURIComponent(finalPayload)}` : url, {
+				resp = await fetch(finalUrl, {
 					method,
 					redirect: redirectOption,
 					headers,
@@ -55,14 +67,14 @@ async function sendRequest(
 					} catch {
 						jsonObj = { test: finalPayload ?? '' };
 					}
-					resp = await fetch(url, {
+					resp = await fetch(finalUrl, {
 						method,
 						redirect: redirectOption,
 						body: JSON.stringify(jsonObj),
 						headers: new Headers({ ...(headersObj || {}), 'Content-Type': 'application/json' }),
 					});
 				} else {
-					resp = await fetch(url, { method, redirect: redirectOption, body: new URLSearchParams({ test: finalPayload ?? '' }), headers });
+					resp = await fetch(finalUrl, { method, redirect: redirectOption, body: new URLSearchParams({ test: finalPayload ?? '' }), headers });
 				}
 				break;
 			default:
