@@ -1,401 +1,377 @@
 <!doctype html>
 <html>
-	<head>
-		<title>WAF Checker</title>
-		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
-		<meta
-			name="description"
-			content="WAF Checker — test your Web Application Firewall against common attack payloads (SQLi, XSS, Path Traversal, Command Injection, SSRF, NoSQLi, LFI) using various HTTP methods."
-		/>
-		<meta
-			name="keywords"
-			content="WAF, Web Application Firewall, security, SQLi, XSS, SSRF, LFI, NoSQLi, Path Traversal, Command Injection, pentest, HTTP methods, GET, POST, PUT, DELETE, security testing, vulnerability scanner"
-		/>
-		<meta name="robots" content="index, follow" />
-		<meta name="author" content="WAF Checker" />
-		<link rel="preconnect" href="https://fonts.googleapis.com" />
-		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
-		<link href="style.css" rel="stylesheet" />
-		<link rel="icon" type="image/svg+xml" href="favicon.svg" />
-	</head>
-	<body class="bg-light" style="background-color: var(--bs-body-bg) !important; color: var(--bs-body-color) !important">
-		<!-- GitHub repo link (left top corner) -->
-		<a class="github-corner-link" href="https://github.com/SecH0us3/waf-checker" target="_blank" rel="noopener" title="View on GitHub">
-			<svg viewBox="0 0 16 16" aria-hidden="true">
-				<path
-					d="M8 .198a8 8 0 0 0-2.5 15.6c.4.074.547-.174.547-.386 0-.19-.007-.693-.01-1.36-2.226.484-2.695-1.074-2.695-1.074-.364-.924-.89-1.17-.89-1.17-.727-.497.055-.487.055-.487.803.057 1.226.825 1.226.825.715 1.223 1.873.87 2.33.666.072-.518.28-.87.508-1.07-1.777-.2-3.644-.887-3.644-3.951 0-.873.312-1.588.824-2.148-.083-.202-.357-1.018.078-2.122 0 0 .672-.216 2.2.82a7.65 7.65 0 0 1 2-.27c.68.003 1.36.092 2 .27 1.527-1.036 2.198-.82 2.198-.82.437 1.104.163 1.92.08 2.122.513.56.823 1.275.823 2.148 0 3.073-1.87 3.748-3.65 3.944.288.246.543.734.543 1.48 0 1.07-.01 1.93-.01 2.194 0 .214.144.463.55.384A8 8 0 0 0 8 .196Z"
-				/>
-			</svg>
-			<span class="d-none d-md-inline">GitHub</span>
-		</a>
-		<!-- Set initial icon -->
-		<button class="theme-toggle" id="themeToggle" title="Toggle theme">☾</button>
-		<div class="container py-5">
-			<div class="row justify-content-center">
-				<div class="col-md-8 col-lg-6">
-					<div class="card main-card shadow mb-4">
-						<div class="card-body">
-							<!-- Hero header -->
-							<div class="hero-header">
-								<h1 class="mb-2 text-center">Test Your WAF</h1>
-								<p class="text-center mb-0" id="subtitle">
-									Enter a target URL to check your Web Application Firewall against common attack payloads
-								</p>
-							</div>
 
-							<!-- URL Input -->
-							<div class="url-input-group mb-3">
-								<input
-									type="url"
-									id="url"
-									name="url"
-									class="form-control"
-									placeholder="https://example.com/api/endpoint"
-									required
-									style="color: var(--bs-body-color); background-color: var(--bs-body-bg)"
-								/>
-								<button type="button" id="checkBtn" class="btn btn-primary" onclick="fetchResults()">
-									<span class="btn-icon">▶</span> Check
-								</button>
-							</div>
+<head>
+	<title>WAF Checker</title>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<meta name="description"
+		content="WAF Checker — test your Web Application Firewall against common attack payloads (SQLi, XSS, Path Traversal, Command Injection, SSRF, NoSQLi, LFI) using various HTTP methods." />
+	<meta name="keywords"
+		content="WAF, Web Application Firewall, security, SQLi, XSS, SSRF, LFI, NoSQLi, Path Traversal, Command Injection, pentest, HTTP methods, GET, POST, PUT, DELETE, security testing, vulnerability scanner" />
+	<meta name="robots" content="index, follow" />
+	<meta name="author" content="WAF Checker" />
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+	<link href="style.css" rel="stylesheet" />
+	<link rel="icon" type="image/svg+xml" href="favicon.svg" />
+</head>
 
-							<!-- Action buttons row -->
-							<div class="action-buttons-row mb-3">
-								<button type="button" id="detectWafBtn" class="btn btn-outline-info btn-sm" onclick="detectWAF()">
-									🛡️ Detect WAF
-								</button>
-								<button
-									type="button"
-									id="httpManipulationBtn"
-									class="btn btn-outline-warning btn-sm"
-									onclick="testHTTPManipulation()"
-								>
-									🔄 HTTP Tests
-								</button>
-								<button type="button" id="batchTestBtn" class="btn btn-outline-success btn-sm" onclick="showBatchModal()">
-									📋 Batch Test
-								</button>
-							</div>
-
-							<!-- WAF Detection Results Panel -->
-							<div id="wafDetectionPanel" class="alert alert-info mb-3" style="display: none">
-								<h6 class="fw-bold mb-2">🛡️ WAF Detection Results</h6>
-								<div id="wafDetectionResults"></div>
-								<div class="mt-2">
-									<button type="button" class="btn btn-sm btn-outline-primary" onclick="useAdvancedPayloads()">
-										Use Advanced Payloads
-									</button>
-									<button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideWAFPanel()">Hide</button>
-								</div>
-							</div>
-
-							<!-- HTTP Methods -->
-							<div class="settings-section mb-3" id="methodCheckboxes">
-								<div class="section-label">HTTP Methods</div>
-								<div class="d-flex gap-2 flex-wrap http-methods">
-									<label class="method-chip">
-										<input type="checkbox" value="GET" id="methodGET" checked />
-										<span>GET</span>
-									</label>
-									<label class="method-chip">
-										<input type="checkbox" value="POST" id="methodPOST" />
-										<span>POST</span>
-									</label>
-									<label class="method-chip">
-										<input type="checkbox" value="PUT" id="methodPUT" />
-										<span>PUT</span>
-									</label>
-									<label class="method-chip">
-										<input type="checkbox" value="DELETE" id="methodDELETE" />
-										<span>DELETE</span>
-									</label>
-									<button
-										type="button"
-										id="moreSettingsToggle"
-										onclick="toggleMoreSettings()"
-										class="ms-auto"
-										title="Advanced settings"
-									>⚙️</button>
-								</div>
-							</div>
-
-							<!-- More expandable panel -->
-							<div class="mb-3">
-								<div class="mt-0" id="moreSettingsPanel" style="display: none">
-									<div class="settings-panel-inner">
-										<!-- Testing Options -->
-										<div class="settings-section">
-											<div class="section-label">🎯 Testing Options</div>
-											<div class="settings-grid">
-												<div class="form-check">
-													<input class="form-check-input" type="checkbox" id="followRedirect" />
-													<label class="form-check-label" for="followRedirect">Follow 3xx redirects</label>
-												</div>
-												<div class="form-check">
-													<input
-														class="form-check-input case-sensitive-checkbox"
-														type="checkbox"
-														id="caseSensitiveTest"
-													/>
-													<label class="form-check-label" for="caseSensitiveTest">Case sensitive test</label>
-												</div>
-												<div class="form-check">
-													<input
-														class="form-check-input false-positive-checkbox"
-														type="checkbox"
-														id="falsePositiveTest"
-													/>
-													<label class="form-check-label" for="falsePositiveTest"
-														>False Positive Test (test legitimate payloads)</label
-													>
-												</div>
-											</div>
-										</div>
-
-										<!-- Advanced Payloads -->
-										<div class="settings-section">
-											<div class="section-label">⚡ Advanced Payloads</div>
-											<div class="settings-grid">
-												<div class="form-check">
-													<input class="form-check-input" type="checkbox" id="useAdvancedPayloadsCheckbox" />
-													<label class="form-check-label" for="useAdvancedPayloadsCheckbox"
-														>WAF Bypass Payloads</label
-													>
-												</div>
-												<div class="form-check">
-													<input class="form-check-input" type="checkbox" id="enhancedPayloads" />
-													<label class="form-check-label" for="enhancedPayloads"
-														>Enhanced Payloads (modern techniques)</label
-													>
-												</div>
-												<div class="form-check">
-													<input class="form-check-input" type="checkbox" id="useEncodingVariations" />
-													<label class="form-check-label" for="useEncodingVariations"
-														>Encoding variations</label
-													>
-												</div>
-											</div>
-										</div>
-
-										<!-- Protocol Testing -->
-										<div class="settings-section">
-											<div class="section-label">🔌 Protocol Testing</div>
-											<div class="settings-grid">
-												<div class="form-check">
-													<input class="form-check-input" type="checkbox" id="autoDetectWAF" />
-													<label class="form-check-label" for="autoDetectWAF">Auto-detect WAF before testing</label>
-												</div>
-												<div class="form-check">
-													<input class="form-check-input" type="checkbox" id="httpManipulation" />
-													<label class="form-check-label" for="httpManipulation"
-														>HTTP Protocol Manipulation (Param Pollution, Verb Tampering)</label
-													>
-												</div>
-											</div>
-										</div>
-
-										<!-- Custom Headers -->
-										<div class="settings-section">
-											<div class="section-label">📝 Custom Headers</div>
-											<textarea
-												id="customHeaders"
-												class="form-control"
-												rows="3"
-												placeholder="Content-Type: application/json&#10;X-Custom-Header: value"
-											></textarea>
-										</div>
-
-										<!-- Payload Template (conditional) -->
-										<div class="settings-section" id="payloadTemplateSection" style="display: none">
-											<div class="section-label">📄 Request Body Template</div>
-											<small class="text-muted d-block mb-2">Use <code>{{$$}}</code> as payload placeholder</small>
-											<textarea id="payloadTemplate" class="form-control" rows="4">
-{
-"test": "{{$$}}"
-}</textarea>
-										</div>
-									</div>
-								</div>
-							</div>
-
-							<!-- Категории пейлоадов -->
-							<div class="mb-3" id="categoryCheckboxesContainer">
-								<div class="settings-section">
-									<div class="section-label">🗂️ Payload Categories</div>
-									<div id="categoryCheckboxes" class="category-grid"></div>
-									<div class="mt-2 d-flex justify-content-end gap-2">
-										<button type="button" class="btn btn-sm btn-outline-secondary" id="selectAllCategoriesBtn">
-											Select All
-										</button>
-										<button type="button" class="btn btn-sm btn-outline-secondary" id="deselectAllCategoriesBtn">
-											Deselect All
-										</button>
-									</div>
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-			<div class="row justify-content-center">
-				<div class="col-12">
-					<div class="text-muted small mb-2 description-waf-check text-center"></div>
-					<div id="results" class="mt-3"></div>
-
-					<!-- Export Controls -->
-					<div id="exportControls" class="card mt-4" style="display: none">
-						<div class="card-header">
-							<h5 class="mb-0">📊 Export Results</h5>
-						</div>
-						<div class="card-body">
-							<div class="d-flex flex-wrap gap-2">
-								<button type="button" class="btn btn-outline-primary btn-sm" onclick="exportResults('json')">
-									📄 Export JSON
-								</button>
-								<button type="button" class="btn btn-outline-success btn-sm" onclick="exportResults('csv')">
-									📊 Export CSV
-								</button>
-								<button type="button" class="btn btn-outline-danger btn-sm" onclick="exportResults('pdf')">
-									📋 Export HTML Report
-								</button>
-								<button type="button" class="btn btn-outline-info btn-sm" onclick="showAnalytics()">
-									📈 Show Analytics
-								</button>
-							</div>
-							<div class="form-check mt-2">
-								<input class="form-check-input" type="checkbox" id="includeAnalysis" checked />
-								<label class="form-check-label" for="includeAnalysis"> Include vulnerability analysis in exports </label>
-							</div>
-						</div>
-					</div>
-
-					<!-- Analytics Dashboard -->
-					<div id="analyticsDashboard" class="card mt-4" style="display: none">
-						<div class="card-header d-flex justify-content-between align-items-center">
-							<h5 class="mb-0">📈 Test Analytics</h5>
-							<button type="button" class="btn-close" onclick="hideAnalytics()"></button>
-						</div>
-						<div class="card-body">
-							<div id="analyticsContent"></div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
-
-		<!-- Batch Testing Modal -->
-		<div class="modal fade" id="batchModal" tabindex="-1">
-			<div class="modal-dialog modal-lg">
-				<div class="modal-content">
-					<div class="modal-header">
-						<h5 class="modal-title">🔄 Batch Testing</h5>
-						<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-					</div>
-					<div class="modal-body">
-						<div class="mb-3">
-							<label for="batchUrls" class="form-label">URLs to Test (one per line, max 100):</label>
-							<textarea
-								id="batchUrls"
-								class="form-control"
-								rows="8"
-								placeholder="https://example1.com&#10;https://example2.com&#10;https://example3.com"
-							></textarea>
-							<div class="form-text">Enter HTTP/HTTPS URLs, one per line. Invalid URLs will be ignored.</div>
+<body class="bg-light" style="background-color: var(--bs-body-bg) !important; color: var(--bs-body-color) !important">
+	<!-- GitHub repo link (left top corner) -->
+	<a class="github-corner-link" href="https://github.com/SecH0us3/waf-checker" target="_blank" rel="noopener"
+		title="View on GitHub">
+		<svg viewBox="0 0 16 16" aria-hidden="true">
+			<path
+				d="M8 .198a8 8 0 0 0-2.5 15.6c.4.074.547-.174.547-.386 0-.19-.007-.693-.01-1.36-2.226.484-2.695-1.074-2.695-1.074-.364-.924-.89-1.17-.89-1.17-.727-.497.055-.487.055-.487.803.057 1.226.825 1.226.825.715 1.223 1.873.87 2.33.666.072-.518.28-.87.508-1.07-1.777-.2-3.644-.887-3.644-3.951 0-.873.312-1.588.824-2.148-.083-.202-.357-1.018.078-2.122 0 0 .672-.216 2.2.82a7.65 7.65 0 0 1 2-.27c.68.003 1.36.092 2 .27 1.527-1.036 2.198-.82 2.198-.82.437 1.104.163 1.92.08 2.122.513.56.823 1.275.823 2.148 0 3.073-1.87 3.748-3.65 3.944.288.246.543.734.543 1.48 0 1.07-.01 1.93-.01 2.194 0 .214.144.463.55.384A8 8 0 0 0 8 .196Z" />
+		</svg>
+		<span class="d-none d-md-inline">GitHub</span>
+	</a>
+	<!-- Set initial icon -->
+	<button class="theme-toggle" id="themeToggle" title="Toggle theme">☾</button>
+	<div class="container py-5">
+		<div class="row justify-content-center">
+			<div class="col-md-8 col-lg-6">
+				<div class="card main-card shadow mb-4">
+					<div class="card-body">
+						<!-- Hero header -->
+						<div class="hero-header">
+							<h1 class="mb-2 text-center">Test Your WAF</h1>
+							<p class="text-center mb-0" id="subtitle">
+								Enter a target URL to check your Web Application Firewall against common attack payloads
+							</p>
 						</div>
 
-						<div class="row">
-							<div class="col-md-6">
-								<div class="mb-3">
-									<label for="batchMaxConcurrent" class="form-label">Max Concurrent Requests:</label>
-									<select id="batchMaxConcurrent" class="form-select">
-										<option value="1">1 (Slow)</option>
-										<option value="2">2</option>
-										<option value="3" selected>3 (Recommended)</option>
-										<option value="5">5 (Fast)</option>
-									</select>
-								</div>
-							</div>
-							<div class="col-md-6">
-								<div class="mb-3">
-									<label for="batchDelay" class="form-label">Delay Between Requests (ms):</label>
-									<select id="batchDelay" class="form-select">
-										<option value="0">0 (No delay)</option>
-										<option value="500">500</option>
-										<option value="1000" selected>1000 (Recommended)</option>
-										<option value="2000">2000</option>
-										<option value="5000">5000 (Very slow)</option>
-									</select>
-									<div class="form-text">Client-side delay to avoid overwhelming target servers</div>
-								</div>
+						<!-- URL Input -->
+						<div class="url-input-group mb-3">
+							<input type="url" id="url" name="url" class="form-control"
+								placeholder="https://example.com/api/endpoint" required
+								style="color: var(--bs-body-color); background-color: var(--bs-body-bg)" />
+							<button type="button" id="checkBtn" class="btn btn-primary" onclick="fetchResults()">
+								<span class="btn-icon">▶</span> Check
+							</button>
+						</div>
+
+						<!-- Action buttons row -->
+						<div class="action-buttons-row mb-3">
+							<button type="button" id="detectWafBtn" class="btn btn-outline-info btn-sm"
+								onclick="detectWAF()">
+								🛡️ Detect WAF
+							</button>
+							<button type="button" id="httpManipulationBtn" class="btn btn-outline-warning btn-sm"
+								onclick="testHTTPManipulation()">
+								🔄 HTTP Tests
+							</button>
+							<button type="button" id="batchTestBtn" class="btn btn-outline-success btn-sm"
+								onclick="showBatchModal()">
+								📋 Batch Test
+							</button>
+						</div>
+
+						<!-- WAF Detection Results Panel -->
+						<div id="wafDetectionPanel" class="alert alert-info mb-3" style="display: none">
+							<h6 class="fw-bold mb-2">🛡️ WAF Detection Results</h6>
+							<div id="wafDetectionResults"></div>
+							<div class="mt-2">
+								<button type="button" class="btn btn-sm btn-outline-primary"
+									onclick="useAdvancedPayloads()">
+									Use Advanced Payloads
+								</button>
+								<button type="button" class="btn btn-sm btn-outline-secondary"
+									onclick="hideWAFPanel()">Hide</button>
 							</div>
 						</div>
 
-						<div class="mb-3">
-							<div class="form-check">
-								<input class="form-check-input" type="checkbox" id="batchInheritSettings" />
-								<label class="form-check-label" for="batchInheritSettings">
-									Use current test settings (methods, categories, advanced options)
+						<!-- HTTP Methods -->
+						<div class="settings-section mb-3" id="methodCheckboxes">
+							<div class="section-label">HTTP Methods</div>
+							<div class="d-flex gap-2 flex-wrap http-methods">
+								<label class="method-chip">
+									<input type="checkbox" value="GET" id="methodGET" checked />
+									<span>GET</span>
 								</label>
+								<label class="method-chip">
+									<input type="checkbox" value="POST" id="methodPOST" />
+									<span>POST</span>
+								</label>
+								<label class="method-chip">
+									<input type="checkbox" value="PUT" id="methodPUT" />
+									<span>PUT</span>
+								</label>
+								<label class="method-chip">
+									<input type="checkbox" value="DELETE" id="methodDELETE" />
+									<span>DELETE</span>
+								</label>
+								<button type="button" id="moreSettingsToggle" onclick="toggleMoreSettings()"
+									class="ms-auto" title="Advanced settings">⚙️</button>
 							</div>
 						</div>
 
-						<div id="batchProgress" style="display: none">
-							<div class="mb-3">
-								<div class="d-flex justify-content-between mb-1">
-									<small class="text-muted">Progress</small>
-									<small class="text-muted" id="batchProgressText">0%</small>
+						<!-- More expandable panel -->
+						<div class="mb-3">
+							<div class="mt-0" id="moreSettingsPanel" style="display: none">
+								<div class="settings-panel-inner">
+									<!-- Testing Options -->
+									<div class="settings-section">
+										<div class="section-label">🎯 Testing Options</div>
+										<div class="settings-grid">
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox" id="followRedirect" />
+												<label class="form-check-label" for="followRedirect">Follow 3xx
+													redirects</label>
+											</div>
+											<div class="form-check">
+												<input class="form-check-input case-sensitive-checkbox" type="checkbox"
+													id="caseSensitiveTest" />
+												<label class="form-check-label" for="caseSensitiveTest">Case sensitive
+													test</label>
+											</div>
+											<div class="form-check">
+												<input class="form-check-input false-positive-checkbox" type="checkbox"
+													id="falsePositiveTest" />
+												<label class="form-check-label" for="falsePositiveTest">False Positive
+													Test (test legitimate payloads)</label>
+											</div>
+										</div>
+									</div>
+
+									<!-- Advanced Payloads -->
+									<div class="settings-section">
+										<div class="section-label">⚡ Advanced Payloads</div>
+										<div class="settings-grid">
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox"
+													id="useAdvancedPayloadsCheckbox" />
+												<label class="form-check-label" for="useAdvancedPayloadsCheckbox">WAF
+													Bypass Payloads</label>
+											</div>
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox" id="enhancedPayloads" />
+												<label class="form-check-label" for="enhancedPayloads">Enhanced Payloads
+													(modern techniques)</label>
+											</div>
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox"
+													id="useEncodingVariations" />
+												<label class="form-check-label" for="useEncodingVariations">Encoding
+													variations</label>
+											</div>
+										</div>
+									</div>
+
+									<!-- Protocol Testing -->
+									<div class="settings-section">
+										<div class="section-label">🔌 Protocol Testing</div>
+										<div class="settings-grid">
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox" id="autoDetectWAF" />
+												<label class="form-check-label" for="autoDetectWAF">Auto-detect WAF
+													before testing</label>
+											</div>
+											<div class="form-check">
+												<input class="form-check-input" type="checkbox" id="httpManipulation" />
+												<label class="form-check-label" for="httpManipulation">HTTP Protocol
+													Manipulation (Param Pollution, Verb Tampering)</label>
+											</div>
+										</div>
+									</div>
+
+									<!-- Custom Headers -->
+									<div class="settings-section">
+										<div class="section-label">📝 Custom Headers</div>
+										<textarea id="customHeaders" class="form-control" rows="3"
+											placeholder="Content-Type: application/json&#10;X-Custom-Header: value"></textarea>
+									</div>
+
+									<!-- Payload Template (conditional) -->
+									<div class="settings-section" id="payloadTemplateSection" style="display: none">
+										<div class="section-label">📄 Request Body Template</div>
+										<small class="text-muted d-block mb-2">Use <code>{PAYLOAD}</code> as payload
+											placeholder</small>
+										<textarea id="payloadTemplate" class="form-control" rows="4">
+{
+"test": "{PAYLOAD}"
+}</textarea>
+									</div>
 								</div>
-								<div class="progress">
-									<div id="batchProgressBar" class="progress-bar" role="progressbar" style="width: 0%"></div>
-								</div>
-							</div>
-							<div class="mb-2">
-								<small class="text-muted">Current URL: <span id="batchCurrentUrl">-</span></small>
-							</div>
-							<div class="mb-2">
-								<small class="text-muted"
-									>Completed: <span id="batchCompleted">0</span> / <span id="batchTotal">0</span></small
-								>
-							</div>
-							<div class="mb-2">
-								<small class="text-muted">Estimated time remaining: <span id="batchETA">-</span></small>
 							</div>
 						</div>
 
-						<div id="batchResults" style="display: none">
-							<h6>Batch Results Summary</h6>
-							<div id="batchSummary"></div>
+						<!-- Категории пейлоадов -->
+						<div class="mb-3" id="categoryCheckboxesContainer">
+							<div class="settings-section">
+								<div class="section-label">🗂️ Payload Categories</div>
+								<div id="categoryCheckboxes" class="category-grid"></div>
+								<div class="mt-2 d-flex justify-content-end gap-2">
+									<button type="button" class="btn btn-sm btn-outline-secondary"
+										id="selectAllCategoriesBtn">
+										Select All
+									</button>
+									<button type="button" class="btn btn-sm btn-outline-secondary"
+										id="deselectAllCategoriesBtn">
+										Deselect All
+									</button>
+								</div>
+							</div>
 						</div>
-					</div>
-					<div class="modal-footer">
-						<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-						<button type="button" id="startBatchBtn" class="btn btn-success" onclick="startBatchTest()">
-							▶️ Start Batch Test
-						</button>
-						<button type="button" id="stopBatchBtn" class="btn btn-danger" style="display: none" onclick="stopBatchTest()">
-							⏹️ Stop Test
-						</button>
-						<button
-							type="button"
-							id="exportBatchBtn"
-							class="btn btn-outline-primary"
-							style="display: none"
-							onclick="exportBatchResults()"
-						>
-							📊 Export Results
-						</button>
 					</div>
 				</div>
 			</div>
 		</div>
+		<div class="row justify-content-center">
+			<div class="col-12">
+				<div class="text-muted small mb-2 description-waf-check text-center"></div>
+				<div id="results" class="mt-3"></div>
 
-		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-		<script src="main.js"></script>
-		<footer class="text-center mt-5 mb-3">
-			<small>Read my blog at <a href="https://yoursec.substack.com/" target="_blank" rel="noopener">yoursec.substack.com</a></small>
-		</footer>
-	</body>
+				<!-- Export Controls -->
+				<div id="exportControls" class="card mt-4" style="display: none">
+					<div class="card-header">
+						<h5 class="mb-0">📊 Export Results</h5>
+					</div>
+					<div class="card-body">
+						<div class="d-flex flex-wrap gap-2">
+							<button type="button" class="btn btn-outline-primary btn-sm"
+								onclick="exportResults('json')">
+								📄 Export JSON
+							</button>
+							<button type="button" class="btn btn-outline-success btn-sm" onclick="exportResults('csv')">
+								📊 Export CSV
+							</button>
+							<button type="button" class="btn btn-outline-danger btn-sm" onclick="exportResults('pdf')">
+								📋 Export HTML Report
+							</button>
+							<button type="button" class="btn btn-outline-info btn-sm" onclick="showAnalytics()">
+								📈 Show Analytics
+							</button>
+						</div>
+						<div class="form-check mt-2">
+							<input class="form-check-input" type="checkbox" id="includeAnalysis" checked />
+							<label class="form-check-label" for="includeAnalysis"> Include vulnerability analysis in
+								exports </label>
+						</div>
+					</div>
+				</div>
+
+				<!-- Analytics Dashboard -->
+				<div id="analyticsDashboard" class="card mt-4" style="display: none">
+					<div class="card-header d-flex justify-content-between align-items-center">
+						<h5 class="mb-0">📈 Test Analytics</h5>
+						<button type="button" class="btn-close" onclick="hideAnalytics()"></button>
+					</div>
+					<div class="card-body">
+						<div id="analyticsContent"></div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Batch Testing Modal -->
+	<div class="modal fade" id="batchModal" tabindex="-1">
+		<div class="modal-dialog modal-lg">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">🔄 Batch Testing</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+				</div>
+				<div class="modal-body">
+					<div class="mb-3">
+						<label for="batchUrls" class="form-label">URLs to Test (one per line, max 100):</label>
+						<textarea id="batchUrls" class="form-control" rows="8"
+							placeholder="https://example1.com&#10;https://example2.com&#10;https://example3.com"></textarea>
+						<div class="form-text">Enter HTTP/HTTPS URLs, one per line. Invalid URLs will be ignored.</div>
+					</div>
+
+					<div class="row">
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label for="batchMaxConcurrent" class="form-label">Max Concurrent Requests:</label>
+								<select id="batchMaxConcurrent" class="form-select">
+									<option value="1">1 (Slow)</option>
+									<option value="2">2</option>
+									<option value="3" selected>3 (Recommended)</option>
+									<option value="5">5 (Fast)</option>
+								</select>
+							</div>
+						</div>
+						<div class="col-md-6">
+							<div class="mb-3">
+								<label for="batchDelay" class="form-label">Delay Between Requests (ms):</label>
+								<select id="batchDelay" class="form-select">
+									<option value="0">0 (No delay)</option>
+									<option value="500">500</option>
+									<option value="1000" selected>1000 (Recommended)</option>
+									<option value="2000">2000</option>
+									<option value="5000">5000 (Very slow)</option>
+								</select>
+								<div class="form-text">Client-side delay to avoid overwhelming target servers</div>
+							</div>
+						</div>
+					</div>
+
+					<div class="mb-3">
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" id="batchInheritSettings" />
+							<label class="form-check-label" for="batchInheritSettings">
+								Use current test settings (methods, categories, advanced options)
+							</label>
+						</div>
+					</div>
+
+					<div id="batchProgress" style="display: none">
+						<div class="mb-3">
+							<div class="d-flex justify-content-between mb-1">
+								<small class="text-muted">Progress</small>
+								<small class="text-muted" id="batchProgressText">0%</small>
+							</div>
+							<div class="progress">
+								<div id="batchProgressBar" class="progress-bar" role="progressbar" style="width: 0%">
+								</div>
+							</div>
+						</div>
+						<div class="mb-2">
+							<small class="text-muted">Current URL: <span id="batchCurrentUrl">-</span></small>
+						</div>
+						<div class="mb-2">
+							<small class="text-muted">Completed: <span id="batchCompleted">0</span> / <span
+									id="batchTotal">0</span></small>
+						</div>
+						<div class="mb-2">
+							<small class="text-muted">Estimated time remaining: <span id="batchETA">-</span></small>
+						</div>
+					</div>
+
+					<div id="batchResults" style="display: none">
+						<h6>Batch Results Summary</h6>
+						<div id="batchSummary"></div>
+					</div>
+				</div>
+				<div class="modal-footer">
+					<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+					<button type="button" id="startBatchBtn" class="btn btn-success" onclick="startBatchTest()">
+						▶️ Start Batch Test
+					</button>
+					<button type="button" id="stopBatchBtn" class="btn btn-danger" style="display: none"
+						onclick="stopBatchTest()">
+						⏹️ Stop Test
+					</button>
+					<button type="button" id="exportBatchBtn" class="btn btn-outline-primary" style="display: none"
+						onclick="exportBatchResults()">
+						📊 Export Results
+					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+	<script src="main.js"></script>
+	<footer class="text-center mt-5 mb-3">
+		<small>Read my blog at <a href="https://yoursec.substack.com/" target="_blank"
+				rel="noopener">yoursec.substack.com</a></small>
+	</footer>
+</body>
+
 </html>
