@@ -688,67 +688,6 @@ function clearWAFResults() {
 	window.detectedWAF = null;
 }
 
-// HTTP Manipulation Testing
-async function testHTTPManipulation() {
-	const btn = document.getElementById('httpManipulationBtn');
-	const url = document.getElementById('url').value;
-
-	if (!url) {
-		alert('Please enter a URL first');
-		return;
-	}
-
-	btn.disabled = true;
-	const oldText = btn.textContent;
-	btn.textContent = 'Testing...';
-
-	try {
-		const response = await fetch(`/api/http-manipulation?url=${encodeURIComponent(url)}`);
-		const data = await response.json();
-
-		if (response.ok) {
-			displayHTTPManipulationResults(data);
-		} else {
-			alert(`HTTP Manipulation test failed: ${data.error || 'Unknown error'}`);
-		}
-	} catch (error) {
-		console.error('HTTP Manipulation test error:', error);
-		alert('HTTP Manipulation test failed. Please check the console for details.');
-	} finally {
-		btn.disabled = false;
-		btn.textContent = oldText;
-	}
-}
-
-function displayHTTPManipulationResults(data) {
-	const resultsDiv = document.getElementById('results');
-	let html = '<div class="card mb-4"><div class="card-header"><h3>🔄 HTTP Manipulation Test Results</h3></div><div class="card-body">';
-
-	if (data.results && data.results.length > 0) {
-		html += '<div class="table-responsive">';
-		html += '<table class="table table-sm"><thead><tr><th>Test Type</th><th>Method</th><th>Status</th><th>Result</th></tr></thead><tbody>';
-
-		data.results.forEach((result) => {
-			const statusClass = getStatusClass(result.status, result.is_redirect);
-			const resultText = result.bypassed ? 'Potential Bypass' : 'Blocked/Failed';
-			const resultBadge = result.bypassed ? 'badge bg-warning' : 'badge bg-success';
-
-			html += `<tr>
-				<td>${result.testType}</td>
-				<td class="text-center">${result.method}</td>
-				<td class="text-center"><span class="badge ${statusClass}">${result.status}</span></td>
-				<td><span class="${resultBadge}">${resultText}</span></td>
-			</tr>`;
-		});
-
-		html += '</tbody></table></div>';
-	} else {
-		html += '<div class="alert alert-info">No HTTP manipulation tests performed.</div>';
-	}
-
-	html += '</div></div>';
-	resultsDiv.innerHTML = html + resultsDiv.innerHTML;
-}
 
 // HTTP Manipulation Testing functionality
 async function testHTTPManipulation() {
