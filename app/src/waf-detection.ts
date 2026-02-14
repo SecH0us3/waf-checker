@@ -239,15 +239,16 @@ export class WAFDetector {
       statusCodes: [403],
     },
 
-    // Generic detection patterns
+    // Generic detection patterns — require WAF-specific phrases,
+    // not just common HTTP words like "forbidden"
     {
       name: 'Generic WAF',
       headers: {},
       statusCodes: [403, 406, 429],
       bodyPatterns: [
-        /blocked|denied|forbidden|rejected|filtered/i,
-        /security|firewall|protection/i,
-        /malicious|suspicious|attack/i,
+        /request.*(blocked|rejected|filtered).*by/i,
+        /web.*(firewall|application firewall|waf)/i,
+        /malicious.*request|suspicious.*activity|attack.*detected/i,
       ],
     },
   ];
@@ -338,7 +339,7 @@ export class WAFDetector {
       }
     }
 
-    const detected = bestMatch.confidence > 20;
+    const detected = bestMatch.confidence > 40;
     const suggestedBypassTechniques = this.getSuggestedBypassTechniques(bestMatch.name);
 
     return {
