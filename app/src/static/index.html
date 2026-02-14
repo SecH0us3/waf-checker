@@ -67,7 +67,7 @@
 				<!-- URL Input -->
 				<div class="url-input-group mb-3">
 					<input type="url" id="url" name="url" class="form-control"
-						placeholder="https://example.com/api/endpoint" required
+						placeholder="https://example.com/api/endpoint/{PAYLOAD}" required
 						style="color: var(--bs-body-color); background-color: var(--bs-body-bg)" />
 					<button type="button" id="checkBtn" class="btn btn-primary" onclick="fetchResults()">
 						<span class="btn-icon">▶</span> Check
@@ -254,7 +254,7 @@
 				<div class="settings-section mb-3">
 					<div class="section-label">📝 Custom Headers</div>
 					<textarea id="customHeaders" class="form-control" rows="3"
-						placeholder="Content-Type: application/json&#10;X-Custom-Header: value"></textarea>
+						placeholder="Content-Type: application/json&#10;X-Custom-Header: value&#10;X-Test: {PAYLOAD}"></textarea>
 				</div>
 
 				<!-- Payload Template (conditional) -->

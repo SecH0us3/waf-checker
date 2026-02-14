@@ -40,7 +40,7 @@ function renderSummary(results, falsePositiveMode = false) {
 
 function renderReport(results, falsePositiveMode = false) {
 	if (!results || results.length === 0) return '';
-	let html = `<h3>Results${falsePositiveMode ? ' (False Positive Test)' : ''}</h3>`;
+	let html = '';
 
 	// Add visual indicator for test mode
 	if (falsePositiveMode) {
@@ -390,6 +390,10 @@ async function fetchResults() {
 
 		// Show export controls
 		showExportControls();
+
+		// Hide description text
+		const descEl = document.querySelector('.description-waf-check');
+		if (descEl) descEl.style.display = 'none';
 	} finally {
 		btn.disabled = false;
 		btn.textContent = oldText;
