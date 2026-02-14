@@ -1,6 +1,6 @@
 import { PAYLOADS, ENHANCED_PAYLOADS, PayloadCategory } from './payloads';
 import { WAFDetector, WAFDetectionResult } from './waf-detection';
-import { PayloadEncoder, ProtocolManipulation } from './encoding';
+import { PayloadEncoder } from './encoding';
 import {
 	generateWAFSpecificPayloads,
 	generateHTTPManipulationPayloads,

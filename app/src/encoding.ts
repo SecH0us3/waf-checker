@@ -244,62 +244,8 @@ export class PayloadEncoder {
   }
 }
 
-/**
- * HTTP Protocol manipulation utilities
- */
-export class ProtocolManipulation {
 
-  /**
-   * Generate HTTP parameter pollution variations
-   */
-  static generateHPP(paramName: string, payload: string): string[] {
-    return [
-      `${paramName}=${payload}&${paramName}=${payload}`, // Standard HPP
-      `${paramName}=${payload}&${paramName.toUpperCase()}=${payload}`, // Case variation
-      `${paramName}[]=${payload}&${paramName}[]=${payload}`, // Array notation
-      `${paramName}=${payload}&${paramName}=`, // Empty second param
-      `${paramName}=&${paramName}=${payload}`, // Empty first param
-    ];
-  }
 
-  /**
-   * Generate Content-Type manipulation headers
-   */
-  static getContentTypeVariations(): string[] {
-    return [
-      'application/json',
-      'application/x-www-form-urlencoded',
-      'multipart/form-data',
-      'text/plain',
-      'application/xml',
-      'text/xml',
-      'application/json; charset=utf-8',
-      'application/json;charset=utf-8', // No space
-      'Application/Json', // Case variation
-      'application/json\x00', // Null byte
-    ];
-  }
-
-  /**
-   * Generate uncommon HTTP methods for verb tampering
-   */
-  static getUncommonMethods(): string[] {
-    return [
-      'PATCH',
-      'TRACE',
-      'OPTIONS',
-      'HEAD',
-      'CONNECT',
-      'PROPFIND',
-      'PROPPATCH',
-      'MKCOL',
-      'COPY',
-      'MOVE',
-      'LOCK',
-      'UNLOCK',
-    ];
-  }
-}
 
 /**
  * WAF-specific bypass utilities

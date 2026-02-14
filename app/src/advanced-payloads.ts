@@ -1,7 +1,7 @@
 // Advanced WAF bypass payloads based on 2024-2025 research
 // Sources: PortSwigger, OWASP, BugBase, SikaSecurity
 import { PayloadCategory } from './payloads';
-import { PayloadEncoder, ProtocolManipulation, WAFBypasses } from './encoding';
+import { PayloadEncoder, WAFBypasses } from './encoding';
 
 export const ADVANCED_PAYLOADS: Record<string, PayloadCategory> = {
 	'SQL Injection - Advanced Bypass': {
