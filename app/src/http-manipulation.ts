@@ -30,7 +30,6 @@ export class HTTPManipulator {
       'TRACE',
       'OPTIONS',
       'HEAD',
-      'CONNECT',
       'PROPFIND',
       'PROPPATCH',
       'MKCOL',
@@ -383,6 +382,7 @@ export class HTTPManipulator {
     headers: Record<string, string>;
     technique: string;
     description: string;
+    error?: string;
   }> {
     const startTime = Date.now();
 
@@ -409,15 +409,26 @@ export class HTTPManipulator {
         description: request.description
       };
 
-    } catch (error) {
+    } catch (error: any) {
       const responseTime = Date.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Attempt to categorize the error
+      let status: number | string = 'ERR';
+      if (errorMessage.toLowerCase().includes('connection')) {
+        status = 'Network Error';
+      } else if (errorMessage.toLowerCase().includes('method') || errorMessage.toLowerCase().includes('protocol')) {
+        status = 'Blocked (Client)';
+      }
+
       return {
-        status: 'ERR',
+        status,
         method: request.method,
         responseTime,
         headers: {},
         technique: request.technique,
-        description: request.description
+        description: request.description,
+        error: errorMessage
       };
     }
   }
