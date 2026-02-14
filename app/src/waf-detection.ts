@@ -44,7 +44,7 @@ export class WAFDetector {
     {
       name: 'AWS WAF',
       headers: {
-        'server': /CloudFront/i,
+        'server': /CloudFront|awselb/i,
         'x-amz-cf-id': /.*/,
         'x-amz-cf-pop': /.*/,
         'x-cache': /^(Hit|Miss) from cloudfront$/i,
