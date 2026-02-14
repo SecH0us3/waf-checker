@@ -148,6 +148,7 @@ export async function sendRequest(
             response: resp,
         };
     } catch (e) {
+        console.error(`Request error for ${url}:`, e);
         return { status: 'ERR', is_redirect: false, responseTime: 0 };
     }
 }
@@ -243,21 +244,26 @@ export async function handleApiCheckFiltered(
                     payload = randomUppercase(payload); // Modify payload
                 }
 
-                // Generate WAF-specific bypass variations if WAF is detected
+                // Generate payload variations — WAF-specific and encoding are additive
                 let payloadVariations = [payload];
-                if (detectedWAF && wafDetectionResult?.detected) {
-                    const wafSpecificPayloads = generateWAFSpecificPayloads(wafDetectionResult.wafType, payload);
-                    payloadVariations = wafSpecificPayloads.length > 1 ? wafSpecificPayloads : [payload];
-                } else if (detectedWAF) {
-                    const wafSpecificPayloads = generateWAFSpecificPayloads(detectedWAF, payload);
-                    payloadVariations = wafSpecificPayloads.length > 1 ? wafSpecificPayloads : [payload];
+
+                // Add WAF-specific bypass variations if WAF is detected
+                const wafType = detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined);
+                if (wafType) {
+                    const wafSpecificPayloads = generateWAFSpecificPayloads(wafType, payload);
+                    if (wafSpecificPayloads.length > 1) {
+                        payloadVariations.push(...wafSpecificPayloads);
+                    }
                 }
 
-                // Generate encoding variations if enabled
-                if (useEncodingVariations && !detectedWAF) {
+                // Add encoding variations if enabled (works alongside WAF-specific)
+                if (useEncodingVariations) {
                     const encodedVariations = PayloadEncoder.generateBypassVariations(payload, category);
-                    payloadVariations = encodedVariations;
+                    payloadVariations.push(...encodedVariations);
                 }
+
+                // Deduplicate
+                payloadVariations = [...new Set(payloadVariations)];
 
                 // Test each payload variation
                 for (const currentPayload of payloadVariations) {
