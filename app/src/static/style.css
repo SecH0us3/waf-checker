@@ -1049,3 +1049,198 @@ body[data-theme='dark'] .form-select {
 		font-size: 1.1rem !important;
 	}
 }
+
+/* --- New 3-Column Layout --- */
+.app-container {
+    display: grid;
+    grid-template-columns: 280px 1fr 340px;
+    height: 100vh;
+    width: 100%;
+    overflow: hidden;
+    background-color: var(--bs-body-bg);
+}
+
+/* Columns */
+.column-left {
+    background: var(--bs-card-bg);
+    border-right: 1px solid var(--section-border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.column-middle {
+    position: relative;
+    overflow: hidden; /* Inner content scrolls */
+    display: flex;
+    flex-direction: column;
+}
+
+.column-right {
+    background: var(--bs-card-bg);
+    border-left: 1px solid var(--section-border);
+    overflow-y: auto;
+}
+
+/* Scrollable Areas */
+.scrollable-column {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--accent) transparent;
+}
+
+.scrollable-column::-webkit-scrollbar {
+    width: 6px;
+}
+
+.scrollable-column::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.scrollable-column::-webkit-scrollbar-thumb {
+    background-color: rgba(100, 116, 139, 0.5);
+    border-radius: 20px;
+}
+
+/* Sticky Header/Footer in Middle Column */
+.middle-header {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 10;
+    border-bottom: 1px solid var(--section-border);
+    flex-shrink: 0;
+}
+
+.middle-footer {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    z-index: 10;
+    border-top: 1px solid var(--section-border);
+    flex-shrink: 0;
+}
+
+body[data-theme='dark'] .middle-header,
+body[data-theme='dark'] .middle-footer {
+    background: rgba(30, 33, 43, 0.85);
+}
+
+.middle-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding-bottom: 2rem; /* Space for scrolling */
+}
+
+/* Category Grid Single Column for side panel */
+.category-grid-1col {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.category-grid-1col .form-check {
+    margin: 0;
+    padding: 0.35rem 0.5rem 0.35rem 1.75rem;
+    border-radius: 0.5rem;
+    transition: background-color 0.15s;
+    cursor: pointer;
+}
+
+.category-grid-1col .form-check:hover {
+    background: var(--surface-hover);
+}
+
+/* Responsive Layout */
+@media (max-width: 1200px) {
+    .app-container {
+        grid-template-columns: 240px 1fr 300px;
+    }
+}
+
+@media (max-width: 992px) {
+    .app-container {
+        display: flex;
+        flex-direction: column;
+        height: auto;
+        overflow: visible;
+    }
+
+    .column-left,
+    .column-middle,
+    .column-right {
+        width: 100%;
+        height: auto;
+        overflow: visible;
+        border: none;
+    }
+
+    .column-left {
+        order: 2; /* Move categories to bottom or specific place on mobile */
+        border-top: 1px solid var(--section-border);
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .column-middle {
+        order: 1;
+        flex: 1;
+    }
+    
+    .middle-content {
+        overflow: visible;
+    }
+
+    .column-right {
+        order: 3;
+        border-top: 1px solid var(--section-border);
+    }
+
+    .middle-header {
+        position: sticky;
+        top: 0;
+    }
+    
+    .middle-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100vw;
+    }
+    
+    /* Adjust padding for fixed footer on mobile */
+    .column-right {
+        padding-bottom: 80px !important;
+    }
+}
+
+/* Utility */
+.bg-subtle {
+    background-color: var(--bs-card-bg);
+}
+
+.btn-xs {
+    padding: 0.1rem 0.4rem;
+    font-size: 0.7rem;
+    border-radius: 0.25rem;
+}
+
+/* Adjustments for the new layout context */
+.card.main-card {
+    /* Reset main card styles as we are using the column structure now */
+    border: none;
+    background: transparent !important;
+    backdrop-filter: none;
+    box-shadow: none !important;
+}
+
+.settings-section {
+   border-bottom: 1px solid var(--section-border);
+   padding-bottom: 1rem;
+   margin-bottom: 1rem;
+}
+
+.settings-section:last-child {
+    border-bottom: none;
+}

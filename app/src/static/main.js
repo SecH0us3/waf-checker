@@ -1010,7 +1010,7 @@ function exportAsHTMLReport(session) {
 	const filename = generateFilename(session.url, 'html');
 	downloadFile(html, filename, 'text/html');
 
-	alert("HTML report downloaded. Use your browser's Print to PDF feature to create a PDF.");
+
 }
 
 function generateHTMLReport(session, vulnerabilityScores, executiveSummary) {
@@ -1379,6 +1379,26 @@ function generateAnalyticsHTML(session, vulnerabilityScores, summary) {
 			</ul>
 		</div>
 	`;
+
+	const dashboard = document.getElementById('analyticsDashboard');
+	const container = document.getElementById('resultsContainer');
+
+	if (dashboard && container) {
+		dashboard.style.display = 'block';
+		// Scroll to analytics dashboard with delay to ensure rendering
+		setTimeout(() => {
+			// Calculate position relative to container
+			const headerOffset = 20; // Add some top spacing
+			const elementPosition = dashboard.getBoundingClientRect().top;
+			const containerPosition = container.getBoundingClientRect().top;
+			const offsetPosition = elementPosition - containerPosition + container.scrollTop - headerOffset;
+
+			container.scrollTo({
+				top: offsetPosition,
+				behavior: 'smooth'
+			});
+		}, 100);
+	}
 }
 
 function downloadFile(content, filename, mimeType) {
