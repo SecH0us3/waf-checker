@@ -481,7 +481,15 @@ function restoreStateFromLocalStorage() {
 	const payloadTemplate = localStorage.getItem('wafchecker_payloadTemplate');
 	if (payloadTemplate) {
 		const templateEl = document.getElementById('payloadTemplate');
-		if (templateEl) templateEl.value = payloadTemplate;
+		if (templateEl) {
+			// Auto-fix legacy placeholder {{$$}} to {PAYLOAD}
+			if (payloadTemplate.includes('{{$$}}')) {
+				templateEl.value = payloadTemplate.replace(/\{\{\$\$\}\}/g, '{PAYLOAD}');
+				localStorage.setItem('wafchecker_payloadTemplate', templateEl.value);
+			} else {
+				templateEl.value = payloadTemplate;
+			}
+		}
 	}
 
 	// Custom headers
