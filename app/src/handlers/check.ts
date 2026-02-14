@@ -191,10 +191,12 @@ export async function handleApiCheckFiltered(
     if (caseSensitiveTest) {
         try {
             const u = new URL(url);
-            const modifiedHostname = randomUppercase(u.hostname);
-            u.hostname = modifiedHostname;
-            url = u.toString();
-            baseUrl = `${u.protocol}//${u.host}`;
+            const originalHostname = u.hostname;
+            const modifiedHostname = randomUppercase(originalHostname);
+            // URL.hostname setter normalizes to lowercase, so use string
+            // replacement on raw URL to preserve mixed case
+            url = url.replace(originalHostname, modifiedHostname);
+            baseUrl = baseUrl.replace(originalHostname, modifiedHostname);
             console.log(`Case Sensitive Test: Modified URL from ${originalUrl} to ${url}`);
         } catch (e) {
             console.log(`Case Sensitive Test: Failed to parse URL ${originalUrl}, error: ${e}`);
