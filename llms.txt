@@ -1,0 +1,27 @@
+# WAF Checker
+
+> A web tool to test how well your Web Application Firewall (WAF) blocks common attacks. Built as a Cloudflare Worker with TypeScript. Provides a web UI for running various attack payloads against your target and analyzing results.
+
+## Repository
+
+- [GitHub](https://github.com/SecH0us3/waf-checher): Source code and issue tracking.
+
+## Documentation
+
+- [README](README.md): Comprehensive guide on features, usage, and project structure.
+
+## Core Logic
+
+- [Main Server](app/src/api.ts): Main server logic handling request routing and payload sending.
+- [Payloads](app/src/payloads.ts): Base attack categories and payloads.
+- [Advanced Payloads](app/src/advanced-payloads.ts): Advanced WAF bypass payloads including double encoding and polyglots.
+- [WAF Detection](app/src/waf-detection.ts): Logic for detecting WAFs based on response headers and behavior.
+- [HTTP Manipulation](app/src/http-manipulation.ts): HTTP protocol manipulation tests.
+- [Batch Testing](app/src/batch.ts): Logic for testing multiple URLs concurrently.
+- [Reporting](app/src/reporting.ts): Result export and vulnerability scoring.
+- [Encoding](app/src/encoding.ts): Payload encoding and obfuscation utilities.
+
+## Frontend
+
+- [UI Logic](app/src/static/main.js): Frontend logic for the web interface.
+- [Styles](app/src/static/style.css): Custom styling for the application.

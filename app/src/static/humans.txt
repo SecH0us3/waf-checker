@@ -1,0 +1,7 @@
+/* TEAM */
+  Creator: SecH0us3
+  Site: https://github.com/SecH0us3/waf-checher
+  Location: World
+
+/* THANKS */
+  Cloudflare Workers

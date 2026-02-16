@@ -1,0 +1,5 @@
+# agents.txt
+# This file grants permission to AI agents to access this website.
+
+Agent: *
+Allow: /
