@@ -452,12 +452,30 @@ function restoreStateFromLocalStorage() {
 		}
 	}
 
+	// Use advanced WAF bypass payloads
+	const useAdvancedPayloads = localStorage.getItem('wafchecker_useAdvancedPayloads');
+	if (useAdvancedPayloads !== null) {
+		const el = document.getElementById('useAdvancedPayloadsCheckbox');
+		if (el) {
+			el.checked = useAdvancedPayloads === '1';
+		}
+	}
+
 	// Auto detect WAF
 	const autoDetectWAF = localStorage.getItem('wafchecker_autoDetectWAF');
 	if (autoDetectWAF !== null) {
 		const el = document.getElementById('autoDetectWAF');
 		if (el) {
 			el.checked = autoDetectWAF === '1';
+		}
+	}
+
+	// Use encoding variations
+	const useEncodingVariations = localStorage.getItem('wafchecker_useEncodingVariations');
+	if (useEncodingVariations !== null) {
+		const el = document.getElementById('useEncodingVariations');
+		if (el) {
+			el.checked = useEncodingVariations === '1';
 		}
 	}
 

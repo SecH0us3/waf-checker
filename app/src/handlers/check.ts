@@ -82,18 +82,10 @@ export async function sendRequest(
         const redirectOption = followRedirect ? 'follow' : 'manual';
         const startTime = Date.now();
 
-        // Apply WAF-specific payload modifications if WAF is detected
-        let finalPayload = payload;
-        if (detectedWAF && payload) {
-            const wafSpecificPayloads = generateWAFSpecificPayloads(detectedWAF, payload);
-            if (wafSpecificPayloads.length > 1) {
-                finalPayload = wafSpecificPayloads[1]; // Use first bypass variation
-            }
-        }
-
         // Build the final URL: if it contains {PAYLOAD}, substitute directly;
         // otherwise append as a query parameter using ? or &
         let finalUrl = url;
+        let finalPayload = payload;
         if (finalPayload !== undefined) {
             if (url.includes('{PAYLOAD}')) {
                 finalUrl = url.replace(/\{PAYLOAD\}/g, encodeURIComponent(finalPayload));
@@ -193,14 +185,19 @@ export async function handleApiCheckFiltered(
             const u = new URL(url);
             const originalHostname = u.hostname;
             const modifiedHostname = randomUppercase(originalHostname);
-            // URL.hostname setter normalizes to lowercase, so use string
-            // replacement on raw URL to preserve mixed case
-            url = url.replace(originalHostname, modifiedHostname);
-            baseUrl = baseUrl.replace(originalHostname, modifiedHostname);
+            // Replace hostname only in the host portion of the URL (protocol://host)
+            // to avoid accidentally replacing hostname matches in path/query
+            const protocolAndSlashes = u.protocol + '//';
+            const hostPortion = url.slice(protocolAndSlashes.length);
+            const hostEnd = hostPortion.indexOf('/') === -1 ? hostPortion.length : hostPortion.indexOf('/');
+            const hostPart = hostPortion.slice(0, hostEnd);
+            const rest = hostPortion.slice(hostEnd);
+            const newHostPart = hostPart.replace(originalHostname, modifiedHostname);
+            url = protocolAndSlashes + newHostPart + rest;
+            baseUrl = `${u.protocol}//${newHostPart}`;
             console.log(`Case Sensitive Test: Modified URL from ${originalUrl} to ${url}`);
         } catch (e) {
             console.log(`Case Sensitive Test: Failed to parse URL ${originalUrl}, error: ${e}`);
-            // Fallback: uppercase the whole URL and baseUrl string if parsing fails
             url = randomUppercase(url);
             baseUrl = randomUppercase(baseUrl);
             console.log(`Case Sensitive Test: Fallback - modified URL from ${originalUrl} to ${url}`);

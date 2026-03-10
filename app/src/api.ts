@@ -3,14 +3,11 @@ import { handleWAFDetection } from './handlers/waf-detect';
 import { handleHTTPManipulation } from './handlers/http-manip';
 import { handleBatchStart, handleBatchStatus, handleBatchStop } from './handlers/batch';
 
-// Лучше сразу загрузить index.html при старте (если возможно)
-let INDEX_HTML = '';
-
 export default {
-	async fetch(request: Request): Promise<Response> {
+	async fetch(request: Request, env: { ASSETS: { fetch: typeof fetch } }): Promise<Response> {
 		const urlObj = new URL(request.url);
 		if (urlObj.pathname === '/') {
-			return new Response(INDEX_HTML, { headers: { 'content-type': 'text/html; charset=UTF-8' } });
+			return env.ASSETS.fetch(request);
 		}
 		if (urlObj.pathname === '/api/waf-detect') {
 			return await handleWAFDetection(request);
@@ -20,6 +17,21 @@ export default {
 			if (!url) return new Response('Missing url param', { status: 400 });
 			if (url.includes('secmy')) {
 				return new Response(JSON.stringify([]), { headers: { 'content-type': 'application/json; charset=UTF-8' } });
+			}
+			// Validate URL protocol to prevent SSRF
+			try {
+				const parsedUrl = new URL(url.replace(/\{PAYLOAD\}/g, 'test'));
+				if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+					return new Response(JSON.stringify({ error: 'Only http and https protocols are allowed' }), {
+						status: 400,
+						headers: { 'content-type': 'application/json; charset=UTF-8' },
+					});
+				}
+			} catch {
+				return new Response(JSON.stringify({ error: 'Invalid URL format' }), {
+					status: 400,
+					headers: { 'content-type': 'application/json; charset=UTF-8' },
+				});
 			}
 			const page = parseInt(urlObj.searchParams.get('page') || '0', 10);
 			const methods = (urlObj.searchParams.get('methods') || 'GET')
@@ -36,6 +48,7 @@ export default {
 			}
 			let payloadTemplate: string | undefined = undefined;
 			let customHeaders: string | undefined = undefined;
+			let bodyDetectedWAF: string | undefined = undefined;
 			if (request.method === 'POST') {
 				try {
 					const body: any = await request.json();
@@ -46,30 +59,21 @@ export default {
 						customHeaders = body.customHeaders;
 					}
 					if (body && typeof body.detectedWAF === 'string') {
-						// detectedWAF can also come from request body
+						bodyDetectedWAF = body.detectedWAF;
 					}
 				} catch (e) {
 					console.error('Error parsing request body:', e);
 				}
 			}
-			// Новый параметр followRedirect
 			const followRedirect = urlObj.searchParams.get('followRedirect') === '1';
-			// Новый параметр falsePositiveTest
 			const falsePositiveTest = urlObj.searchParams.get('falsePositiveTest') === '1';
-			// New parameter caseSensitiveTest
 			const caseSensitiveTest = urlObj.searchParams.get('caseSensitiveTest') === '1';
-			// Enhanced payloads option
 			const useEnhancedPayloads = urlObj.searchParams.get('enhancedPayloads') === '1';
-			// Use advanced WAF bypass payloads
 			const useAdvancedPayloads = urlObj.searchParams.get('useAdvancedPayloads') === '1';
-			// Auto WAF detection
 			const autoDetectWAF = urlObj.searchParams.get('autoDetectWAF') === '1';
-			// Use encoding variations
 			const useEncodingVariations = urlObj.searchParams.get('useEncodingVariations') === '1';
-			// HTTP manipulation option
 			const enableHTTPManipulation = urlObj.searchParams.get('httpManipulation') === '1';
-			// Detected WAF type
-			const detectedWAF = urlObj.searchParams.get('detectedWAF') || undefined;
+			const detectedWAF = urlObj.searchParams.get('detectedWAF') || bodyDetectedWAF || undefined;
 
 			const results = await handleApiCheckFiltered(
 				url,

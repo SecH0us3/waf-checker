@@ -429,6 +429,7 @@ export function generateWAFSpecificPayloads(wafType: string, basePayload: string
 			return WAFBypasses.cloudflareBypass(basePayload);
 		case 'aws':
 		case 'awswaf':
+		case 'aws waf':
 			return WAFBypasses.awsWafBypass(basePayload);
 		case 'modsecurity':
 			return WAFBypasses.modSecurityBypass(basePayload);
