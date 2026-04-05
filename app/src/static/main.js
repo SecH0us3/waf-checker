@@ -256,7 +256,7 @@ async function fetchResults() {
 	const oldText = btn.textContent;
 	btn.textContent = 'Wait...';
     const cancelBtn = document.getElementById('cancelBtn');
-    if (cancelBtn) cancelBtn.style.display = 'inline-block';
+    if (cancelBtn) cancelBtn.style.display = 'flex';
 	const url = document.getElementById('url').value;
 
 	// Create test session

@@ -252,23 +252,42 @@ body[data-theme='light'] .hero-header h1 {
 	outline: none;
 }
 
-.url-input-group .btn-primary {
+.url-input-group .btn-primary,
+.url-input-group .btn-danger {
 	border-radius: 0.75rem;
 	padding: 0.65rem 1.25rem;
 	font-weight: 600;
 	font-size: 0.95rem;
 	display: flex;
 	align-items: center;
+	justify-content: center;
 	gap: 0.35rem;
 	white-space: nowrap;
-	background: linear-gradient(135deg, var(--accent), #2563eb);
+	flex-shrink: 0;
 	border: none;
 	transition: transform 0.15s, box-shadow 0.2s;
 }
 
-.url-input-group .btn-primary:hover {
+.url-input-group .btn-primary {
+	background: linear-gradient(135deg, var(--accent), #2563eb);
+}
+
+.url-input-group .btn-danger {
+	background: linear-gradient(135deg, #ef4444, #dc2626);
+	color: white;
+}
+
+.url-input-group .btn-primary:hover,
+.url-input-group .btn-danger:hover {
 	transform: translateY(-1px);
+}
+
+.url-input-group .btn-primary:hover {
 	box-shadow: 0 4px 12px var(--accent-glow);
+}
+
+.url-input-group .btn-danger:hover {
+	box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
 }
 
 .btn-icon {
