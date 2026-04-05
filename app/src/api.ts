@@ -2,6 +2,7 @@ import { handleApiCheckFiltered } from './handlers/check';
 import { handleWAFDetection } from './handlers/waf-detect';
 import { handleHTTPManipulation } from './handlers/http-manip';
 import { handleBatchStart, handleBatchStatus, handleBatchStop } from './handlers/batch';
+import { isValidTargetUrl } from './utils/security';
 
 // Лучше сразу загрузить index.html при старте (если возможно)
 let INDEX_HTML = '';
@@ -13,11 +14,14 @@ export default {
 			return new Response(INDEX_HTML, { headers: { 'content-type': 'text/html; charset=UTF-8' } });
 		}
 		if (urlObj.pathname === '/api/waf-detect') {
+            const url = urlObj.searchParams.get('url');
+            if (url && !isValidTargetUrl(url)) return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
 			return await handleWAFDetection(request);
 		}
 		if (urlObj.pathname === '/api/check') {
 			const url = urlObj.searchParams.get('url');
 			if (!url) return new Response('Missing url param', { status: 400 });
+            if (!isValidTargetUrl(url)) return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
 			if (url.includes('secmy')) {
 				return new Response(JSON.stringify([]), { headers: { 'content-type': 'application/json; charset=UTF-8' } });
 			}

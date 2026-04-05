@@ -4,6 +4,16 @@ function escapeHtml(str) {
 	return div.innerHTML;
 }
 
+let currentAbortController = null;
+function cancelCurrentScan() {
+    if (currentAbortController) {
+        currentAbortController.abort();
+        currentAbortController = null;
+        const cancelBtn = document.getElementById('cancelBtn');
+        if (cancelBtn) cancelBtn.style.display = 'none';
+    }
+}
+
 function getStatusClass(status, is_redirect, falsePositiveMode = false) {
 	const codeNum = parseInt(status, 10);
 	if (!isNaN(codeNum) && (is_redirect || codeNum === 405)) return 'status-redirect';
@@ -245,6 +255,8 @@ async function fetchResults() {
 	btn.disabled = true;
 	const oldText = btn.textContent;
 	btn.textContent = 'Wait...';
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) cancelBtn.style.display = 'inline-block';
 	const url = document.getElementById('url').value;
 
 	// Create test session
@@ -327,6 +339,7 @@ async function fetchResults() {
 	}
 
 	try {
+        currentAbortController = new AbortController();
 		while (true) {
 			const params = new URLSearchParams({
 				url,
@@ -351,6 +364,7 @@ async function fetchResults() {
 					customHeaders,
 					detectedWAF: detectedWAFType,
 				}),
+                signal: currentAbortController.signal
 			});
 			if (!resp.ok) break;
 			const results = await resp.json();
@@ -394,9 +408,18 @@ async function fetchResults() {
 		// Hide description text
 		const descEl = document.querySelector('.description-waf-check');
 		if (descEl) descEl.style.display = 'none';
-	} finally {
+	} catch (e) {
+        if (e.name === 'AbortError') {
+            document.getElementById('results').innerHTML = '<div class="alert alert-warning">Scan cancelled by user.</div>';
+        } else {
+            console.error('Scan error:', e);
+        }
+    } finally {
 		btn.disabled = false;
 		btn.textContent = oldText;
+        const cancelBtn = document.getElementById('cancelBtn');
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        currentAbortController = null;
 	}
 }
 

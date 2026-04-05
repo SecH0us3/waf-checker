@@ -8,6 +8,7 @@ import {
     generateEncodedPayloads,
 } from '../advanced-payloads';
 import { HTTPManipulationOptions } from '../http-manipulation';
+import { isValidTargetUrl } from '../utils/security';
 
 // Helper function to substitute payload in JSON template
 function substitutePayload(obj: any, payload: string): any {
@@ -82,7 +83,7 @@ export async function sendRequest(
         const redirectOption = followRedirect ? 'follow' : 'manual';
         const startTime = Date.now();
 
-        // Apply WAF-specific payload modifications if WAF is detected
+            // Apply WAF-specific payload modifications if WAF is detected
         let finalPayload = payload;
         if (detectedWAF && payload) {
             const wafSpecificPayloads = generateWAFSpecificPayloads(detectedWAF, payload);
@@ -103,37 +104,46 @@ export async function sendRequest(
             }
         }
 
-        switch (method) {
-            case 'GET':
-            case 'DELETE':
-                resp = await fetch(finalUrl, {
-                    method,
-                    redirect: redirectOption,
-                    headers,
-                });
-                break;
-            case 'POST':
-            case 'PUT':
-                if (payloadTemplate) {
-                    let jsonObj;
-                    try {
-                        jsonObj = JSON.parse(payloadTemplate);
-                        jsonObj = substitutePayload(jsonObj, finalPayload ?? '');
-                    } catch {
-                        jsonObj = { test: finalPayload ?? '' };
-                    }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        try {
+            switch (method) {
+                case 'GET':
+                case 'DELETE':
                     resp = await fetch(finalUrl, {
                         method,
                         redirect: redirectOption,
-                        body: JSON.stringify(jsonObj),
-                        headers: new Headers({ ...(headersObj || {}), 'Content-Type': 'application/json' }),
+                        headers,
+                        signal: controller.signal
                     });
-                } else {
-                    resp = await fetch(finalUrl, { method, redirect: redirectOption, body: new URLSearchParams({ test: finalPayload ?? '' }), headers });
-                }
-                break;
-            default:
-                return null;
+                    break;
+                case 'POST':
+                case 'PUT':
+                    if (payloadTemplate) {
+                        let jsonObj;
+                        try {
+                            jsonObj = JSON.parse(payloadTemplate);
+                            jsonObj = substitutePayload(jsonObj, finalPayload ?? '');
+                        } catch {
+                            jsonObj = { test: finalPayload ?? '' };
+                        }
+                        resp = await fetch(finalUrl, {
+                            method,
+                            redirect: redirectOption,
+                            body: JSON.stringify(jsonObj),
+                            headers: new Headers({ ...(headersObj || {}), 'Content-Type': 'application/json' }),
+                            signal: controller.signal
+                        });
+                    } else {
+                        resp = await fetch(finalUrl, { method, redirect: redirectOption, body: new URLSearchParams({ test: finalPayload ?? '' }), headers, signal: controller.signal });
+                    }
+                    break;
+                default:
+                    return null;
+            }
+        } finally {
+            clearTimeout(timeoutId);
         }
 
         const responseTime = Date.now() - startTime;

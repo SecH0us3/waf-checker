@@ -1,4 +1,5 @@
 import { handleApiCheckFiltered } from './check';
+import { isValidTargetUrl } from '../utils/security';
 
 // Global batch state storage (in production, use a database or KV store)
 const batchJobs = new Map<
@@ -62,10 +63,8 @@ export async function handleBatchStart(request: Request): Promise<Response> {
 
         for (const url of urls) {
             try {
-                const urlObj = new URL(url);
-                // Check if protocol is HTTP or HTTPS
-                if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') {
-                    invalidUrls.push(`${url} (unsupported protocol: ${urlObj.protocol})`);
+                if (!isValidTargetUrl(url)) {
+                    invalidUrls.push(`${url} (invalid URL format or restricted IP)`);
                 } else {
                     validUrls.push(url);
                 }
@@ -309,8 +308,19 @@ async function processBatchAsync(jobId: string, urls: string[], config: any) {
     };
 
     try {
-        const promises = urls.map((url, index) => processUrl(url, index));
-        await Promise.allSettled(promises);
+        const CHUNK_SIZE = 10;
+        for (let i = 0; i < urls.length; i += CHUNK_SIZE) {
+            const chunk = urls.slice(i, i + CHUNK_SIZE);
+            const chunkResults = await Promise.all(
+                chunk.map(async (url, localIndex) => {
+                    try {
+                        return await processUrl(url, i + localIndex);
+                    } catch (error) {
+                        return null; // Swallow error to protect Promise.all
+                    }
+                })
+            );
+        }
 
         const finalJob = batchJobs.get(jobId);
         if (finalJob) {

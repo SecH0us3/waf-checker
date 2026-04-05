@@ -368,12 +368,28 @@ export class WAFDetector {
       try {
         const separator = url.includes('?') ? '&' : '?';
         const startTime = Date.now();
-        const response = await fetch(`${url}${separator}test=${encodeURIComponent(payload)}`, {
-          method: 'GET',
-          redirect: 'manual',
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        
+        let response;
+        try {
+            response = await fetch(`${url}${separator}test=${encodeURIComponent(payload)}`, {
+                method: 'GET',
+                redirect: 'manual',
+                signal: controller.signal
+            });
+        } finally {
+            clearTimeout(timeoutId);
+        }
         const responseTime = Date.now() - startTime;
-        const responseBody = await response.text();
+        
+        let responseBody = '';
+        const contentLength = response.headers.get('content-length');
+        if (contentLength && parseInt(contentLength, 10) > 1048576) {
+            responseBody = '[Response Too Large]';
+        } else {
+            responseBody = await response.text();
+        }
 
         const detection = await this.detectFromResponse(response, responseBody, responseTime);
         if (detection.detected) {
