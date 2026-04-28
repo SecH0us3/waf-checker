@@ -505,24 +505,3 @@ export class HTTPManipulator {
   }
 }
 
-// Export specific techniques for targeted testing
-export const VerbTampering = {
-  uncommonMethods: HTTPManipulator.getUncommonMethods(),
-  generateOverrides: HTTPManipulator.generateMethodOverrides
-};
-
-export const ParameterPollution = {
-  generate: HTTPManipulator.generateParameterPollution
-};
-
-export const ContentTypeConfusion = {
-  variations: HTTPManipulator.getContentTypeVariations()
-};
-
-export const RequestSmuggling = {
-  headers: HTTPManipulator.generateRequestSmugglingHeaders()
-};
-
-export const HostHeaderInjection = {
-  generate: HTTPManipulator.generateHostHeaderVariations
-};
