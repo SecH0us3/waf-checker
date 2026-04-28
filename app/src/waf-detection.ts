@@ -408,9 +408,7 @@ export class WAFDetector {
       'UNION SELECT 1,2,3--',
     ];
 
-    const results: WAFDetectionResult[] = [];
-
-    for (const payload of probePayloads) {
+    const probePromises = probePayloads.map(async (payload) => {
       try {
         const separator = url.includes('?') ? '&' : '?';
         const startTime = Date.now();
@@ -438,13 +436,14 @@ export class WAFDetector {
         }
 
         const detection = await this.detectFromResponse(response, responseBody, responseTime);
-        if (detection.detected) {
-          results.push(detection);
-        }
+        return detection.detected ? detection : null;
       } catch (error) {
         console.error('Active detection probe failed:', error);
+        return null;
       }
-    }
+    });
+
+    const results = (await Promise.all(probePromises)).filter((r): r is WAFDetectionResult => r !== null);
 
     // Return the detection result with highest confidence
     if (results.length > 0) {
