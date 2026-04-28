@@ -308,19 +308,17 @@ async function processBatchAsync(jobId: string, urls: string[], config: any) {
     };
 
     try {
-        const CHUNK_SIZE = 10;
-        for (let i = 0; i < urls.length; i += CHUNK_SIZE) {
-            const chunk = urls.slice(i, i + CHUNK_SIZE);
-            const chunkResults = await Promise.all(
-                chunk.map(async (url, localIndex) => {
-                    try {
-                        return await processUrl(url, i + localIndex);
-                    } catch (error) {
-                        return null; // Swallow error to protect Promise.all
-                    }
-                })
-            );
-        }
+        // Process all URLs. The semaphore inside processUrl handles concurrency.
+        await Promise.all(
+            urls.map(async (url, index) => {
+                try {
+                    return await processUrl(url, index);
+                } catch (error) {
+                    console.error(`Unexpected error in processUrl for ${url}:`, error);
+                    return null;
+                }
+            })
+        );
 
         const finalJob = batchJobs.get(jobId);
         if (finalJob) {

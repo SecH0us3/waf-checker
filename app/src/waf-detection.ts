@@ -228,6 +228,52 @@ export class WAFDetector {
       statusCodes: [403],
     },
 
+    // Azure Front Door
+    {
+      name: 'Azure Front Door',
+      headers: {
+        'x-azure-ref': /.*/,
+        'server': /Microsoft-HTTPAPI\/2\.0/i,
+      },
+      statusCodes: [403],
+      bodyPatterns: [
+        /Our services aren't available right now/i,
+        /Your request has been blocked/i,
+        /Microsoft-Azure-Application-Gateway/i,
+      ],
+    },
+
+    // Google Cloud Armor
+    {
+      name: 'Google Cloud Armor',
+      headers: {
+        'server': /^GSE$/i,
+      },
+      statusCodes: [403, 404],
+      bodyPatterns: [
+        /Request blocked by Cloud Armor/i,
+        /Access Denied.*Cloud Armor/i,
+      ],
+    },
+
+    // Citrix NetScaler
+    {
+      name: 'Citrix NetScaler',
+      headers: {
+        'server': /NetScaler/i,
+        'vi-id': /.*/,
+      },
+      cookiePatterns: [
+        /ns_af=/i,
+        /citrix_ns_id/i,
+      ],
+      statusCodes: [403],
+      bodyPatterns: [
+        /The requested URL was rejected\. Please consult with your administrator/i,
+        /NS-CACHE/i,
+      ],
+    },
+
     // Varnish (often used with WAF modules)
     {
       name: 'Varnish',
@@ -455,6 +501,24 @@ export class WAFDetector {
         'IP-based bypasses',
         'Origin server direct access',
         'Cache poisoning techniques',
+      ],
+      'Azure Front Door': [
+        'Case variations for SQL keywords',
+        'Parameter pollution (duplicate params)',
+        'Unicode encoding variations',
+        'CRLF injection in headers',
+      ],
+      'Google Cloud Armor': [
+        'Advanced request smuggling',
+        'Complex encoding combinations',
+        'Custom header injection (X-Forwarded-For)',
+        'Path normalization bypasses',
+      ],
+      'Citrix NetScaler': [
+        'URL encoding (double/triple)',
+        'HTTP method variations (tampering)',
+        'Parameter name obfuscation',
+        'Cookie-based bypass techniques',
       ],
       'Generic WAF': [
         'Double URL encoding',
