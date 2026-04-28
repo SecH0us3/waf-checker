@@ -306,6 +306,46 @@ export class WAFBypasses {
   }
 
   /**
+   * Akamai specific bypasses
+   */
+  static akamaiBypass(payload: string): string[] {
+    const bypasses = [payload];
+
+    // Akamai often filters on common SQL/XSS patterns
+    // Using hex encoding for specific chars
+    bypasses.push(payload.replace(/'/g, '%27'));
+    bypasses.push(payload.replace(/"/g, '%22'));
+
+    // Alternative separators
+    bypasses.push(payload.replace(/\s/g, '%09')); // Tab
+
+    // Akamai specific: double URL encode only special chars
+    bypasses.push(payload.replace(/['"<>&]/g, (char) => encodeURIComponent(encodeURIComponent(char))));
+
+    return [...new Set(bypasses)];
+  }
+
+  /**
+   * Azure specific bypasses
+   */
+  static azureBypass(payload: string): string[] {
+    const bypasses = [payload];
+
+    // Azure Front Door / App Gateway bypasses
+    // Mixed case and unicode
+    bypasses.push(PayloadEncoder.mixedCaseEncode(payload));
+    bypasses.push(PayloadEncoder.unicodeEncode(payload));
+
+    // Azure specific: replace spaces with multi-line comments
+    bypasses.push(payload.replace(/\s+/g, '/**/'));
+
+    // Null byte injection (sometimes works on older Azure rules)
+    bypasses.push(payload + '%00');
+
+    return [...new Set(bypasses)];
+  }
+
+  /**
    * Generate random case variations
    */
   private static randomCase(str: string): string {

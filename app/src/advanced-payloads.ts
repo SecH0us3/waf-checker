@@ -433,6 +433,12 @@ export function generateWAFSpecificPayloads(wafType: string, basePayload: string
 			return WAFBypasses.awsWafBypass(basePayload);
 		case 'modsecurity':
 			return WAFBypasses.modSecurityBypass(basePayload);
+		case 'akamai':
+			return WAFBypasses.akamaiBypass(basePayload);
+		case 'azure':
+		case 'azure front door':
+		case 'azure waf':
+			return WAFBypasses.azureBypass(basePayload);
 		default:
 			return PayloadEncoder.generateBypassVariations(basePayload);
 	}

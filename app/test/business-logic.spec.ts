@@ -176,6 +176,35 @@ describe('Business Logic Tests for Visual Controls', () => {
             expect(result.detected).toBe(true);
             expect(result.wafType).toBe('ModSecurity');
         });
+
+        it('should detect Azure Front Door based on headers and body', async () => {
+            const mockResponse = {
+                status: 403,
+                headers: new Map([['x-azure-ref', '123456']]),
+                ok: false
+            } as unknown as Response;
+            const headersMap = new Map([['x-azure-ref', '123456']]);
+            mockResponse.headers.get = (name: string) => headersMap.get(name.toLowerCase()) || null;
+
+            const body = 'Your request has been blocked. This could be due to several reasons...';
+            const result = await WAFDetector.detectFromResponse(mockResponse, body);
+            expect(result.detected).toBe(true);
+            expect(result.wafType).toBe('Azure Front Door');
+        });
+
+        it('should detect Google Cloud Armor based on Server header', async () => {
+            const mockResponse = {
+                status: 403,
+                headers: new Map([['server', 'GSE']]),
+                ok: false
+            } as unknown as Response;
+            const headersMap = new Map([['server', 'GSE']]);
+            mockResponse.headers.get = (name: string) => headersMap.get(name.toLowerCase()) || null;
+
+            const result = await WAFDetector.detectFromResponse(mockResponse, '');
+            expect(result.detected).toBe(true);
+            expect(result.wafType).toBe('Google Cloud Armor');
+        });
     });
 
     describe('Comprehensive Payload Generation Tests', () => {
@@ -189,6 +218,19 @@ describe('Business Logic Tests for Visual Controls', () => {
             const base = "UNION SELECT";
             const payloads = generateWAFSpecificPayloads('ModSecurity', base);
             expect(payloads.some(p => p.includes('/**/'))).toBe(true);
+        });
+
+        it('should generate Akamai-specific payloads', () => {
+            const base = "<script>";
+            const payloads = generateWAFSpecificPayloads('Akamai', base);
+            expect(payloads.some(p => p.includes('%253C'))).toBe(true); // Double encoded <
+        });
+
+        it('should generate Azure-specific payloads', () => {
+            const base = "UNION SELECT";
+            const payloads = generateWAFSpecificPayloads('Azure Front Door', base);
+            expect(payloads.some(p => p.includes('/**/'))).toBe(true);
+            expect(payloads.some(p => p.toLowerCase().includes('union'))).toBe(true);
         });
     });
 
