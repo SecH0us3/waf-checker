@@ -2,355 +2,375 @@
 // Based on latest research from PortSwigger, OWASP, and security community
 
 export interface EncodingOptions {
-  doubleUrlEncode?: boolean;
-  unicodeEncode?: boolean;
-  htmlEntityEncode?: boolean;
-  mixedCaseEncode?: boolean;
-  hexEncode?: boolean;
-  octalEncode?: boolean;
-  base64Encode?: boolean;
-  urlEncode?: boolean;
+	doubleUrlEncode?: boolean;
+	unicodeEncode?: boolean;
+	htmlEntityEncode?: boolean;
+	mixedCaseEncode?: boolean;
+	hexEncode?: boolean;
+	octalEncode?: boolean;
+	base64Encode?: boolean;
+	urlEncode?: boolean;
 }
 
 export class PayloadEncoder {
+	/**
+	 * Double URL encode payload
+	 * Example: ' -> %27 -> %2527
+	 */
+	static doubleUrlEncode(payload: string): string {
+		return encodeURIComponent(encodeURIComponent(payload));
+	}
 
-  /**
-   * Double URL encode payload
-   * Example: ' -> %27 -> %2527
-   */
-  static doubleUrlEncode(payload: string): string {
-    return encodeURIComponent(encodeURIComponent(payload));
-  }
+	/**
+	 * Unicode encode special characters
+	 * Example: ' -> \u0027
+	 */
+	static unicodeEncode(payload: string): string {
+		return payload.replace(/['"<>&]/g, (char) => {
+			const unicode = char.charCodeAt(0).toString(16).padStart(4, '0');
+			return `\\u${unicode}`;
+		});
+	}
 
-  /**
-   * Unicode encode special characters
-   * Example: ' -> \u0027
-   */
-  static unicodeEncode(payload: string): string {
-    return payload.replace(/['"<>&]/g, (char) => {
-      const unicode = char.charCodeAt(0).toString(16).padStart(4, '0');
-      return `\\u${unicode}`;
-    });
-  }
+	/**
+	 * HTML entity encode special characters
+	 * Example: ' -> &#39; or &#x27;
+	 */
+	static htmlEntityEncode(payload: string, useHex = false): string {
+		const entityMap: { [key: string]: string } = {
+			'"': useHex ? '&#x22;' : '&#34;',
+			"'": useHex ? '&#x27;' : '&#39;',
+			'<': useHex ? '&#x3C;' : '&#60;',
+			'>': useHex ? '&#x3E;' : '&#62;',
+			'&': useHex ? '&#x26;' : '&#38;',
+			'=': useHex ? '&#x3D;' : '&#61;',
+			' ': useHex ? '&#x20;' : '&#32;',
+		};
 
-  /**
-   * HTML entity encode special characters
-   * Example: ' -> &#39; or &#x27;
-   */
-  static htmlEntityEncode(payload: string, useHex = false): string {
-    const entityMap: { [key: string]: string } = {
-      '"': useHex ? '&#x22;' : '&#34;',
-      "'": useHex ? '&#x27;' : '&#39;',
-      '<': useHex ? '&#x3C;' : '&#60;',
-      '>': useHex ? '&#x3E;' : '&#62;',
-      '&': useHex ? '&#x26;' : '&#38;',
-      '=': useHex ? '&#x3D;' : '&#61;',
-      ' ': useHex ? '&#x20;' : '&#32;'
-    };
+		return payload.replace(/["'<>&= ]/g, (char) => entityMap[char] || char);
+	}
 
-    return payload.replace(/["'<>&= ]/g, (char) => entityMap[char] || char);
-  }
+	/**
+	 * Mixed case encoding for keywords
+	 * Example: UNION SELECT -> uNiOn SeLeCt
+	 */
+	static mixedCaseEncode(payload: string): string {
+		const keywords = [
+			'UNION',
+			'SELECT',
+			'FROM',
+			'WHERE',
+			'INSERT',
+			'UPDATE',
+			'DELETE',
+			'DROP',
+			'CREATE',
+			'ALTER',
+			'EXEC',
+			'EXECUTE',
+			'SCRIPT',
+			'ALERT',
+			'JAVASCRIPT',
+			'VBSCRIPT',
+			'ONLOAD',
+			'ONERROR',
+			'ONCLICK',
+		];
 
-  /**
-   * Mixed case encoding for keywords
-   * Example: UNION SELECT -> uNiOn SeLeCt
-   */
-  static mixedCaseEncode(payload: string): string {
-    const keywords = [
-      'UNION', 'SELECT', 'FROM', 'WHERE', 'INSERT', 'UPDATE', 'DELETE',
-      'DROP', 'CREATE', 'ALTER', 'EXEC', 'EXECUTE', 'SCRIPT', 'ALERT',
-      'JAVASCRIPT', 'VBSCRIPT', 'ONLOAD', 'ONERROR', 'ONCLICK'
-    ];
+		let result = payload;
+		keywords.forEach((keyword) => {
+			const mixedCase = keyword
+				.split('')
+				.map((char, index) => (index % 2 === 0 ? char.toLowerCase() : char.toUpperCase()))
+				.join('');
 
-    let result = payload;
-    keywords.forEach(keyword => {
-      const mixedCase = keyword.split('').map((char, index) =>
-        index % 2 === 0 ? char.toLowerCase() : char.toUpperCase()
-      ).join('');
+			result = result.replace(new RegExp(keyword, 'gi'), mixedCase);
+		});
 
-      result = result.replace(new RegExp(keyword, 'gi'), mixedCase);
-    });
+		return result;
+	}
 
-    return result;
-  }
+	/**
+	 * Hex encode characters
+	 * Example: ' -> 0x27
+	 */
+	static hexEncode(payload: string): string {
+		return payload.replace(/['"<>&]/g, (char) => {
+			const hex = char.charCodeAt(0).toString(16);
+			return `0x${hex}`;
+		});
+	}
 
-  /**
-   * Hex encode characters
-   * Example: ' -> 0x27
-   */
-  static hexEncode(payload: string): string {
-    return payload.replace(/['"<>&]/g, (char) => {
-      const hex = char.charCodeAt(0).toString(16);
-      return `0x${hex}`;
-    });
-  }
+	/**
+	 * Octal encode characters
+	 * Example: ' -> \047
+	 */
+	static octalEncode(payload: string): string {
+		return payload.replace(/['"<>&]/g, (char) => {
+			const octal = char.charCodeAt(0).toString(8);
+			return `\\${octal.padStart(3, '0')}`;
+		});
+	}
 
-  /**
-   * Octal encode characters
-   * Example: ' -> \047
-   */
-  static octalEncode(payload: string): string {
-    return payload.replace(/['"<>&]/g, (char) => {
-      const octal = char.charCodeAt(0).toString(8);
-      return `\\${octal.padStart(3, '0')}`;
-    });
-  }
+	/**
+	 * Base64 encode payload
+	 */
+	static base64Encode(payload: string): string {
+		return btoa(payload);
+	}
 
-  /**
-   * Base64 encode payload
-   */
-  static base64Encode(payload: string): string {
-    return btoa(payload);
-  }
+	/**
+	 * Apply multiple encoding techniques
+	 */
+	static applyEncodings(payload: string, options: EncodingOptions): string[] {
+		const encodedPayloads: string[] = [payload]; // Include original
 
-  /**
-   * Apply multiple encoding techniques
-   */
-  static applyEncodings(payload: string, options: EncodingOptions): string[] {
-    const encodedPayloads: string[] = [payload]; // Include original
+		if (options.doubleUrlEncode) {
+			encodedPayloads.push(this.doubleUrlEncode(payload));
+		}
 
-    if (options.doubleUrlEncode) {
-      encodedPayloads.push(this.doubleUrlEncode(payload));
-    }
+		if (options.unicodeEncode) {
+			encodedPayloads.push(this.unicodeEncode(payload));
+		}
 
-    if (options.unicodeEncode) {
-      encodedPayloads.push(this.unicodeEncode(payload));
-    }
+		if (options.htmlEntityEncode) {
+			encodedPayloads.push(this.htmlEntityEncode(payload, false));
+			encodedPayloads.push(this.htmlEntityEncode(payload, true)); // hex variant
+		}
 
-    if (options.htmlEntityEncode) {
-      encodedPayloads.push(this.htmlEntityEncode(payload, false));
-      encodedPayloads.push(this.htmlEntityEncode(payload, true)); // hex variant
-    }
+		if (options.mixedCaseEncode) {
+			encodedPayloads.push(this.mixedCaseEncode(payload));
+		}
 
-    if (options.mixedCaseEncode) {
-      encodedPayloads.push(this.mixedCaseEncode(payload));
-    }
+		if (options.hexEncode) {
+			encodedPayloads.push(this.hexEncode(payload));
+		}
 
-    if (options.hexEncode) {
-      encodedPayloads.push(this.hexEncode(payload));
-    }
+		if (options.octalEncode) {
+			encodedPayloads.push(this.octalEncode(payload));
+		}
 
-    if (options.octalEncode) {
-      encodedPayloads.push(this.octalEncode(payload));
-    }
+		if (options.base64Encode) {
+			encodedPayloads.push(this.base64Encode(payload));
+		}
 
-    if (options.base64Encode) {
-      encodedPayloads.push(this.base64Encode(payload));
-    }
+		if (options.urlEncode) {
+			encodedPayloads.push(encodeURIComponent(payload));
+		}
 
-    if (options.urlEncode) {
-      encodedPayloads.push(encodeURIComponent(payload));
-    }
+		return [...new Set(encodedPayloads)]; // Remove duplicates
+	}
 
-    return [...new Set(encodedPayloads)]; // Remove duplicates
-  }
+	/**
+	 * SQL injection specific obfuscation techniques
+	 */
+	static sqlObfuscation(payload: string): string[] {
+		const obfuscated = [payload];
 
-  /**
-   * SQL injection specific obfuscation techniques
-   */
-  static sqlObfuscation(payload: string): string[] {
-    const obfuscated = [payload];
+		// Comment-based obfuscation
+		obfuscated.push(payload.replace(/\s+/g, '/**/'));
+		obfuscated.push(payload.replace(/\s+/g, '/*comment*/'));
 
-    // Comment-based obfuscation
-    obfuscated.push(payload.replace(/\s+/g, '/**/'));
-    obfuscated.push(payload.replace(/\s+/g, '/*comment*/'));
+		// Space alternatives
+		obfuscated.push(payload.replace(/\s+/g, '+'));
+		obfuscated.push(payload.replace(/\s+/g, '%09')); // Tab
+		obfuscated.push(payload.replace(/\s+/g, '%0A')); // Line Feed
+		obfuscated.push(payload.replace(/\s+/g, '%0D')); // Carriage Return
 
-    // Space alternatives
-    obfuscated.push(payload.replace(/\s+/g, '+'));
-    obfuscated.push(payload.replace(/\s+/g, '%09')); // Tab
-    obfuscated.push(payload.replace(/\s+/g, '%0A')); // Line Feed
-    obfuscated.push(payload.replace(/\s+/g, '%0D')); // Carriage Return
+		// Function-based obfuscation
+		if (payload.includes('SELECT')) {
+			obfuscated.push(payload.replace(/SELECT/gi, 'SEL/**/ECT'));
+			obfuscated.push(payload.replace(/SELECT/gi, 'SE/**/LECT'));
+		}
 
-    // Function-based obfuscation
-    if (payload.includes('SELECT')) {
-      obfuscated.push(payload.replace(/SELECT/gi, 'SEL/**/ECT'));
-      obfuscated.push(payload.replace(/SELECT/gi, 'SE/**/LECT'));
-    }
+		if (payload.includes('UNION')) {
+			obfuscated.push(payload.replace(/UNION/gi, 'UNI/**/ON'));
+			obfuscated.push(payload.replace(/UNION/gi, 'UN/**/ION'));
+		}
 
-    if (payload.includes('UNION')) {
-      obfuscated.push(payload.replace(/UNION/gi, 'UNI/**/ON'));
-      obfuscated.push(payload.replace(/UNION/gi, 'UN/**/ION'));
-    }
+		return [...new Set(obfuscated)];
+	}
 
-    return [...new Set(obfuscated)];
-  }
+	/**
+	 * XSS specific obfuscation techniques
+	 */
+	static xssObfuscation(payload: string): string[] {
+		const obfuscated = [payload];
 
-  /**
-   * XSS specific obfuscation techniques
-   */
-  static xssObfuscation(payload: string): string[] {
-    const obfuscated = [payload];
+		// Case variations
+		obfuscated.push(payload.toLowerCase());
+		obfuscated.push(payload.toUpperCase());
 
-    // Case variations
-    obfuscated.push(payload.toLowerCase());
-    obfuscated.push(payload.toUpperCase());
+		// Event handler variations
+		const eventHandlers = ['onload', 'onerror', 'onclick', 'onmouseover', 'onfocus'];
+		eventHandlers.forEach((handler) => {
+			if (payload.toLowerCase().includes(handler)) {
+				// Add variations with different cases
+				obfuscated.push(payload.replace(new RegExp(handler, 'gi'), handler.toUpperCase()));
+				obfuscated.push(
+					payload.replace(
+						new RegExp(handler, 'gi'),
+						handler
+							.split('')
+							.map((c, i) => (i % 2 ? c.toUpperCase() : c.toLowerCase()))
+							.join(''),
+					),
+				);
+			}
+		});
 
-    // Event handler variations
-    const eventHandlers = ['onload', 'onerror', 'onclick', 'onmouseover', 'onfocus'];
-    eventHandlers.forEach(handler => {
-      if (payload.toLowerCase().includes(handler)) {
-        // Add variations with different cases
-        obfuscated.push(payload.replace(new RegExp(handler, 'gi'), handler.toUpperCase()));
-        obfuscated.push(payload.replace(new RegExp(handler, 'gi'),
-          handler.split('').map((c, i) => i % 2 ? c.toUpperCase() : c.toLowerCase()).join('')));
-      }
-    });
+		// Script tag variations
+		if (payload.includes('<script>')) {
+			obfuscated.push(payload.replace(/<script>/gi, '<SCRIPT>'));
+			obfuscated.push(payload.replace(/<script>/gi, '<ScRiPt>'));
+			obfuscated.push(payload.replace(/<script>/gi, '<script \\>'));
+			obfuscated.push(payload.replace(/<script>/gi, '<script//>'));
+		}
 
-    // Script tag variations
-    if (payload.includes('<script>')) {
-      obfuscated.push(payload.replace(/<script>/gi, '<SCRIPT>'));
-      obfuscated.push(payload.replace(/<script>/gi, '<ScRiPt>'));
-      obfuscated.push(payload.replace(/<script>/gi, '<script \\>'));
-      obfuscated.push(payload.replace(/<script>/gi, '<script//>'));
-    }
+		// JavaScript protocol variations
+		if (payload.includes('javascript:')) {
+			obfuscated.push(payload.replace(/javascript:/gi, 'JAVASCRIPT:'));
+			obfuscated.push(payload.replace(/javascript:/gi, 'JaVaScRiPt:'));
+			obfuscated.push(payload.replace(/javascript:/gi, 'java\\script:'));
+		}
 
-    // JavaScript protocol variations
-    if (payload.includes('javascript:')) {
-      obfuscated.push(payload.replace(/javascript:/gi, 'JAVASCRIPT:'));
-      obfuscated.push(payload.replace(/javascript:/gi, 'JaVaScRiPt:'));
-      obfuscated.push(payload.replace(/javascript:/gi, 'java\\script:'));
-    }
+		return [...new Set(obfuscated)];
+	}
 
-    return [...new Set(obfuscated)];
-  }
+	/**
+	 * Generate comprehensive bypass variations for any payload
+	 */
+	static generateBypassVariations(payload: string, attackType: string = 'generic'): string[] {
+		let variations = [payload];
 
-  /**
-   * Generate comprehensive bypass variations for any payload
-   */
-  static generateBypassVariations(payload: string, attackType: string = 'generic'): string[] {
-    let variations = [payload];
+		// Apply basic encodings
+		const encodingOptions: EncodingOptions = {
+			doubleUrlEncode: true,
+			unicodeEncode: true,
+			htmlEntityEncode: true,
+			mixedCaseEncode: true,
+			hexEncode: true,
+			urlEncode: true,
+		};
 
-    // Apply basic encodings
-    const encodingOptions: EncodingOptions = {
-      doubleUrlEncode: true,
-      unicodeEncode: true,
-      htmlEntityEncode: true,
-      mixedCaseEncode: true,
-      hexEncode: true,
-      urlEncode: true
-    };
+		variations = variations.concat(this.applyEncodings(payload, encodingOptions));
 
-    variations = variations.concat(this.applyEncodings(payload, encodingOptions));
+		// Apply attack-specific obfuscation
+		if (attackType.toLowerCase().includes('sql')) {
+			variations = variations.concat(this.sqlObfuscation(payload));
+		} else if (attackType.toLowerCase().includes('xss')) {
+			variations = variations.concat(this.xssObfuscation(payload));
+		}
 
-    // Apply attack-specific obfuscation
-    if (attackType.toLowerCase().includes('sql')) {
-      variations = variations.concat(this.sqlObfuscation(payload));
-    } else if (attackType.toLowerCase().includes('xss')) {
-      variations = variations.concat(this.xssObfuscation(payload));
-    }
-
-    // Remove duplicates and return
-    return [...new Set(variations)];
-  }
+		// Remove duplicates and return
+		return [...new Set(variations)];
+	}
 }
-
-
-
 
 /**
  * WAF-specific bypass utilities
  */
 export class WAFBypasses {
+	/**
+	 * Cloudflare specific bypasses
+	 */
+	static cloudflareBypass(payload: string): string[] {
+		const bypasses = [payload];
 
-  /**
-   * Cloudflare specific bypasses
-   */
-  static cloudflareBypass(payload: string): string[] {
-    const bypasses = [payload];
+		// Cloudflare often filters on specific patterns
+		bypasses.push(payload.replace(/'/g, '\\u0027'));
+		bypasses.push(payload.replace(/"/g, '\\u0022'));
+		bypasses.push(payload.replace(/</g, '\\u003c'));
+		bypasses.push(payload.replace(/>/g, '\\u003e'));
 
-    // Cloudflare often filters on specific patterns
-    bypasses.push(payload.replace(/'/g, '\\u0027'));
-    bypasses.push(payload.replace(/"/g, '\\u0022'));
-    bypasses.push(payload.replace(/</g, '\\u003c'));
-    bypasses.push(payload.replace(/>/g, '\\u003e'));
+		// Use alternative space characters
+		bypasses.push(payload.replace(/\s/g, '\\u00A0')); // Non-breaking space
+		bypasses.push(payload.replace(/\s/g, '\\u2000')); // En quad
 
-    // Use alternative space characters
-    bypasses.push(payload.replace(/\s/g, '\\u00A0')); // Non-breaking space
-    bypasses.push(payload.replace(/\s/g, '\\u2000')); // En quad
+		return [...new Set(bypasses)];
+	}
 
-    return [...new Set(bypasses)];
-  }
+	/**
+	 * AWS WAF specific bypasses
+	 */
+	static awsWafBypass(payload: string): string[] {
+		const bypasses = [payload];
 
-  /**
-   * AWS WAF specific bypasses
-   */
-  static awsWafBypass(payload: string): string[] {
-    const bypasses = [payload];
+		// AWS WAF character set bypasses
+		bypasses.push(payload.replace(/=/g, '\\u003D'));
+		bypasses.push(payload.replace(/&/g, '\\u0026'));
 
-    // AWS WAF character set bypasses
-    bypasses.push(payload.replace(/=/g, '\\u003D'));
-    bypasses.push(payload.replace(/&/g, '\\u0026'));
+		// Normalize unicode
+		bypasses.push(payload.normalize('NFD'));
+		bypasses.push(payload.normalize('NFKD'));
 
-    // Normalize unicode
-    bypasses.push(payload.normalize('NFD'));
-    bypasses.push(payload.normalize('NFKD'));
+		return [...new Set(bypasses)];
+	}
 
-    return [...new Set(bypasses)];
-  }
+	/**
+	 * ModSecurity bypasses
+	 */
+	static modSecurityBypass(payload: string): string[] {
+		const bypasses = [payload];
 
-  /**
-   * ModSecurity bypasses
-   */
-  static modSecurityBypass(payload: string): string[] {
-    const bypasses = [payload];
+		// ModSecurity rule-specific evasions
+		bypasses.push(payload.replace(/union/gi, 'uni/**/on'));
+		bypasses.push(payload.replace(/select/gi, 'sel/**/ect'));
+		bypasses.push(payload.replace(/script/gi, 'scr/**/ipt'));
 
-    // ModSecurity rule-specific evasions
-    bypasses.push(payload.replace(/union/gi, 'uni/**/on'));
-    bypasses.push(payload.replace(/select/gi, 'sel/**/ect'));
-    bypasses.push(payload.replace(/script/gi, 'scr/**/ipt'));
+		// Case sensitivity exploits
+		bypasses.push(this.randomCase(payload));
 
-    // Case sensitivity exploits
-    bypasses.push(this.randomCase(payload));
+		return [...new Set(bypasses)];
+	}
 
-    return [...new Set(bypasses)];
-  }
+	/**
+	 * Akamai specific bypasses
+	 */
+	static akamaiBypass(payload: string): string[] {
+		const bypasses = [payload];
 
-  /**
-   * Akamai specific bypasses
-   */
-  static akamaiBypass(payload: string): string[] {
-    const bypasses = [payload];
+		// Akamai often filters on common SQL/XSS patterns
+		// Using hex encoding for specific chars
+		bypasses.push(payload.replace(/'/g, '%27'));
+		bypasses.push(payload.replace(/"/g, '%22'));
 
-    // Akamai often filters on common SQL/XSS patterns
-    // Using hex encoding for specific chars
-    bypasses.push(payload.replace(/'/g, '%27'));
-    bypasses.push(payload.replace(/"/g, '%22'));
+		// Alternative separators
+		bypasses.push(payload.replace(/\s/g, '%09')); // Tab
 
-    // Alternative separators
-    bypasses.push(payload.replace(/\s/g, '%09')); // Tab
+		// Akamai specific: double URL encode only special chars
+		bypasses.push(payload.replace(/['"<>&]/g, (char) => encodeURIComponent(encodeURIComponent(char))));
 
-    // Akamai specific: double URL encode only special chars
-    bypasses.push(payload.replace(/['"<>&]/g, (char) => encodeURIComponent(encodeURIComponent(char))));
+		return [...new Set(bypasses)];
+	}
 
-    return [...new Set(bypasses)];
-  }
+	/**
+	 * Azure specific bypasses
+	 */
+	static azureBypass(payload: string): string[] {
+		const bypasses = [payload];
 
-  /**
-   * Azure specific bypasses
-   */
-  static azureBypass(payload: string): string[] {
-    const bypasses = [payload];
+		// Azure Front Door / App Gateway bypasses
+		// Mixed case and unicode
+		bypasses.push(PayloadEncoder.mixedCaseEncode(payload));
+		bypasses.push(PayloadEncoder.unicodeEncode(payload));
 
-    // Azure Front Door / App Gateway bypasses
-    // Mixed case and unicode
-    bypasses.push(PayloadEncoder.mixedCaseEncode(payload));
-    bypasses.push(PayloadEncoder.unicodeEncode(payload));
+		// Azure specific: replace spaces with multi-line comments
+		bypasses.push(payload.replace(/\s+/g, '/**/'));
 
-    // Azure specific: replace spaces with multi-line comments
-    bypasses.push(payload.replace(/\s+/g, '/**/'));
+		// Null byte injection (sometimes works on older Azure rules)
+		bypasses.push(payload + '%00');
 
-    // Null byte injection (sometimes works on older Azure rules)
-    bypasses.push(payload + '%00');
+		return [...new Set(bypasses)];
+	}
 
-    return [...new Set(bypasses)];
-  }
-
-  /**
-   * Generate random case variations
-   */
-  private static randomCase(str: string): string {
-    return str.split('').map(char =>
-      Math.random() > 0.5 ? char.toUpperCase() : char.toLowerCase()
-    ).join('');
-  }
+	/**
+	 * Generate random case variations
+	 */
+	private static randomCase(str: string): string {
+		return str
+			.split('')
+			.map((char) => (Math.random() > 0.5 ? char.toUpperCase() : char.toLowerCase()))
+			.join('');
+	}
 }

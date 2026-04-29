@@ -11,14 +11,14 @@ export default {
 			return env.ASSETS.fetch(request);
 		}
 		if (urlObj.pathname === '/api/waf-detect') {
-            const url = urlObj.searchParams.get('url');
-            if (url && !isValidTargetUrl(url)) return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
+			const url = urlObj.searchParams.get('url');
+			if (url && !isValidTargetUrl(url)) return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
 			return await handleWAFDetection(request);
 		}
 		if (urlObj.pathname === '/api/check') {
 			const url = urlObj.searchParams.get('url');
 			if (!url) return new Response('Missing url param', { status: 400 });
-            if (!isValidTargetUrl(url)) return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
+			if (!isValidTargetUrl(url)) return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
 			if (url.includes('secmy')) {
 				return new Response(JSON.stringify([]), { headers: { 'content-type': 'application/json; charset=UTF-8' } });
 			}
@@ -96,10 +96,10 @@ export default {
 				detectedWAF,
 				enableHTTPManipulation
 					? {
-						enableParameterPollution: true,
-						enableVerbTampering: true,
-						enableContentTypeConfusion: true,
-					}
+							enableParameterPollution: true,
+							enableVerbTampering: true,
+							enableContentTypeConfusion: true,
+						}
 					: undefined,
 			);
 			return new Response(JSON.stringify(results), { headers: { 'content-type': 'application/json; charset=UTF-8' } });

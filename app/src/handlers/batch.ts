@@ -30,14 +30,18 @@ function cleanupOldBatchJobs() {
 	}
 }
 
+function createErrorResponse(error: string, status: number = 400): Response {
+	return new Response(JSON.stringify({ error }), {
+		status,
+		headers: { 'content-type': 'application/json' },
+	});
+}
+
 function createJobNotFoundResponse(jobId?: string): Response {
 	if (jobId) {
 		console.log(`Job ${jobId} not found. Available jobs:`, Array.from(batchJobs.keys()));
 	}
-	return new Response(JSON.stringify({ error: 'Job not found' }), {
-		status: 404,
-		headers: { 'content-type': 'application/json' },
-	});
+	return createErrorResponse('Job not found', 404);
 }
 
 export async function handleBatchStart(request: Request): Promise<Response> {
@@ -54,17 +58,11 @@ export async function handleBatchStart(request: Request): Promise<Response> {
 		}
 
 		if (!urls || !Array.isArray(urls) || urls.length === 0) {
-			return new Response(JSON.stringify({ error: 'No URLs provided' }), {
-				status: 400,
-				headers: { 'content-type': 'application/json' },
-			});
+			return createErrorResponse('No URLs provided');
 		}
 
 		if (urls.length > 100) {
-			return new Response(JSON.stringify({ error: 'Maximum 100 URLs allowed' }), {
-				status: 400,
-				headers: { 'content-type': 'application/json' },
-			});
+			return createErrorResponse('Maximum 100 URLs allowed');
 		}
 
 		// Validate URLs
@@ -98,10 +96,7 @@ export async function handleBatchStart(request: Request): Promise<Response> {
 		}
 
 		if (validUrls.length === 0) {
-			return new Response(JSON.stringify({ error: 'No valid URLs provided' }), {
-				status: 400,
-				headers: { 'content-type': 'application/json' },
-			});
+			return createErrorResponse('No valid URLs provided');
 		}
 
 		const jobId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -136,10 +131,7 @@ export async function handleBatchStart(request: Request): Promise<Response> {
 			},
 		);
 	} catch (error) {
-		return new Response(JSON.stringify({ error: 'Invalid request body' }), {
-			status: 400,
-			headers: { 'content-type': 'application/json' },
-		});
+		return createErrorResponse('Invalid request body');
 	}
 }
 
@@ -153,10 +145,7 @@ export async function handleBatchStatus(request: Request): Promise<Response> {
 	const jobId = urlObj.searchParams.get('jobId');
 
 	if (!jobId) {
-		return new Response(JSON.stringify({ error: 'Missing jobId parameter' }), {
-			status: 400,
-			headers: { 'content-type': 'application/json' },
-		});
+		return createErrorResponse('Missing jobId parameter');
 	}
 
 	const job = batchJobs.get(jobId);
@@ -182,10 +171,7 @@ export async function handleBatchStop(request: Request): Promise<Response> {
 	const jobId = urlObj.searchParams.get('jobId');
 
 	if (!jobId) {
-		return new Response(JSON.stringify({ error: 'Missing jobId parameter' }), {
-			status: 400,
-			headers: { 'content-type': 'application/json' },
-		});
+		return createErrorResponse('Missing jobId parameter');
 	}
 
 	const job = batchJobs.get(jobId);
