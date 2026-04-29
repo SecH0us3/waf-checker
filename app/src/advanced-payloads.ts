@@ -439,6 +439,14 @@ export function generateWAFSpecificPayloads(wafType: string, basePayload: string
 		case 'azure front door':
 		case 'azure waf':
 			return WAFBypasses.azureBypass(basePayload);
+		case 'palo alto networks':
+		case 'palo alto':
+		case 'pan-os':
+			return WAFBypasses.panosBypass(basePayload);
+		case 'sophos':
+		case 'sophos waf':
+		case 'sophos utm':
+			return WAFBypasses.sophosBypass(basePayload);
 		default:
 			return PayloadEncoder.generateBypassVariations(basePayload);
 	}
