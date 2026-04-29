@@ -20,6 +20,11 @@ describe('isValidTargetUrl', () => {
         it('should allow valid public IPv6 addresses', () => {
             expect(isValidTargetUrl('http://[2001:4860:4860::8888]')).toBe(true);
         });
+
+        it('should allow domains that happen to start with IPv6 private range hex characters', () => {
+            expect(isValidTargetUrl('http://fc00.com')).toBe(true);
+            expect(isValidTargetUrl('http://fe80.org')).toBe(true);
+        });
     });
 
     describe('Invalid Protocols', () => {
@@ -81,6 +86,15 @@ describe('isValidTargetUrl', () => {
             expect(isValidTargetUrl('http://[::ffff:127.0.0.1]')).toBe(false);
             expect(isValidTargetUrl('http://[::ffff:10.0.0.1]')).toBe(false);
             expect(isValidTargetUrl('http://[::ffff:192.168.0.1]')).toBe(false);
+        });
+
+        it('should reject hex-encoded IPv4-mapped IPv6 internal addresses', () => {
+            expect(isValidTargetUrl('http://[::ffff:7f00:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::ffff:0a00:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::ffff:a00:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::ffff:ac10:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::ffff:c0a8:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::ffff:a9fe:1]')).toBe(false);
         });
     });
 
