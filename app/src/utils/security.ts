@@ -14,7 +14,8 @@ export function isValidTargetUrl(urlString: string): boolean {
 		}
 
 		// IPv6 normalization: remove brackets for easier parsing if present
-		const ipv6Normalized = hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
+		const isIpv6 = hostname.startsWith('[') && hostname.endsWith(']');
+		const ipv6Normalized = isIpv6 ? hostname.slice(1, -1) : '';
 
 		// Block IPv6 internal ranges
 		// Unique Local Address (fc00::/7)
