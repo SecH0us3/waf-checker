@@ -7,7 +7,7 @@ import { isValidTargetUrl } from './utils/security';
 export default {
 	async fetch(request: Request, env: { ASSETS: { fetch: typeof fetch } }): Promise<Response> {
 		const urlObj = new URL(request.url);
-		if (urlObj.pathname === '/') {
+		if (urlObj.pathname === '/' || urlObj.pathname === '/llms-full.txt') {
 			return env.ASSETS.fetch(request);
 		}
 		if (urlObj.pathname === '/api/waf-detect') {
