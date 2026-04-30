@@ -287,6 +287,10 @@ export class WAFBypasses {
 		bypasses.push(payload.replace(/\s/g, '\\u00A0')); // Non-breaking space
 		bypasses.push(payload.replace(/\s/g, '\\u2000')); // En quad
 
+		// Unicode variations for quotes
+		bypasses.push(payload.replace(/'/g, '\uFF07'));
+		bypasses.push(payload.replace(/"/g, '\uFF02'));
+
 		return [...new Set(bypasses)];
 	}
 
@@ -303,6 +307,7 @@ export class WAFBypasses {
 		// Normalize unicode
 		bypasses.push(payload.normalize('NFD'));
 		bypasses.push(payload.normalize('NFKD'));
+		bypasses.push(payload.normalize('NFKC'));
 
 		return [...new Set(bypasses)];
 	}
@@ -337,6 +342,8 @@ export class WAFBypasses {
 
 		// Alternative separators
 		bypasses.push(payload.replace(/\s/g, '%09')); // Tab
+		bypasses.push(payload.replace(/\s/g, '%0b')); // Vertical Tab
+		bypasses.push(payload.replace(/\s/g, '%0c')); // Form Feed
 
 		// Akamai specific: double URL encode only special chars
 		bypasses.push(payload.replace(/['"<>&]/g, (char) => encodeURIComponent(encodeURIComponent(char))));
