@@ -33,6 +33,8 @@ describe('handleWAFDetection handler', () => {
         const response = await handleWAFDetection(request);
 
         expect(response.status).toBe(200);
+        expect(response.headers.get('content-type')).toBe('application/json; charset=UTF-8');
+
         const data = await response.json() as any;
         expect(data.detection).toEqual(mockDetection);
         expect(data.bypassOpportunities).toEqual(mockBypass);
@@ -40,6 +42,17 @@ describe('handleWAFDetection handler', () => {
 
         expect(activeDetectionSpy).toHaveBeenCalledWith('https://target.com');
         expect(detectBypassSpy).toHaveBeenCalledWith('https://target.com');
+    });
+
+    it('strips {PAYLOAD} from the target url before passing to WAFDetector', async () => {
+        const activeDetectionSpy = vi.spyOn(WAFDetector, 'activeDetection').mockResolvedValue({} as any);
+        const detectBypassSpy = vi.spyOn(WAFDetector, 'detectBypassOpportunities').mockResolvedValue({} as any);
+
+        const request = new Request('https://example.com/api/waf-detect?url=https://target.com/api/login?user={PAYLOAD}');
+        await handleWAFDetection(request);
+
+        expect(activeDetectionSpy).toHaveBeenCalledWith('https://target.com/api/login?user=');
+        expect(detectBypassSpy).toHaveBeenCalledWith('https://target.com/api/login?user=');
     });
 
     it('returns 500 when WAFDetector.activeDetection throws an Error object', async () => {
@@ -50,6 +63,8 @@ describe('handleWAFDetection handler', () => {
         const response = await handleWAFDetection(request);
 
         expect(response.status).toBe(500);
+        expect(response.headers.get('content-type')).toBe('application/json; charset=UTF-8');
+
         const data = await response.json() as any;
         expect(data.error).toBe('WAF detection failed');
         expect(data.message).toBe(errorMessage);
@@ -62,6 +77,8 @@ describe('handleWAFDetection handler', () => {
         const response = await handleWAFDetection(request);
 
         expect(response.status).toBe(500);
+        expect(response.headers.get('content-type')).toBe('application/json; charset=UTF-8');
+
         const data = await response.json() as any;
         expect(data.error).toBe('WAF detection failed');
         expect(data.message).toBe('Unknown error');
@@ -81,6 +98,8 @@ describe('handleWAFDetection handler', () => {
         const response = await handleWAFDetection(request);
 
         expect(response.status).toBe(500);
+        expect(response.headers.get('content-type')).toBe('application/json; charset=UTF-8');
+
         const data = await response.json() as any;
         expect(data.error).toBe('WAF detection failed');
         expect(data.message).toBe('Bypass detection failed');
@@ -91,6 +110,8 @@ describe('handleWAFDetection handler', () => {
         const response = await handleWAFDetection(request);
 
         expect(response.status).toBe(400);
+        expect(response.headers.get('content-type')).toBe('application/json; charset=UTF-8');
+
         const data = await response.json() as any;
         expect(data.error).toBe('Missing url parameter');
     });
