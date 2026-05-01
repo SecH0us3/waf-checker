@@ -115,4 +115,24 @@ describe('handleWAFDetection handler', () => {
         const data = await response.json() as any;
         expect(data.error).toBe('Missing url parameter');
     });
+    it('returns 500 when WAFDetector.detectBypassOpportunities throws a non-Error object', async () => {
+        vi.spyOn(WAFDetector, 'activeDetection').mockResolvedValue({
+            detected: false,
+            wafType: 'Unknown',
+            confidence: 0,
+            evidence: [],
+            suggestedBypassTechniques: []
+        });
+        vi.spyOn(WAFDetector, 'detectBypassOpportunities').mockRejectedValue({ code: 500 });
+
+        const request = new Request('https://example.com/api/waf-detect?url=https://target.com');
+        const response = await handleWAFDetection(request);
+
+        expect(response.status).toBe(500);
+        expect(response.headers.get('content-type')).toBe('application/json; charset=UTF-8');
+
+        const data = await response.json() as any;
+        expect(data.error).toBe('WAF detection failed');
+        expect(data.message).toBe('Unknown error');
+    });
 });
