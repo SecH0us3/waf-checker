@@ -69,6 +69,22 @@ describe('isValidTargetUrl', () => {
     });
 
     describe('IPv6 Internal Ranges (Current Gap)', () => {
+        it('should reject unspecified IPv6 address (::)', () => {
+            expect(isValidTargetUrl('http://[::]')).toBe(false);
+            expect(isValidTargetUrl('http://[0000:0000:0000:0000:0000:0000:0000:0000]')).toBe(false);
+        });
+
+        it('should reject IPv4-compatible IPv6 addresses for internal IPs', () => {
+            expect(isValidTargetUrl('http://[::127.0.0.1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::10.0.0.1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::192.168.0.1]')).toBe(false);
+        });
+
+        it('should reject uncompressed IPv6 loopback', () => {
+            expect(isValidTargetUrl('http://[0:0:0:0:0:0:0:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[0000:0000:0000:0000:0000:0000:0000:0001]')).toBe(false);
+        });
+
         it('should reject IPv6 loopback', () => {
             expect(isValidTargetUrl('http://[::1]')).toBe(false);
         });
