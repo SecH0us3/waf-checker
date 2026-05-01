@@ -17,7 +17,14 @@ export function isValidTargetUrl(urlString: string): boolean {
 		const isIpv6 = hostname.startsWith('[') && hostname.endsWith(']');
 		const ipv6Normalized = isIpv6 ? hostname.slice(1, -1) : '';
 
+
+		// Block the unspecified address (::)
+		if (ipv6Normalized === '::') {
+			return false;
+		}
+
 		// Block IPv6 internal ranges
+
 		// Unique Local Address (fc00::/7)
 		if (ipv6Normalized.toLowerCase().startsWith('fc') || ipv6Normalized.toLowerCase().startsWith('fd')) {
 			return false;
@@ -32,7 +39,23 @@ export function isValidTargetUrl(urlString: string): boolean {
 			return false;
 		}
 
+
+		// Check for IPv4-compatible IPv6 (::0:0/96)
+		if (ipv6Normalized.toLowerCase().startsWith('::') && !ipv6Normalized.toLowerCase().startsWith('::ffff:') && ipv6Normalized !== '::1') {
+			// e.g. ::7f00:1
+			if (ipv6Normalized.toLowerCase().startsWith('::7f')) return false; // 127.0.0.0/8
+			if (ipv6Normalized.toLowerCase().startsWith('::0a') || ipv6Normalized.toLowerCase().startsWith('::a')) return false; // 10.0.0.0/8
+			if (ipv6Normalized.toLowerCase().startsWith('::ac')) {
+				// 172.16.0.0/12 -> ::ac10:0000 to ::ac1f:ffff
+				const match = ipv6Normalized.toLowerCase().match(/^::(ac[12][0-9a-f]|ac3[01])/);
+				if (match) return false;
+			}
+			if (ipv6Normalized.toLowerCase().startsWith('::c0a8')) return false; // 192.168.0.0/16
+			if (ipv6Normalized.toLowerCase().startsWith('::a9fe')) return false; // 169.254.0.0/16
+		}
+
 		// Check for IPv4-mapped IPv6 (::ffff:0:0/96)
+
 		if (ipv6Normalized.toLowerCase().startsWith('::ffff:')) {
 			const lastPart = ipv6Normalized.split(':').pop() || '';
 			if (lastPart.includes('.')) {
