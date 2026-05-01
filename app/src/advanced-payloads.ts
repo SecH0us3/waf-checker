@@ -390,6 +390,45 @@ export const ADVANCED_PAYLOADS: Record<string, PayloadCategory> = {
 			'System & Network Administration',
 		],
 	},
+
+	'Cloudflare Evasion': {
+		type: 'ParamCheck',
+		payloads: [
+			// Overlong UTF-8 encoding for '
+			'%c0%a7 OR 1=1--',
+			// MySQL specific comment injection
+			"' UNION/*!50000SELECT*/1,2,3--",
+			// Unicode variation bypass
+			'\\uFF07 OR \\uFF071\\uFF07=\\uFF071',
+		],
+		falsePayloads: ["John's profile", 'Search results for "test"', 'Standard SQL query'],
+	},
+
+	'AWS WAF Evasion': {
+		type: 'ParamCheck',
+		payloads: [
+			// Unicode normalization bypass (NFKC)
+			'\\u24B6nd 1=1', // Ⓐnd 1=1
+			// Nested template literals for XSS
+			'<script>alert(`${1}`)</script>',
+			// Protocol confusion with encoding
+			'http://\\u0031\\u0032\\u0037.0.0.1/',
+		],
+		falsePayloads: ['Standard URL', 'Normal script tag', 'Text with circles'],
+	},
+
+	'Akamai Evasion': {
+		type: 'ParamCheck',
+		payloads: [
+			// Multi-level URL encoding
+			'%25252e%25252e%25252fetc%25252fpasswd',
+			// Alternative separators (Vertical Tab)
+			"'%0bOR%0b1=1--",
+			// Double-encoded special characters
+			'admin%2527--',
+		],
+		falsePayloads: ['/path/to/file', 'Normal user login', 'Standard parameter'],
+	},
 };
 
 /**

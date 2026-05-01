@@ -31,9 +31,10 @@ export class WAFDetector {
 				'cf-ray': /^[a-f0-9]+-[A-Z]{3}$/,
 				'cf-cache-status': /.*/,
 				'cf-request-id': /.*/,
+				'cf-mitigated': /.*/,
 			},
 			statusCodes: [403, 429],
-			bodyPatterns: [/cloudflare/i, /attention required! \| cloudflare/i, /ray id: [a-f0-9]+-[A-Z]{3}/i],
+			bodyPatterns: [/cloudflare/i, /attention required! \| cloudflare/i, /ray id: [a-f0-9]+-[A-Z]{3}/i, /Cloudflare Ray ID:/i],
 		},
 
 		// AWS WAF
@@ -44,9 +45,10 @@ export class WAFDetector {
 				'x-amz-cf-id': /.*/,
 				'x-amz-cf-pop': /.*/,
 				'x-cache': /^(Hit|Miss) from cloudfront$/i,
+				'x-amzn-requestid': /.*/,
 			},
 			statusCodes: [403],
-			bodyPatterns: [/forbidden.*you don't have permission to access.*on this server/i, /request blocked/i],
+			bodyPatterns: [/forbidden.*you don't have permission to access.*on this server/i, /request blocked/i, /Request blocked\./i],
 		},
 
 		// Imperva/Incapsula
@@ -91,6 +93,7 @@ export class WAFDetector {
 				server: /AkamaiGHost/i,
 				'akamai-origin-hop': /.*/,
 				'x-akamai-transformed': /.*/,
+				'x-akamai-request-id': /.*/,
 			},
 			statusCodes: [403],
 			bodyPatterns: [/access denied/i, /akamai/i, /reference #[0-9a-f]+/i],
