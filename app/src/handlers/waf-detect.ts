@@ -1,4 +1,5 @@
 import { WAFDetector } from '../waf-detection';
+import { isValidTargetUrl } from '../utils/security';
 
 export async function handleWAFDetection(request: Request): Promise<Response> {
 	const urlObj = new URL(request.url);
@@ -6,6 +7,13 @@ export async function handleWAFDetection(request: Request): Promise<Response> {
 
 	if (!targetUrl) {
 		return new Response(JSON.stringify({ error: 'Missing url parameter' }), {
+			status: 400,
+			headers: { 'content-type': 'application/json; charset=UTF-8' },
+		});
+	}
+
+	if (!isValidTargetUrl(targetUrl)) {
+		return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), {
 			status: 400,
 			headers: { 'content-type': 'application/json; charset=UTF-8' },
 		});
