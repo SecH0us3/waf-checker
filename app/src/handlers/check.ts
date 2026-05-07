@@ -165,12 +165,9 @@ export async function handleApiCheckFiltered(
 			const newHostPart = hostPart.replace(originalHostname, modifiedHostname);
 			url = protocolAndSlashes + newHostPart + rest;
 			baseUrl = `${u.protocol}//${newHostPart}`;
-			console.log(`Case Sensitive Test: Modified URL from ${originalUrl} to ${url}`);
 		} catch (e) {
-			console.log(`Case Sensitive Test: Failed to parse URL ${originalUrl}, error: ${e}`);
 			url = randomUppercase(url);
 			baseUrl = randomUppercase(baseUrl);
-			console.log(`Case Sensitive Test: Fallback - modified URL from ${originalUrl} to ${url}`);
 		}
 	}
 
