@@ -504,39 +504,45 @@ export class WAFDetector {
 		};
 
 		try {
-			// Test HTTP method bypass
-			const methodResponse = await fetch(url, { method: 'TRACE', redirect: 'manual' });
+			const separator = url.includes('?') ? '&' : '?';
+			const encodedPayload = '%2527%2520OR%25201%253D1';
+
+			const [methodResponse, headerResponse, encodingResponse, pollutionResponse] = await Promise.all([
+				// Test HTTP method bypass
+				fetch(url, { method: 'TRACE', redirect: 'manual' }),
+
+				// Test header bypass with X-Original-URL
+				fetch(url, {
+					method: 'GET',
+					headers: { 'X-Original-URL': '/admin' },
+					redirect: 'manual',
+				}),
+
+				// Test encoding bypass
+				fetch(`${url}${separator}test=${encodedPayload}`, {
+					method: 'GET',
+					redirect: 'manual',
+				}),
+
+				// Test parameter pollution
+				fetch(`${url}${separator}test=safe&test=malicious`, {
+					method: 'GET',
+					redirect: 'manual',
+				}),
+			]);
+
 			if (methodResponse.status !== 405) {
 				opportunities.httpMethodsBypass = true;
 			}
 
-			// Test header bypass with X-Original-URL
-			const headerResponse = await fetch(url, {
-				method: 'GET',
-				headers: { 'X-Original-URL': '/admin' },
-				redirect: 'manual',
-			});
 			if (headerResponse.status === 200) {
 				opportunities.headerBypass = true;
 			}
 
-			// Test encoding bypass
-			const encodedPayload = '%2527%2520OR%25201%253D1';
-			const encodingSeparator = url.includes('?') ? '&' : '?';
-			const encodingResponse = await fetch(`${url}${encodingSeparator}test=${encodedPayload}`, {
-				method: 'GET',
-				redirect: 'manual',
-			});
 			if (encodingResponse.status === 200) {
 				opportunities.encodingBypass = true;
 			}
 
-			// Test parameter pollution
-			const pollutionSeparator = url.includes('?') ? '&' : '?';
-			const pollutionResponse = await fetch(`${url}${pollutionSeparator}test=safe&test=malicious`, {
-				method: 'GET',
-				redirect: 'manual',
-			});
 			if (pollutionResponse.status === 200) {
 				opportunities.parameterPollution = true;
 			}
