@@ -1,5 +1,6 @@
 import { handleApiCheckFiltered } from './check';
 import { isValidTargetUrl } from '../utils/security';
+import { redactUrl } from '../utils/payload-utils';
 
 // Global batch state storage (in production, use a database or KV store)
 const batchJobs = new Map<
@@ -157,7 +158,7 @@ export async function handleBatchStatus(request: Request): Promise<Response> {
 		progress: job.progress,
 		completedUrls: job.completedUrls,
 		totalUrls: job.totalUrls,
-		currentUrl: job.currentUrl,
+		currentUrl: redactUrl(job.currentUrl),
 		status: job.status,
 	});
 
@@ -225,7 +226,7 @@ async function processBatchAsync(jobId: string, urls: string[], config: any) {
 			currentJob.completedUrls = completedCount;
 			currentJob.progress = Math.round((completedCount / urls.length) * 100);
 			currentJob.currentUrl = currentUrl;
-			console.log(`Batch ${jobId} progress: ${currentJob.progress}% (${completedCount}/${urls.length}) - ${currentUrl}`);
+			console.log(`Batch ${jobId} progress: ${currentJob.progress}% (${completedCount}/${urls.length}) - ${redactUrl(currentUrl)}`);
 		}
 	}
 
@@ -274,7 +275,7 @@ async function processBatchAsync(jobId: string, urls: string[], config: any) {
 
 			return url;
 		} catch (error) {
-			console.error(`Error processing URL ${url}:`, error);
+			console.error(`Error processing URL ${redactUrl(url)}:`, error);
 			const errorJob = batchJobs.get(jobId);
 			if (errorJob && errorJob.status === 'running') {
 				errorJob.results.push({
@@ -328,7 +329,7 @@ async function processBatchAsync(jobId: string, urls: string[], config: any) {
 }
 
 async function testSingleUrlForBatch(url: string, config: any): Promise<any[]> {
-	console.log(`Starting batch test for URL: ${url}`);
+	console.log(`Starting batch test for URL: ${redactUrl(url)}`);
 	const methods = config.methods || ['GET'];
 	const categories = config.categories || ['SQL Injection', 'XSS'];
 
@@ -363,25 +364,25 @@ async function testSingleUrlForBatch(url: string, config: any): Promise<any[]> {
 			);
 
 			if (!results || !results.length) {
-				console.log(`No more results for ${url} at page ${page}`);
+				console.log(`No more results for ${redactUrl(url)} at page ${page}`);
 				break;
 			}
 
 			allResults = allResults.concat(results);
-			console.log(`Batch test ${url}: page ${page} completed, ${results.length} results, total: ${allResults.length}`);
+			console.log(`Batch test ${redactUrl(url)}: page ${page} completed, ${results.length} results, total: ${allResults.length}`);
 			page++;
 
 			// Limit results to prevent memory issues
 			if (allResults.length > 1000) {
-				console.log(`Result limit reached for ${url}`);
+				console.log(`Result limit reached for ${redactUrl(url)}`);
 				break;
 			}
 		} catch (error) {
-			console.error(`Error testing ${url} at page ${page}:`, error);
+			console.error(`Error testing ${redactUrl(url)} at page ${page}:`, error);
 			break;
 		}
 	}
 
-	console.log(`Batch test completed for ${url}: ${allResults.length} total results`);
+	console.log(`Batch test completed for ${redactUrl(url)}: ${allResults.length} total results`);
 	return allResults;
 }

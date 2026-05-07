@@ -58,3 +58,62 @@ export function randomUppercase(str: string): string {
 	}
 	return result;
 }
+
+/**
+ * Redacts sensitive headers from a headers object
+ */
+export function redactHeaders(headers?: Record<string, string>): Record<string, string> {
+	if (!headers) return {};
+	const sensitiveHeaders = ['authorization', 'cookie', 'set-cookie'];
+	const redacted: Record<string, string> = {};
+	for (const [key, value] of Object.entries(headers)) {
+		if (sensitiveHeaders.includes(key.toLowerCase())) {
+			redacted[key] = '[REDACTED]';
+		} else {
+			redacted[key] = value;
+		}
+	}
+	return redacted;
+}
+
+/**
+ * Redacts sensitive query parameters from a URL
+ */
+export function redactUrl(urlStr: string): string {
+	if (!urlStr) return urlStr;
+	try {
+		// Handle potential {PAYLOAD} placeholders by temporarily replacing them
+		const hasPayloadPlaceholder = urlStr.includes('{PAYLOAD}');
+		const tempUrlStr = hasPayloadPlaceholder ? urlStr.replace(/\{PAYLOAD\}/g, 'TEMP_PAYLOAD') : urlStr;
+
+		const url = new URL(tempUrlStr);
+		const sensitiveParams = ['token', 'key', 'auth', 'api_key', 'apikey', 'secret'];
+		let changed = false;
+
+		// Redact Basic Auth credentials
+		if (url.password) {
+			url.password = '[REDACTED]';
+			changed = true;
+		}
+
+		const params = new URLSearchParams(url.search);
+		params.forEach((value, key) => {
+			if (sensitiveParams.some((param) => key.toLowerCase().includes(param))) {
+				params.set(key, '[REDACTED]');
+				changed = true;
+			}
+		});
+
+		if (changed) {
+			url.search = params.toString();
+		}
+
+		let result = url.toString();
+		if (hasPayloadPlaceholder) {
+			result = result.replace(/TEMP_PAYLOAD/g, '{PAYLOAD}');
+		}
+		return result;
+	} catch {
+		return urlStr;
+	}
+}
