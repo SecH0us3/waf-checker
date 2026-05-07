@@ -1,6 +1,8 @@
 // WAF Detection and Fingerprinting Module
 // Based on response headers, behavior patterns, and timing analysis
 
+import { redactHeaders } from './utils/payload-utils';
+
 export interface WAFDetectionResult {
 	detected: boolean;
 	wafType: string;
@@ -294,12 +296,14 @@ export class WAFDetector {
 					if (typeof pattern === 'string') {
 						if (headerValue.toLowerCase().includes(pattern.toLowerCase())) {
 							confidence += 30;
-							matchEvidence.push(`Header ${headerName}: ${headerValue}`);
+							const displayValue = redactHeaders({ [headerName]: headerValue })[headerName];
+							matchEvidence.push(`Header ${headerName}: ${displayValue}`);
 						}
 					} else if (pattern instanceof RegExp) {
 						if (pattern.test(headerValue)) {
 							confidence += 30;
-							matchEvidence.push(`Header ${headerName}: ${headerValue} (matches ${pattern})`);
+							const displayValue = redactHeaders({ [headerName]: headerValue })[headerName];
+							matchEvidence.push(`Header ${headerName}: ${displayValue} (matches ${pattern})`);
 						}
 					}
 				}
@@ -328,7 +332,8 @@ export class WAFDetector {
 					for (const pattern of signature.cookiePatterns) {
 						if (pattern.test(cookies)) {
 							confidence += 20;
-							matchEvidence.push(`Cookie pattern match: ${pattern}`);
+							const displayCookie = redactHeaders({ 'set-cookie': cookies })['set-cookie'];
+							matchEvidence.push(`Cookie pattern match: ${pattern} (in ${displayCookie})`);
 						}
 					}
 				}

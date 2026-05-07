@@ -9,7 +9,7 @@ import {
 } from '../advanced-payloads';
 import { HTTPManipulationOptions } from '../http-manipulation';
 import { isValidTargetUrl } from '../utils/security';
-import { substitutePayload, processCustomHeaders, randomUppercase } from '../utils/payload-utils';
+import { substitutePayload, processCustomHeaders, randomUppercase, redactHeaders, redactUrl } from '../utils/payload-utils';
 
 // Вспомогательная функция для отправки запроса с нужным методом и payload
 export async function sendRequest(
@@ -100,7 +100,7 @@ export async function sendRequest(
 
 		const responseTime = Date.now() - startTime;
 		console.log(
-			`Request to ${url} with method ${method} and payload ${payload ?? '(none)'} and headers ${JSON.stringify(headersObj)} returned status ${resp.status} in ${responseTime}ms`,
+			`Request to ${redactUrl(url)} with method ${method} and payload ${payload ?? '(none)'} and headers ${JSON.stringify(redactHeaders(headersObj))} returned status ${resp.status} in ${responseTime}ms`,
 		);
 
 		return {
@@ -110,7 +110,7 @@ export async function sendRequest(
 			response: resp,
 		};
 	} catch (e) {
-		console.error(`Request error for ${url}:`, e);
+		console.error(`Request error for ${redactUrl(url)}:`, e);
 		return { status: 'ERR', is_redirect: false, responseTime: 0 };
 	}
 }
