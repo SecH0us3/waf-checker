@@ -147,8 +147,6 @@ export async function handleApiCheckFiltered(
 	}
 
 	// Case sensitive test: Modify URL hostname if flag is set
-	let originalUrl = url; // Keep original for potential error logging or if modification fails
-	let originalBaseUrl = baseUrl; // Keep original baseUrl
 
 	if (caseSensitiveTest) {
 		try {
