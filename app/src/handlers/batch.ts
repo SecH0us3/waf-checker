@@ -3,6 +3,9 @@ import { isValidTargetUrl } from '../utils/security';
 import { redactUrl } from '../utils/payload-utils';
 
 // Global batch state storage (in production, use a database or KV store)
+const MAX_BATCH_JOBS = 50;
+const MAX_JOB_AGE_MS = 60 * 60 * 1000; // 1 hour
+
 const batchJobs = new Map<
 	string,
 	{
@@ -20,13 +23,29 @@ const batchJobs = new Map<
 
 // Cleanup old batch jobs periodically to prevent memory leaks
 function cleanupOldBatchJobs() {
-	const cutoffTime = Date.now() - 24 * 60 * 60 * 1000; // 24 hours ago
+	const now = Date.now();
+	const cutoffTime = now - MAX_JOB_AGE_MS;
 
+	// 1. Remove expired jobs (that are not running)
 	for (const [jobId, job] of batchJobs.entries()) {
 		const jobStartTime = new Date(job.startTime).getTime();
 		if (jobStartTime < cutoffTime && job.status !== 'running') {
 			batchJobs.delete(jobId);
-			console.log(`Cleaned up old batch job: ${jobId}`);
+			console.log(`Cleaned up expired batch job: ${jobId}`);
+		}
+	}
+
+	// 2. If still at or over limit, remove oldest non-running jobs to make room
+	if (batchJobs.size >= MAX_BATCH_JOBS) {
+		const nonRunningJobs = Array.from(batchJobs.entries())
+			.filter(([_, job]) => job.status !== 'running')
+			.sort((a, b) => new Date(a[1].startTime).getTime() - new Date(b[1].startTime).getTime());
+
+		// We want to bring the size below MAX_BATCH_JOBS
+		while (batchJobs.size >= MAX_BATCH_JOBS && nonRunningJobs.length > 0) {
+			const [jobId] = nonRunningJobs.shift()!;
+			batchJobs.delete(jobId);
+			console.log(`Cleaned up oldest batch job due to capacity: ${jobId}`);
 		}
 	}
 }
@@ -48,6 +67,11 @@ function createJobNotFoundResponse(jobId?: string): Response {
 export async function handleBatchStart(request: Request): Promise<Response> {
 	// Run cleanup on each batch start request
 	cleanupOldBatchJobs();
+
+	// Check if we are still at capacity after cleanup
+	if (batchJobs.size >= MAX_BATCH_JOBS) {
+		return createErrorResponse('Server at capacity for batch jobs. Please try again later.', 429);
+	}
 
 	try {
 		const body: any = await request.json();
