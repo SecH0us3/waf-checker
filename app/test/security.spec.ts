@@ -119,5 +119,9 @@ describe('isValidTargetUrl', () => {
             expect(isValidTargetUrl('not-a-url')).toBe(false);
             expect(isValidTargetUrl('')).toBe(false);
         });
+
+        it('should handle URLs that throw during parsing', () => {
+            expect(isValidTargetUrl('http://[::1')).toBe(false);
+        });
     });
 });
