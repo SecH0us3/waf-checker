@@ -438,21 +438,34 @@ export class HTTPManipulator {
 		requests: ManipulatedRequest[],
 		followRedirects: boolean = false,
 		concurrency: number = 5,
+		delay: number = 0,
 	): Promise<any[]> {
-		const results = [];
+		const results = new Array(requests.length);
+		let currentIndex = 0;
 
-		// Execute requests in batches to avoid overwhelming the target
-		for (let i = 0; i < requests.length; i += concurrency) {
-			const batch = requests.slice(i, i + concurrency);
-			const batchResults = await Promise.all(batch.map((request) => this.executeManipulatedRequest(request, followRedirects)));
-			results.push(...batchResults);
+		// Worker function to process requests from the queue
+		const worker = async () => {
+			while (currentIndex < requests.length) {
+				const index = currentIndex++;
+				if (index >= requests.length) break;
 
-			// Small delay between batches to be respectful
-			if (i + concurrency < requests.length) {
-				await new Promise((resolve) => setTimeout(resolve, 100));
+				results[index] = await this.executeManipulatedRequest(requests[index], followRedirects);
+
+				// Optional delay between requests to be respectful
+				if (delay > 0 && currentIndex < requests.length) {
+					await new Promise((resolve) => setTimeout(resolve, delay));
+				}
 			}
+		};
+
+		// Start workers
+		const workers = [];
+		const numWorkers = Math.min(concurrency, requests.length);
+		for (let i = 0; i < numWorkers; i++) {
+			workers.push(worker());
 		}
 
+		await Promise.all(workers);
 		return results;
 	}
 
