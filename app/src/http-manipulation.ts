@@ -286,15 +286,18 @@ export class HTTPManipulator {
 			}
 
 			let currentUrl = request.url;
+			let currentMethod = request.method;
+			let currentHeaders = new Headers(request.headers);
+			let currentBody: any = request.body;
 			let redirectCount = 0;
 			const maxRedirects = 5;
 			let response: Response;
 
 			while (true) {
 				response = await fetch(currentUrl, {
-					method: redirectCount === 0 ? request.method : 'GET',
-					headers: new Headers(redirectCount === 0 ? request.headers : {}),
-					body: redirectCount === 0 ? request.body : undefined,
+					method: currentMethod,
+					headers: currentHeaders,
+					body: currentBody,
 					redirect: 'manual',
 				});
 
@@ -306,7 +309,7 @@ export class HTTPManipulator {
 					if (!isValidTargetUrl(nextUrl)) {
 						return {
 							status: 'BLOCKED',
-							method: request.method,
+							method: currentMethod,
 							responseTime: Date.now() - startTime,
 							headers: {},
 							technique: request.technique,
@@ -314,6 +317,18 @@ export class HTTPManipulator {
 							error: 'SSRF protection: Blocked redirect to internal IP'
 						};
 					}
+
+					const status = response.status;
+					if (status === 301 || status === 302 || status === 303) {
+						currentMethod = 'GET';
+						currentBody = undefined;
+						const newHeaders = new Headers(currentHeaders);
+						newHeaders.delete('Content-Type');
+						newHeaders.delete('Content-Length');
+						currentHeaders = newHeaders;
+					}
+					// For 307 and 308, we keep the original method and body
+
 					currentUrl = nextUrl;
 					redirectCount++;
 					continue;
@@ -329,7 +344,7 @@ export class HTTPManipulator {
 
 			return {
 				status: response.status,
-				method: request.method,
+				method: currentMethod,
 				responseTime,
 				headers: responseHeaders,
 				technique: request.technique,

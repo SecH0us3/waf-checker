@@ -18,7 +18,14 @@ export default {
 		if (urlObj.pathname === '/api/check') {
 			const url = urlObj.searchParams.get('url');
 			if (!url) return new Response('Missing url param', { status: 400 });
-			if (!isValidTargetUrl(url)) return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
+
+			// Validate template URL by substituting placeholder with a safe value first.
+			// This prevents valid templates like http://{PAYLOAD}.example.com from being rejected.
+			const testUrl = url.replace(/\{PAYLOAD\}/g, 'test-payload');
+			if (!isValidTargetUrl(testUrl)) {
+				return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
+			}
+
 			if (url.includes('secmy')) {
 				return new Response(JSON.stringify([]), { headers: { 'content-type': 'application/json; charset=UTF-8' } });
 			}

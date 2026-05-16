@@ -61,32 +61,39 @@ export async function sendRequest(
 		try {
 			// Manual redirect handling to prevent SSRF bypass
 			let currentUrl = finalUrl;
+			let currentMethod = method;
+			let currentHeaders = headers;
+			let currentBody: any = undefined;
+
+			if (method === 'POST' || method === 'PUT') {
+				if (payloadTemplate) {
+					let jsonObj;
+					try {
+						jsonObj = JSON.parse(payloadTemplate);
+						jsonObj = substitutePayload(jsonObj, finalPayload ?? '');
+					} catch {
+						jsonObj = { test: finalPayload ?? '' };
+					}
+					currentBody = JSON.stringify(jsonObj);
+					const newHeaders = new Headers(headersObj || {});
+					newHeaders.set('Content-Type', 'application/json');
+					currentHeaders = newHeaders;
+				} else {
+					currentBody = new URLSearchParams({ test: finalPayload ?? '' });
+				}
+			}
+
 			let redirectCount = 0;
 			const maxRedirects = 5;
 
 			while (true) {
 				const fetchOptions: RequestInit = {
-					method: redirectCount === 0 ? method : 'GET', // Following a redirect usually changes method to GET
+					method: currentMethod,
 					redirect: 'manual',
-					headers: redirectCount === 0 ? headers : undefined,
+					headers: currentHeaders,
+					body: currentBody,
 					signal: controller.signal,
 				};
-
-				if (redirectCount === 0 && (method === 'POST' || method === 'PUT')) {
-					if (payloadTemplate) {
-						let jsonObj;
-						try {
-							jsonObj = JSON.parse(payloadTemplate);
-							jsonObj = substitutePayload(jsonObj, finalPayload ?? '');
-						} catch {
-							jsonObj = { test: finalPayload ?? '' };
-						}
-						fetchOptions.body = JSON.stringify(jsonObj);
-						fetchOptions.headers = new Headers({ ...(headersObj || {}), 'Content-Type': 'application/json' });
-					} else {
-						fetchOptions.body = new URLSearchParams({ test: finalPayload ?? '' });
-					}
-				}
 
 				resp = await fetch(currentUrl, fetchOptions);
 
@@ -99,6 +106,21 @@ export async function sendRequest(
 						console.error(`Blocked SSRF redirect attempt to: ${redactUrl(nextUrl)}`);
 						return { status: 'BLOCKED', is_redirect: true, responseTime: Date.now() - startTime };
 					}
+
+					const status = resp.status;
+					// Standard HTTP behavior for redirects
+					if (status === 301 || status === 302 || status === 303) {
+						currentMethod = 'GET';
+						currentBody = undefined;
+						if (currentHeaders) {
+							const newHeaders = new Headers(currentHeaders);
+							newHeaders.delete('Content-Type');
+							newHeaders.delete('Content-Length');
+							currentHeaders = newHeaders;
+						}
+					}
+					// For 307 and 308, we keep the original method and body
+
 					currentUrl = nextUrl;
 					redirectCount++;
 					continue;
