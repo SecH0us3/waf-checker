@@ -26,7 +26,6 @@ export async function sendRequest(
 	try {
 		let resp: Response;
 		const headers = headersObj ? new Headers(headersObj) : undefined;
-		const redirectOption = followRedirect ? 'follow' : 'manual';
 		const startTime = Date.now();
 
 		// Apply WAF-specific payload modifications if WAF is detected
@@ -50,22 +49,30 @@ export async function sendRequest(
 			}
 		}
 
+		// Validate finalUrl after substitution to prevent SSRF
+		if (!isValidTargetUrl(finalUrl)) {
+			console.error(`Blocked SSRF attempt to: ${redactUrl(finalUrl)}`);
+			return { status: 'BLOCKED', is_redirect: false, responseTime: 0 };
+		}
+
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), 10000);
 
 		try {
-			switch (method) {
-				case 'GET':
-				case 'DELETE':
-					resp = await fetch(finalUrl, {
-						method,
-						redirect: redirectOption,
-						headers,
-						signal: controller.signal,
-					});
-					break;
-				case 'POST':
-				case 'PUT':
+			// Manual redirect handling to prevent SSRF bypass
+			let currentUrl = finalUrl;
+			let redirectCount = 0;
+			const maxRedirects = 5;
+
+			while (true) {
+				const fetchOptions: RequestInit = {
+					method: redirectCount === 0 ? method : 'GET', // Following a redirect usually changes method to GET
+					redirect: 'manual',
+					headers: redirectCount === 0 ? headers : undefined,
+					signal: controller.signal,
+				};
+
+				if (redirectCount === 0 && (method === 'POST' || method === 'PUT')) {
 					if (payloadTemplate) {
 						let jsonObj;
 						try {
@@ -74,25 +81,29 @@ export async function sendRequest(
 						} catch {
 							jsonObj = { test: finalPayload ?? '' };
 						}
-						resp = await fetch(finalUrl, {
-							method,
-							redirect: redirectOption,
-							body: JSON.stringify(jsonObj),
-							headers: new Headers({ ...(headersObj || {}), 'Content-Type': 'application/json' }),
-							signal: controller.signal,
-						});
+						fetchOptions.body = JSON.stringify(jsonObj);
+						fetchOptions.headers = new Headers({ ...(headersObj || {}), 'Content-Type': 'application/json' });
 					} else {
-						resp = await fetch(finalUrl, {
-							method,
-							redirect: redirectOption,
-							body: new URLSearchParams({ test: finalPayload ?? '' }),
-							headers,
-							signal: controller.signal,
-						});
+						fetchOptions.body = new URLSearchParams({ test: finalPayload ?? '' });
 					}
-					break;
-				default:
-					return null;
+				}
+
+				resp = await fetch(currentUrl, fetchOptions);
+
+				if (followRedirect && resp.status >= 300 && resp.status < 400 && redirectCount < maxRedirects) {
+					const location = resp.headers.get('Location');
+					if (!location) break;
+
+					const nextUrl = new URL(location, currentUrl).toString();
+					if (!isValidTargetUrl(nextUrl)) {
+						console.error(`Blocked SSRF redirect attempt to: ${redactUrl(nextUrl)}`);
+						return { status: 'BLOCKED', is_redirect: true, responseTime: Date.now() - startTime };
+					}
+					currentUrl = nextUrl;
+					redirectCount++;
+					continue;
+				}
+				break;
 			}
 		} finally {
 			clearTimeout(timeoutId);

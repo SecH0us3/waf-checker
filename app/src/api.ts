@@ -22,21 +22,7 @@ export default {
 			if (url.includes('secmy')) {
 				return new Response(JSON.stringify([]), { headers: { 'content-type': 'application/json; charset=UTF-8' } });
 			}
-			// Validate URL protocol to prevent SSRF
-			try {
-				const parsedUrl = new URL(url.replace(/\{PAYLOAD\}/g, 'test'));
-				if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-					return new Response(JSON.stringify({ error: 'Only http and https protocols are allowed' }), {
-						status: 400,
-						headers: { 'content-type': 'application/json; charset=UTF-8' },
-					});
-				}
-			} catch {
-				return new Response(JSON.stringify({ error: 'Invalid URL format' }), {
-					status: 400,
-					headers: { 'content-type': 'application/json; charset=UTF-8' },
-				});
-			}
+
 			const page = parseInt(urlObj.searchParams.get('page') || '0', 10);
 			const methods = (urlObj.searchParams.get('methods') || 'GET')
 				.split(',')

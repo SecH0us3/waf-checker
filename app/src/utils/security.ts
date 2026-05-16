@@ -52,6 +52,14 @@ export function isValidTargetUrl(urlString: string): boolean {
 			}
 			if (ipv6Normalized.toLowerCase().startsWith('::c0a8')) return false; // 192.168.0.0/16
 			if (ipv6Normalized.toLowerCase().startsWith('::a9fe')) return false; // 169.254.0.0/16
+
+			// Additional ranges for IPv4-compatible
+			if (ipv6Normalized.toLowerCase().startsWith('::6440')) return false; // 100.64.0.0/10
+			if (ipv6Normalized.toLowerCase().startsWith('::c00000')) return false; // 192.0.0.0/24
+			if (ipv6Normalized.toLowerCase().startsWith('::c00002')) return false; // 192.0.2.0/24
+			if (ipv6Normalized.toLowerCase().startsWith('::c612') || ipv6Normalized.toLowerCase().startsWith('::c613')) return false; // 198.18.0.0/15
+			if (ipv6Normalized.toLowerCase().startsWith('::c63364')) return false; // 198.51.100.0/24
+			if (ipv6Normalized.toLowerCase().startsWith('::cb0071')) return false; // 203.0.113.0/24
 		}
 
 		// Check for IPv4-mapped IPv6 (::ffff:0:0/96)
@@ -71,6 +79,14 @@ export function isValidTargetUrl(urlString: string): boolean {
 				}
 				if (ipv6Normalized.toLowerCase().startsWith('::ffff:c0a8')) return false; // 192.168.0.0/16
 				if (ipv6Normalized.toLowerCase().startsWith('::ffff:a9fe')) return false; // 169.254.0.0/16
+
+				// Additional ranges for IPv4-mapped
+				if (ipv6Normalized.toLowerCase().startsWith('::ffff:6440')) return false; // 100.64.0.0/10
+				if (ipv6Normalized.toLowerCase().startsWith('::ffff:c00000')) return false; // 192.0.0.0/24
+				if (ipv6Normalized.toLowerCase().startsWith('::ffff:c00002')) return false; // 192.0.2.0/24
+				if (ipv6Normalized.toLowerCase().startsWith('::ffff:c612') || ipv6Normalized.toLowerCase().startsWith('::ffff:c613')) return false; // 198.18.0.0/15
+				if (ipv6Normalized.toLowerCase().startsWith('::ffff:c63364')) return false; // 198.51.100.0/24
+				if (ipv6Normalized.toLowerCase().startsWith('::ffff:cb0071')) return false; // 203.0.113.0/24
 			}
 		}
 
@@ -82,14 +98,30 @@ export function isValidTargetUrl(urlString: string): boolean {
 
 			// 10.0.0.0/8
 			if (octets[0] === 10) return false;
-			// 172.16.0.0/12
-			if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return false;
-			// 192.168.0.0/16
-			if (octets[0] === 192 && octets[1] === 168) return false;
-			// 169.254.0.0/16 (link-local)
-			if (octets[0] === 169 && octets[1] === 254) return false;
+			// 100.64.0.0/10 (CGNAT)
+			if (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) return false;
 			// 127.0.0.0/8 (loopback)
 			if (octets[0] === 127) return false;
+			// 169.254.0.0/16 (link-local)
+			if (octets[0] === 169 && octets[1] === 254) return false;
+			// 172.16.0.0/12
+			if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return false;
+			// 192.0.0.0/24 (IETF Protocol Assignments)
+			if (octets[0] === 192 && octets[1] === 0 && octets[2] === 0) return false;
+			// 192.0.2.0/24 (TEST-NET-1)
+			if (octets[0] === 192 && octets[1] === 0 && octets[2] === 2) return false;
+			// 192.168.0.0/16
+			if (octets[0] === 192 && octets[1] === 168) return false;
+			// 198.18.0.0/15 (Benchmarking)
+			if (octets[0] === 198 && octets[1] >= 18 && octets[1] <= 19) return false;
+			// 198.51.100.0/24 (TEST-NET-2)
+			if (octets[0] === 198 && octets[1] === 51 && octets[2] === 100) return false;
+			// 203.0.113.0/24 (TEST-NET-3)
+			if (octets[0] === 203 && octets[1] === 0 && octets[2] === 113) return false;
+			// 224.0.0.0/4 (Multicast)
+			if (octets[0] >= 224 && octets[0] <= 239) return false;
+			// 240.0.0.0/4 (Reserved)
+			if (octets[0] >= 240) return false;
 			// 0.0.0.0/8 ("this" network)
 			if (octets[0] === 0) return false;
 		}

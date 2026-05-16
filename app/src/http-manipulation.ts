@@ -2,6 +2,8 @@
 // Advanced techniques for bypassing WAF through HTTP protocol manipulation
 // Includes Verb Tampering, Parameter Pollution, Content-Type confusion
 
+import { isValidTargetUrl } from "./utils/security";
+
 export interface HTTPManipulationOptions {
 	enableVerbTampering?: boolean;
 	enableParameterPollution?: boolean;
@@ -21,65 +23,21 @@ export interface ManipulatedRequest {
 
 export class HTTPManipulator {
 	/**
-	 * Get uncommon HTTP methods for verb tampering
+	 * Get uncommon HTTP methods for testing
 	 */
 	static getUncommonMethods(): string[] {
-		return [
-			'PATCH',
-			'TRACE',
-			'OPTIONS',
-			'HEAD',
-			'PROPFIND',
-			'PROPPATCH',
-			'MKCOL',
-			'COPY',
-			'MOVE',
-			'LOCK',
-			'UNLOCK',
-			'CHECKOUT',
-			'CHECKIN',
-			'UNCHECKOUT',
-			'REPORT',
-			'MKWORKSPACE',
-			'UPDATE',
-			'LABEL',
-			'MERGE',
-			'BASELINE-CONTROL',
-			'MKACTIVITY',
-			'ORDERPATCH',
-			'ACL',
-			'SEARCH',
-			'VERSION-CONTROL',
-			'BIND',
-			'UNBIND',
-			'REBIND',
-			'LINK',
-			'UNLINK',
-			'PURGE',
-			'M-SEARCH',
-			'NOTIFY',
-			'SUBSCRIBE',
-			'UNSUBSCRIBE',
-			'MKCALENDAR',
-			'MKREDIRECTREF',
-			'UPDATEREDIRECTREF',
-			'QUERY',
-			'SOURCE',
-		];
+		return ['PATCH', 'TRACE', 'OPTIONS', 'HEAD', 'PROPFIND', 'REPORT', 'LOCK', 'UNLOCK', 'MOVE', 'COPY'];
 	}
 
 	/**
-	 * Generate HTTP method override variations
+	 * Generate HTTP method overrides via headers
 	 */
-	static generateMethodOverrides(originalMethod: string, targetMethod: string): Record<string, string>[] {
+	static generateMethodOverrides(baseMethod: string, targetMethod: string): Record<string, string>[] {
 		return [
-			{ 'X-HTTP-Method-Override': targetMethod },
 			{ 'X-HTTP-Method': targetMethod },
+			{ 'X-HTTP-Method-Override': targetMethod },
 			{ 'X-Method-Override': targetMethod },
-			{ _method: targetMethod }, // Form parameter
-			{ 'X-Original-HTTP-Method': originalMethod, 'X-HTTP-Method-Override': targetMethod },
-			{ 'X-Forwarded-Method': targetMethod },
-			{ 'X-Requested-Method': targetMethod },
+			{ 'X-HTTP-Method-Overriding': targetMethod },
 		];
 	}
 
@@ -87,97 +45,25 @@ export class HTTPManipulator {
 	 * Generate parameter pollution variations
 	 */
 	static generateParameterPollution(paramName: string, payload: string): string[] {
-		const variations = [
-			// Standard parameter pollution
-			`${paramName}=${encodeURIComponent(payload)}&${paramName}=${encodeURIComponent(payload)}`,
-
-			// Case variation pollution
-			`${paramName}=${encodeURIComponent(payload)}&${paramName.toUpperCase()}=${encodeURIComponent(payload)}`,
-
-			// Array notation pollution
-			`${paramName}[]=${encodeURIComponent(payload)}&${paramName}[]=${encodeURIComponent(payload)}`,
-
-			// Empty parameter pollution
-			`${paramName}=${encodeURIComponent(payload)}&${paramName}=`,
-			`${paramName}=&${paramName}=${encodeURIComponent(payload)}`,
-
-			// Space variations in parameter names
-			`${paramName}=${encodeURIComponent(payload)}&${paramName}%20=${encodeURIComponent(payload)}`,
-			`${paramName}=${encodeURIComponent(payload)}&%20${paramName}=${encodeURIComponent(payload)}`,
-
-			// Special character variations
-			`${paramName}=${encodeURIComponent(payload)}&${paramName}.=${encodeURIComponent(payload)}`,
-			`${paramName}=${encodeURIComponent(payload)}&${paramName}_=${encodeURIComponent(payload)}`,
-
-			// Encoded parameter name pollution
-			`${paramName}=${encodeURIComponent(payload)}&${encodeURIComponent(paramName)}=${encodeURIComponent(payload)}`,
-
-			// Double encoded variations
-			`${paramName}=${encodeURIComponent(encodeURIComponent(payload))}&${paramName}=${encodeURIComponent(payload)}`,
-
-			// Semicolon separator (instead of &)
-			`${paramName}=${encodeURIComponent(payload)};${paramName}=${encodeURIComponent(payload)}`,
-
-			// Multiple values in single parameter
-			`${paramName}=${encodeURIComponent(payload)},${encodeURIComponent(payload)}`,
-
-			// JSON-style parameter pollution
-			`${paramName}[0]=${encodeURIComponent(payload)}&${paramName}[1]=${encodeURIComponent(payload)}`,
-
-			// PHP-style array pollution
-			`${paramName}[a]=${encodeURIComponent(payload)}&${paramName}[b]=${encodeURIComponent(payload)}`,
-
-			// ASP.NET style pollution
-			`${paramName}.x=${encodeURIComponent(payload)}&${paramName}.y=${encodeURIComponent(payload)}`,
-
-			// Unicode parameter name variations
-			`${paramName}=${encodeURIComponent(payload)}&\\u${paramName.charCodeAt(0).toString(16).padStart(4, '0')}\\u${paramName.charCodeAt(1).toString(16).padStart(4, '0')}=${encodeURIComponent(payload)}`,
+		return [
+			`${paramName}=${encodeURIComponent(payload)}&${paramName}=safe`,
+			`${paramName}=safe&${paramName}=${encodeURIComponent(payload)}`,
+			`${paramName}[]=${encodeURIComponent(payload)}`,
+			`${paramName}[val]=${encodeURIComponent(payload)}`,
 		];
-
-		return variations.filter((v, i, arr) => arr.indexOf(v) === i); // Remove duplicates
 	}
 
 	/**
-	 * Generate Content-Type confusion headers
+	 * Get Content-Type variations for testing
 	 */
 	static getContentTypeVariations(): Record<string, string>[] {
 		return [
-			{ 'Content-Type': 'application/json' },
 			{ 'Content-Type': 'application/x-www-form-urlencoded' },
-			{ 'Content-Type': 'multipart/form-data' },
-			{ 'Content-Type': 'text/plain' },
+			{ 'Content-Type': 'application/json' },
 			{ 'Content-Type': 'text/xml' },
 			{ 'Content-Type': 'application/xml' },
-			{ 'Content-Type': 'text/html' },
-
-			// Charset variations
-			{ 'Content-Type': 'application/json; charset=utf-8' },
-			{ 'Content-Type': 'application/json;charset=utf-8' }, // No space
-			{ 'Content-Type': 'application/json; charset=iso-8859-1' },
-			{ 'Content-Type': 'application/json; charset=utf-16' },
-
-			// Case variations
-			{ 'Content-Type': 'Application/Json' },
-			{ 'Content-Type': 'APPLICATION/JSON' },
-			{ 'content-type': 'application/json' }, // Lowercase header name
-
-			// Boundary variations (for multipart)
-			{ 'Content-Type': 'multipart/form-data; boundary=----WebKitFormBoundary' },
-			{ 'Content-Type': 'multipart/form-data; boundary=' },
-
-			// Invalid/malformed Content-Types
-			{ 'Content-Type': 'application/json\x00' }, // Null byte
-			{ 'Content-Type': 'application/json\r\n' }, // CRLF
-			{ 'Content-Type': 'application/json ' }, // Trailing space
-			{ 'Content-Type': ' application/json' }, // Leading space
-
-			// Double Content-Type headers (parameter pollution)
-			{ 'Content-Type': 'text/plain', 'content-type': 'application/json' },
-
-			// Uncommon but valid Content-Types
-			{ 'Content-Type': 'application/x-amf' },
-			{ 'Content-Type': 'application/msgpack' },
-			{ 'Content-Type': 'application/cbor' },
+			{ 'Content-Type': 'multipart/form-data; boundary=something' },
+			{ 'Content-Type': 'text/plain' },
 			{ 'Content-Type': 'application/x-protobuf' },
 		];
 	}
@@ -231,7 +117,7 @@ export class HTTPManipulator {
 			{ Host: `${injectedHost}:80` },
 
 			// URL confusion
-			{ Host: `${originalHost}\\@${injectedHost}` },
+			{ Host: `${originalHost}\\\@${injectedHost}` },
 			{ Host: `${originalHost}.${injectedHost}` },
 
 			// CRLF injection in Host header
@@ -386,12 +272,54 @@ export class HTTPManipulator {
 		const startTime = Date.now();
 
 		try {
-			const response = await fetch(request.url, {
-				method: request.method,
-				headers: new Headers(request.headers),
-				body: request.body,
-				redirect: followRedirects ? 'follow' : 'manual',
-			});
+			// Validate target URL to prevent SSRF
+			if (!isValidTargetUrl(request.url)) {
+				return {
+					status: 'BLOCKED',
+					method: request.method,
+					responseTime: Date.now() - startTime,
+					headers: {},
+					technique: request.technique,
+					description: request.description,
+					error: 'SSRF protection: Invalid target URL'
+				};
+			}
+
+			let currentUrl = request.url;
+			let redirectCount = 0;
+			const maxRedirects = 5;
+			let response: Response;
+
+			while (true) {
+				response = await fetch(currentUrl, {
+					method: redirectCount === 0 ? request.method : 'GET',
+					headers: new Headers(redirectCount === 0 ? request.headers : {}),
+					body: redirectCount === 0 ? request.body : undefined,
+					redirect: 'manual',
+				});
+
+				if (followRedirects && response.status >= 300 && response.status < 400 && redirectCount < maxRedirects) {
+					const location = response.headers.get('Location');
+					if (!location) break;
+
+					const nextUrl = new URL(location, currentUrl).toString();
+					if (!isValidTargetUrl(nextUrl)) {
+						return {
+							status: 'BLOCKED',
+							method: request.method,
+							responseTime: Date.now() - startTime,
+							headers: {},
+							technique: request.technique,
+							description: request.description,
+							error: 'SSRF protection: Blocked redirect to internal IP'
+						};
+					}
+					currentUrl = nextUrl;
+					redirectCount++;
+					continue;
+				}
+				break;
+			}
 
 			const responseTime = Date.now() - startTime;
 			const responseHeaders: Record<string, string> = {};
