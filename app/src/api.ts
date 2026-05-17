@@ -18,25 +18,18 @@ export default {
 		if (urlObj.pathname === '/api/check') {
 			const url = urlObj.searchParams.get('url');
 			if (!url) return new Response('Missing url param', { status: 400 });
-			if (!isValidTargetUrl(url)) return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
+
+			// Validate template URL by substituting placeholder with a safe value first.
+			// This prevents valid templates like http://{PAYLOAD}.example.com from being rejected.
+			const testUrl = url.replace(/\{PAYLOAD\}/g, 'test-payload');
+			if (!isValidTargetUrl(testUrl)) {
+				return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
+			}
+
 			if (url.includes('secmy')) {
 				return new Response(JSON.stringify([]), { headers: { 'content-type': 'application/json; charset=UTF-8' } });
 			}
-			// Validate URL protocol to prevent SSRF
-			try {
-				const parsedUrl = new URL(url.replace(/\{PAYLOAD\}/g, 'test'));
-				if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-					return new Response(JSON.stringify({ error: 'Only http and https protocols are allowed' }), {
-						status: 400,
-						headers: { 'content-type': 'application/json; charset=UTF-8' },
-					});
-				}
-			} catch {
-				return new Response(JSON.stringify({ error: 'Invalid URL format' }), {
-					status: 400,
-					headers: { 'content-type': 'application/json; charset=UTF-8' },
-				});
-			}
+
 			const page = parseInt(urlObj.searchParams.get('page') || '0', 10);
 			const methods = (urlObj.searchParams.get('methods') || 'GET')
 				.split(',')
