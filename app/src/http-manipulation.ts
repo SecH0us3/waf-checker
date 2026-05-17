@@ -117,7 +117,7 @@ export class HTTPManipulator {
 			{ Host: `${injectedHost}:80` },
 
 			// URL confusion
-			{ Host: `${originalHost}\\\@${injectedHost}` },
+{ Host: `${originalHost}\\@${injectedHost}` },
 			{ Host: `${originalHost}.${injectedHost}` },
 
 			// CRLF injection in Host header
