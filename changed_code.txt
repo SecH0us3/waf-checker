@@ -1,0 +1,76 @@
+   380		static async batchExecuteRequests(
+   381			requests: ManipulatedRequest[],
+   382			followRedirects: boolean = false,
+   383			concurrency: number = 5,
+   384			delay: number = 0,
+   385		): Promise<any[]> {
+   386			const results = new Array(requests.length);
+   387			let currentIndex = 0;
+   388			let sharedBackoff = 0;
+   389			const maxRetries = 2;
+   390
+   391			// Worker function to process requests from the queue
+   392			const worker = async () => {
+   393				while (currentIndex < requests.length) {
+   394					// Apply shared backoff if any worker hit a rate limit
+   395					if (sharedBackoff > 0) {
+   396						await new Promise((resolve) => setTimeout(resolve, sharedBackoff + Math.random() * 100));
+   397					}
+   398
+   399					const index = currentIndex++;
+   400					if (index >= requests.length) break;
+   401
+   402					let retryCount = 0;
+   403					let success = false;
+   404
+   405					while (retryCount <= maxRetries && !success) {
+   406						const result = await this.executeManipulatedRequest(requests[index], followRedirects);
+   407						results[index] = result;
+   408
+   409						// Handle rate limiting (429 Too Many Requests)
+   410						if (result.status === 429) {
+   411							retryCount++;
+   412							if (retryCount <= maxRetries) {
+   413								// Determine backoff delay: use Retry-After header or exponential backoff
+   414								let backoffDelay = Math.pow(2, retryCount) * 1000 + Math.random() * 500;
+   415								const retryAfter = result.headers["retry-after"] || result.headers["Retry-After"];
+   416								if (retryAfter) {
+   417									const seconds = parseInt(retryAfter);
+   418									if (!isNaN(seconds)) {
+   419										backoffDelay = seconds * 1000;
+   420									}
+   421								}
+   422
+   423								// Increase shared backoff to slow down all workers
+   424								sharedBackoff = Math.min(sharedBackoff + 1000, 5000);
+   425								await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+   426							}
+   427						} else {
+   428							success = true;
+   429							// Gradually reduce shared backoff on successful requests
+   430							if (sharedBackoff > 0) {
+   431								sharedBackoff = Math.max(0, sharedBackoff - 200);
+   432							}
+   433						}
+   434					}
+   435
+   436					// Optional fixed delay between requests to be respectful
+   437					if (delay > 0 && currentIndex < requests.length) {
+   438						await new Promise((resolve) => setTimeout(resolve, delay));
+   439					}
+   440				}
+   441			};
+   442
+   443			// Start workers
+   444			const workers = [];
+   445			const numWorkers = Math.min(concurrency, requests.length);
+   446			for (let i = 0; i < numWorkers; i++) {
+   447				workers.push(worker());
+   448			}
+   449
+   450			await Promise.all(workers);
+   451			return results;
+   452		}
+   453
+   454		/**
+   455		 * Analyze results for bypass opportunities
