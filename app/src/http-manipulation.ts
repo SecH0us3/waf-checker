@@ -412,11 +412,15 @@ export class HTTPManipulator {
 						if (retryCount <= maxRetries) {
 							// Determine backoff delay: use Retry-After header or exponential backoff
 							let backoffDelay = Math.pow(2, retryCount) * 1000 + Math.random() * 500;
-							const retryAfter = result.headers["retry-after"] || result.headers["Retry-After"];
+							const retryAfter = result.headers["retry-after"];
 							if (retryAfter) {
-								const seconds = parseInt(retryAfter);
-								if (!isNaN(seconds)) {
-									backoffDelay = seconds * 1000;
+								if (/^\d+$/.test(retryAfter)) {
+									backoffDelay = parseInt(retryAfter) * 1000;
+								} else {
+									const date = Date.parse(retryAfter);
+									if (!isNaN(date)) {
+										backoffDelay = Math.max(0, date - Date.now());
+									}
 								}
 							}
 
