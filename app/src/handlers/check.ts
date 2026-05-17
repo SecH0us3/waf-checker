@@ -75,7 +75,7 @@ export async function sendRequest(
 						jsonObj = { test: finalPayload ?? '' };
 					}
 					currentBody = JSON.stringify(jsonObj);
-					const newHeaders = new Headers(headersObj || {});
+const newHeaders = new Headers(currentHeaders || {});
 					newHeaders.set('Content-Type', 'application/json');
 					currentHeaders = newHeaders;
 				} else {
