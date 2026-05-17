@@ -48,7 +48,7 @@ export function isValidTargetUrl(urlString: string): boolean {
 			if (hex.startsWith('7f')) return false; // 127.0.0.0/8
 
 			// 10.0.0.0/8 hex is 0a00:0000 to 0aff:ffff. Normalized can be a00:0 to a00:ffff
-			if (hex.startsWith('0a') || hex.startsWith('a00:') || hex === 'a00') return false;
+if (hex.match(/^a[0-9a-f]{2}(:|$)/)) return false;
 
 			if (hex.startsWith('ac')) {
 				// 172.16.0.0/12 -> ac10:0000 to ac1f:ffff
