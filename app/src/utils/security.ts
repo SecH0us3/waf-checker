@@ -78,7 +78,7 @@ if (hex.match(/^a[0-9a-f]{2}(:|$)/)) return false;
 				const hex = ipv6Normalized.toLowerCase().replace(/^::ffff:/, '');
 				// Handle hex-encoded IPv4-mapped IPv6
 				if (hex.startsWith('7f')) return false; // 127.0.0.0/8
-				if (hex.startsWith('0a') || hex.startsWith('a00:') || hex === 'a00') return false; // 10.0.0.0/8
+if (hex.match(/^a[0-9a-f]{2}(:|$)/)) return false; // 10.0.0.0/8
 				if (hex.startsWith('ac')) {
 					// 172.16.0.0/12
 					const match = hex.match(/^(ac[12][0-9a-f]|ac3[01])/);
