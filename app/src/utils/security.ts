@@ -52,7 +52,7 @@ if (hex.match(/^a[0-9a-f]{2}(:|$)/)) return false;
 
 			if (hex.startsWith('ac')) {
 				// 172.16.0.0/12 -> ac10:0000 to ac1f:ffff
-				const match = hex.match(/^(ac[12][0-9a-f]|ac3[01])/);
+const match = hex.match(/^ac1[0-9a-f]/);
 				if (match) return false;
 			}
 			if (hex.startsWith('c0a8')) return false; // 192.168.0.0/16
