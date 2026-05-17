@@ -375,7 +375,7 @@ export class HTTPManipulator {
 	}
 
 	/**
-	 * Batch execute multiple manipulated requests
+	 * Batch execute multiple manipulated requests with adaptive concurrency and exponential backoff
 	 */
 	static async batchExecuteRequests(
 		requests: ManipulatedRequest[],
@@ -385,16 +385,59 @@ export class HTTPManipulator {
 	): Promise<any[]> {
 		const results = new Array(requests.length);
 		let currentIndex = 0;
+		let sharedBackoff = 0;
+		const maxRetries = 2;
 
 		// Worker function to process requests from the queue
 		const worker = async () => {
 			while (currentIndex < requests.length) {
+				// Apply shared backoff if any worker hit a rate limit
+				if (sharedBackoff > 0) {
+					await new Promise((resolve) => setTimeout(resolve, sharedBackoff + Math.random() * 100));
+				}
+
 				const index = currentIndex++;
 				if (index >= requests.length) break;
 
-				results[index] = await this.executeManipulatedRequest(requests[index], followRedirects);
+				let retryCount = 0;
+				let success = false;
 
-				// Optional delay between requests to be respectful
+				while (retryCount <= maxRetries && !success) {
+					const result = await this.executeManipulatedRequest(requests[index], followRedirects);
+					results[index] = result;
+
+					// Handle rate limiting (429 Too Many Requests)
+					if (result.status === 429) {
+						retryCount++;
+						if (retryCount <= maxRetries) {
+							// Determine backoff delay: use Retry-After header or exponential backoff
+							let backoffDelay = Math.pow(2, retryCount) * 1000 + Math.random() * 500;
+							const retryAfter = result.headers["retry-after"];
+							if (retryAfter) {
+								if (/^\d+$/.test(retryAfter)) {
+									backoffDelay = parseInt(retryAfter) * 1000;
+								} else {
+									const date = Date.parse(retryAfter);
+									if (!isNaN(date)) {
+										backoffDelay = Math.max(0, date - Date.now());
+									}
+								}
+							}
+
+							// Increase shared backoff to slow down all workers
+							sharedBackoff = Math.min(sharedBackoff + 1000, 5000);
+							await new Promise((resolve) => setTimeout(resolve, backoffDelay));
+						}
+					} else {
+						success = true;
+						// Gradually reduce shared backoff on successful requests
+						if (sharedBackoff > 0) {
+							sharedBackoff = Math.max(0, sharedBackoff - 200);
+						}
+					}
+				}
+
+				// Optional fixed delay between requests to be respectful
 				if (delay > 0 && currentIndex < requests.length) {
 					await new Promise((resolve) => setTimeout(resolve, delay));
 				}
