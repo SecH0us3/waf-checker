@@ -61,7 +61,7 @@ Since Cloudflare Worker's `fetch` does not support standard proxy dispatchers, t
 1. **Create Directory Structure**: Run bash commands to create `packages/core/src`, `packages/worker/src`, `packages/cli/src`, `packages/core/test`, and `packages/worker/test` directories.
 2. **Configure Root Workspace**: Modify root `package.json` to include `"workspaces": ["packages/*"]` and base scripts.
 3. **Move Core Files**: Use bash `mv` to move `waf-detection.ts`, `payloads.ts`, `advanced-payloads.ts`, `encoding.ts`, `http-manipulation.ts`, and `utils/` from `app/src/` to `packages/core/src/`.
-4. **Move Worker Files**: Use bash `mv` to move `api.ts`, `handlers/`, and `static/` from `app/src/` to `packages/worker/src/`, and `wrangler.toml` from `./wrangler.toml` to `packages/worker/`. Move `app/vitest.config.mts` to `packages/worker/vitest.config.mts`.
+4. Move Worker Files: Use bash mv to move api.ts, handlers/, and static/ from app/src/ to packages/worker/src/, and wrangler.toml from ./wrangler.toml to packages/worker/. Move app/vitest.config.mts to packages/worker/vitest.config.mts. Update wrangler.toml paths (main, assets.directory) to be relative to the new root.
 5. **Verify File Movements**: Run `ls -R packages/` via bash to confirm the new layout matches the monorepo architecture.
 6. **Create Core Package Config**: Create `packages/core/package.json` with appropriate build scripts and TypeScript config.
 7. **Create Worker Package Config**: Create `packages/worker/package.json` by copying and modifying the original `app/package.json`, adding a dependency on `@waf-checker/core`.
