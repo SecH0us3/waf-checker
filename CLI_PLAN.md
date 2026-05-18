@@ -61,7 +61,7 @@ Since Cloudflare Worker's `fetch` does not support standard proxy dispatchers, t
 1. **Create Directory Structure**: Run bash commands to create `packages/core/src`, `packages/worker/src`, `packages/cli/src`, `packages/core/test`, and `packages/worker/test` directories.
 2. **Configure Root Workspace**: Modify root `package.json` to include `"workspaces": ["packages/*"]` and base scripts.
 3. **Move Core Files**: Use bash `mv` to move `waf-detection.ts`, `payloads.ts`, `advanced-payloads.ts`, `encoding.ts`, `http-manipulation.ts`, and `utils/` from `app/src/` to `packages/core/src/`.
-4. Move Worker Files: Use bash mv to move api.ts, handlers/, and static/ from app/src/ to packages/worker/src/, and wrangler.toml from ./wrangler.toml to packages/worker/. Move app/vitest.config.mts to packages/worker/vitest.config.mts. Update wrangler.toml paths (main, assets.directory) to be relative to the new root.
+4. **Move Worker Files**: Use bash `mv` to move `api.ts`, `handlers/`, and `static/` from `app/src/` to `packages/worker/src/`, and `wrangler.toml` from `./wrangler.toml` to `packages/worker/`. Move `app/vitest.config.mts` to `packages/worker/vitest.config.mts`.
 5. **Verify File Movements**: Run `ls -R packages/` via bash to confirm the new layout matches the monorepo architecture.
 6. **Create Core Package Config**: Create `packages/core/package.json` with appropriate build scripts and TypeScript config.
 7. **Create Worker Package Config**: Create `packages/worker/package.json` by copying and modifying the original `app/package.json`, adding a dependency on `@waf-checker/core`.
@@ -72,11 +72,11 @@ Since Cloudflare Worker's `fetch` does not support standard proxy dispatchers, t
 12. **Verify Refactoring**: Use `read_file` or `grep` to confirm `customFetch` injection logic was applied correctly in core files.
 13. **Update Worker Imports**: Edit `packages/worker/src/api.ts` and files in `packages/worker/src/handlers/` to use `@waf-checker/core` imports.
 14. **Verify Imports**: Run a TypeScript compiler check (`npx tsc --noEmit`) to confirm imports resolve correctly.
-15. Install CLI Dependencies: Run npm install commander undici --workspace=@waf-checker/cli to add required CLI libraries.
+15. **Install CLI Dependencies**: Run `npm install commander undici --workspace=packages/cli` to add required CLI libraries.
 16. **Verify CLI Dependencies**: Read `packages/cli/package.json` to confirm `commander` and `undici` were added.
 17. **Implement CLI Entrypoint**: Create and write `packages/cli/src/index.ts` using file editing tools to scaffold the CLI options and handle `--proxy` logic.
 18. **Verify CLI Entrypoint**: Run a dry run of the CLI script or use `read_file` to verify `packages/cli/src/index.ts`.
-19. Move Test Files: Use bash mv to move pure logic tests (payload-utils.spec.ts, business-logic.spec.ts, security.spec.ts, memory-leak-fix-verification.spec.ts) to packages/core/test/ and integration tests (batch-handler.spec.ts, index.spec.ts, waf-detect-handler.spec.ts) to packages/worker/test/. Move env.d.ts and tsconfig.json to packages/worker/.
+19. **Move Test Files**: Use bash `mv` to move pure logic tests (`payload-utils.spec.ts`, `business-logic.spec.ts`, `security.spec.ts`, `memory-leak-fix-verification.spec.ts`) to `packages/core/test/` and integration tests (`batch-handler.spec.ts`, `index.spec.ts`, `waf-detect-handler.spec.ts`, `env.d.ts`, `tsconfig.json`) to `packages/worker/test/`.
 20. **Update Vitest Config**: Edit `packages/worker/vitest.config.mts` to reflect the new paths. Create a standard node testing `packages/core/vitest.config.mts` for the core module.
 21. **Verify Test Movements**: Confirm the new file paths and config edits using `ls` and `read_file`.
 22. **Run Tests**: Execute tests using `npm test -- --run` to verify the shared logic and ensure the Cloudflare worker tests continue to pass without timing out in the bash session.
