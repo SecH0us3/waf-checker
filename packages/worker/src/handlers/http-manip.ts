@@ -1,5 +1,5 @@
-import { HTTPManipulator, HTTPManipulationOptions } from '../http-manipulation';
-import { isValidTargetUrl } from '../utils/security';
+import { HTTPManipulator, HTTPManipulationOptions } from '@waf-checker/core';
+import { isValidTargetUrl } from '@waf-checker/core';
 
 export async function handleHTTPManipulation(request: Request): Promise<Response> {
 	const urlObj = new URL(request.url);

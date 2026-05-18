@@ -1,15 +1,15 @@
-import { PAYLOADS, ENHANCED_PAYLOADS, PayloadCategory } from '../payloads';
-import { WAFDetector, WAFDetectionResult } from '../waf-detection';
-import { PayloadEncoder } from '../encoding';
+import { PAYLOADS, ENHANCED_PAYLOADS, PayloadCategory } from '@waf-checker/core';
+import { WAFDetector, WAFDetectionResult } from '@waf-checker/core';
+import { PayloadEncoder } from '@waf-checker/core';
 import {
 	generateWAFSpecificPayloads,
 	generateHTTPManipulationPayloads,
 	ADVANCED_PAYLOADS,
 	generateEncodedPayloads,
-} from '../advanced-payloads';
-import { HTTPManipulationOptions } from '../http-manipulation';
-import { isValidTargetUrl } from '../utils/security';
-import { substitutePayload, processCustomHeaders, randomUppercase, redactHeaders, redactUrl } from '../utils/payload-utils';
+} from '@waf-checker/core';
+import { HTTPManipulationOptions } from '@waf-checker/core';
+import { isValidTargetUrl } from '@waf-checker/core';
+import { substitutePayload, processCustomHeaders, randomUppercase, redactHeaders, redactUrl } from '@waf-checker/core';
 
 // Вспомогательная функция для отправки запроса с нужным методом и payload
 export async function sendRequest(

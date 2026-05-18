@@ -1,5 +1,5 @@
 {
-	"name": "proud-haze-2d74",
+	"name": "@waf-checker/worker",
 	"version": "0.0.0",
 	"private": true,
 	"scripts": {
@@ -9,6 +9,9 @@
 		"test": "vitest",
 		"cf-typegen": "wrangler types"
 	},
+  "dependencies": {
+    "@waf-checker/core": "*"
+  },
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.8.19",
 		"@vitest/coverage-v8": "^3.0.7",

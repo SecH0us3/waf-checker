@@ -1,5 +1,5 @@
-import { WAFDetector } from '../waf-detection';
-import { isValidTargetUrl } from '../utils/security';
+import { WAFDetector } from '@waf-checker/core';
+import { isValidTargetUrl } from '@waf-checker/core';
 
 export async function handleWAFDetection(request: Request): Promise<Response> {
 	const urlObj = new URL(request.url);

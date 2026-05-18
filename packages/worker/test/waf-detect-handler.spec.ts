@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { handleWAFDetection } from '../src/handlers/waf-detect';
-import { WAFDetector } from '../src/waf-detection';
+import { WAFDetector } from '@waf-checker/core';
 
 describe('handleWAFDetection handler', () => {
     beforeEach(() => {

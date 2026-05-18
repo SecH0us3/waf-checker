@@ -1,5 +1,13 @@
 {
+  "name": "waf-checker-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "npm run test --workspaces"
+  },
   "devDependencies": {
-    "wrangler": "^4.65.0"
+    "wrangler": "^3.0.0"
   }
 }

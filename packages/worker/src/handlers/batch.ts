@@ -1,6 +1,6 @@
 import { handleApiCheckFiltered } from './check';
-import { isValidTargetUrl } from '../utils/security';
-import { redactUrl } from '../utils/payload-utils';
+import { isValidTargetUrl } from '@waf-checker/core';
+import { redactUrl } from '@waf-checker/core';
 
 // Global batch state storage (in production, use a database or KV store)
 const MAX_BATCH_JOBS = 50;

@@ -2,7 +2,7 @@ import { handleApiCheckFiltered } from './handlers/check';
 import { handleWAFDetection } from './handlers/waf-detect';
 import { handleHTTPManipulation } from './handlers/http-manip';
 import { handleBatchStart, handleBatchStatus, handleBatchStop } from './handlers/batch';
-import { isValidTargetUrl } from './utils/security';
+import { isValidTargetUrl } from '@waf-checker/core';
 
 export default {
 	async fetch(request: Request, env: { ASSETS: { fetch: typeof fetch } }): Promise<Response> {

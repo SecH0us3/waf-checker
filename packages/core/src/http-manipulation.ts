@@ -258,6 +258,7 @@ export class HTTPManipulator {
 	 * Execute manipulated request
 	 */
 	static async executeManipulatedRequest(
+		fetchFn: typeof fetch,
 		request: ManipulatedRequest,
 		followRedirects: boolean = false,
 	): Promise<{
@@ -294,7 +295,7 @@ export class HTTPManipulator {
 			let response: Response;
 
 			while (true) {
-				response = await fetch(currentUrl, {
+				response = await fetchFn(currentUrl, {
 					method: currentMethod,
 					headers: currentHeaders,
 					body: currentBody,
@@ -378,6 +379,7 @@ export class HTTPManipulator {
 	 * Batch execute multiple manipulated requests with adaptive concurrency and exponential backoff
 	 */
 	static async batchExecuteRequests(
+		fetchFn: typeof fetch,
 		requests: ManipulatedRequest[],
 		followRedirects: boolean = false,
 		concurrency: number = 5,
@@ -403,7 +405,7 @@ export class HTTPManipulator {
 				let success = false;
 
 				while (retryCount <= maxRetries && !success) {
-					const result = await this.executeManipulatedRequest(requests[index], followRedirects);
+					const result = await this.executeManipulatedRequest(fetchFn, requests[index], followRedirects);
 					results[index] = result;
 
 					// Handle rate limiting (429 Too Many Requests)

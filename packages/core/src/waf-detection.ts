@@ -373,9 +373,10 @@ export class WAFDetector {
 	/**
 	 * Perform active WAF detection by sending probe requests
 	 */
-	static async activeDetection(url: string): Promise<WAFDetectionResult> {
+	static async activeDetection(url: string, options?: { fetch?: typeof fetch }): Promise<WAFDetectionResult> {
 		const probePayloads = ["' OR '1'='1", '<script>alert(1)</script>', '../../../etc/passwd', 'UNION SELECT 1,2,3--'];
 
+		const fetchFn = options?.fetch ?? globalThis.fetch;
 		const probePromises = probePayloads.map(async (payload) => {
 			try {
 				const separator = url.includes('?') ? '&' : '?';
@@ -385,7 +386,7 @@ export class WAFDetector {
 
 				let response;
 				try {
-					response = await fetch(`${url}${separator}test=${encodeURIComponent(payload)}`, {
+					response = await fetchFn(`${url}${separator}test=${encodeURIComponent(payload)}`, {
 						method: 'GET',
 						redirect: 'manual',
 						signal: controller.signal,
@@ -495,12 +496,13 @@ export class WAFDetector {
 	/**
 	 * Detect WAF bypass opportunities
 	 */
-	static async detectBypassOpportunities(url: string): Promise<{
+	static async detectBypassOpportunities(url: string, options?: { fetch?: typeof fetch }): Promise<{
 		httpMethodsBypass: boolean;
 		headerBypass: boolean;
 		encodingBypass: boolean;
 		parameterPollution: boolean;
 	}> {
+		const fetchFn = options?.fetch ?? globalThis.fetch;
 		const opportunities = {
 			httpMethodsBypass: false,
 			headerBypass: false,
@@ -514,23 +516,23 @@ export class WAFDetector {
 
 			const [methodResponse, headerResponse, encodingResponse, pollutionResponse] = await Promise.all([
 				// Test HTTP method bypass
-				fetch(url, { method: 'TRACE', redirect: 'manual' }),
+				fetchFn(url, { method: 'TRACE', redirect: 'manual' }),
 
 				// Test header bypass with X-Original-URL
-				fetch(url, {
+				fetchFn(url, {
 					method: 'GET',
 					headers: { 'X-Original-URL': '/admin' },
 					redirect: 'manual',
 				}),
 
 				// Test encoding bypass
-				fetch(`${url}${separator}test=${encodedPayload}`, {
+				fetchFn(`${url}${separator}test=${encodedPayload}`, {
 					method: 'GET',
 					redirect: 'manual',
 				}),
 
 				// Test parameter pollution
-				fetch(`${url}${separator}test=safe&test=malicious`, {
+				fetchFn(`${url}${separator}test=safe&test=malicious`, {
 					method: 'GET',
 					redirect: 'manual',
 				}),

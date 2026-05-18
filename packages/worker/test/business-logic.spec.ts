@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleApiCheckFiltered } from '../src/handlers/check';
-import { WAFDetector } from '../src/waf-detection';
-import { PayloadEncoder } from '../src/encoding';
-import { generateWAFSpecificPayloads } from '../src/advanced-payloads';
-import { HTTPManipulator } from '../src/http-manipulation';
+import { WAFDetector } from '@waf-checker/core';
+import { PayloadEncoder } from '@waf-checker/core';
+import { generateWAFSpecificPayloads } from '@waf-checker/core';
+import { HTTPManipulator } from '@waf-checker/core';
 
 describe('Business Logic Tests for Visual Controls', () => {
     describe('Control: "Run WAF Detection" Button', () => {
