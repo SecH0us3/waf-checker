@@ -76,7 +76,7 @@ Since Cloudflare Worker's `fetch` does not support standard proxy dispatchers, t
 16. **Verify CLI Dependencies**: Read `packages/cli/package.json` to confirm `commander` and `undici` were added.
 17. **Implement CLI Entrypoint**: Create and write `packages/cli/src/index.ts` using file editing tools to scaffold the CLI options and handle `--proxy` logic.
 18. **Verify CLI Entrypoint**: Run a dry run of the CLI script or use `read_file` to verify `packages/cli/src/index.ts`.
-19. **Move Test Files**: Use bash `mv` to move pure logic tests (`payload-utils.spec.ts`, `business-logic.spec.ts`, `security.spec.ts`, `memory-leak-fix-verification.spec.ts`) to `packages/core/test/` and integration tests (`batch-handler.spec.ts`, `index.spec.ts`, `waf-detect-handler.spec.ts`, `env.d.ts`, `tsconfig.json`) to `packages/worker/test/`.
+19. Move Test Files: Use bash mv to move pure logic tests (payload-utils.spec.ts, business-logic.spec.ts, security.spec.ts, memory-leak-fix-verification.spec.ts) to packages/core/test/ and integration tests (batch-handler.spec.ts, index.spec.ts, waf-detect-handler.spec.ts) to packages/worker/test/. Move env.d.ts and tsconfig.json to packages/worker/.
 20. **Update Vitest Config**: Edit `packages/worker/vitest.config.mts` to reflect the new paths. Create a standard node testing `packages/core/vitest.config.mts` for the core module.
 21. **Verify Test Movements**: Confirm the new file paths and config edits using `ls` and `read_file`.
 22. **Run Tests**: Execute tests using `npm test -- --run` to verify the shared logic and ensure the Cloudflare worker tests continue to pass without timing out in the bash session.
