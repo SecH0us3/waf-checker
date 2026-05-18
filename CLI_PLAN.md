@@ -72,7 +72,7 @@ Since Cloudflare Worker's `fetch` does not support standard proxy dispatchers, t
 12. **Verify Refactoring**: Use `read_file` or `grep` to confirm `customFetch` injection logic was applied correctly in core files.
 13. **Update Worker Imports**: Edit `packages/worker/src/api.ts` and files in `packages/worker/src/handlers/` to use `@waf-checker/core` imports.
 14. **Verify Imports**: Run a TypeScript compiler check (`npx tsc --noEmit`) to confirm imports resolve correctly.
-15. **Install CLI Dependencies**: Run `npm install commander undici --workspace=packages/cli` to add required CLI libraries.
+15. Install CLI Dependencies: Run npm install commander undici --workspace=@waf-checker/cli to add required CLI libraries.
 16. **Verify CLI Dependencies**: Read `packages/cli/package.json` to confirm `commander` and `undici` were added.
 17. **Implement CLI Entrypoint**: Create and write `packages/cli/src/index.ts` using file editing tools to scaffold the CLI options and handle `--proxy` logic.
 18. **Verify CLI Entrypoint**: Run a dry run of the CLI script or use `read_file` to verify `packages/cli/src/index.ts`.
