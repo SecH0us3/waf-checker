@@ -97,6 +97,18 @@ describe('payload-utils', () => {
 			expect(substitutePayload(true, 'test')).toBe(true);
 			expect(substitutePayload(null, 'test')).toBe(null);
 		});
+
+		it('should prevent prototype pollution', () => {
+			const obj = JSON.parse('{"__proto__": {"polluted": "yes"}, "constructor": {"prototype": {"polluted": "yes"}}, "normal": "{PAYLOAD}"}');
+			const result = substitutePayload(obj, 'test');
+
+			expect(result.normal).toBe('test');
+			expect(Object.prototype.hasOwnProperty.call(result, '__proto__')).toBe(false);
+			expect(Object.prototype.hasOwnProperty.call(result, 'constructor')).toBe(false);
+			expect(Object.prototype.hasOwnProperty.call(result, 'prototype')).toBe(false);
+			// @ts-ignore
+			expect({}.polluted).toBeUndefined();
+		});
 	});
 
 	describe('randomUppercase', () => {
