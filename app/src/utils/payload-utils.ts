@@ -9,6 +9,7 @@ export function substitutePayload(obj: any, payload: string): any {
 	} else if (obj && typeof obj === 'object') {
 		const result: any = {};
 		for (const [key, value] of Object.entries(obj)) {
+			if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
 			result[key] = substitutePayload(value, payload);
 		}
 		return result;
