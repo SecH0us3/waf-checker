@@ -2524,13 +2524,14 @@ Starting batch audit for ${validUrls.length} targets (concurrency = ${concurrenc
 `);
     const batchResults = [];
     let completed = 0;
+    const totalValidUrls = validUrls.length;
     const pool = async () => {
       while (validUrls.length > 0) {
         const url = validUrls.shift();
         if (!url) break;
         try {
           if (!options.json) {
-            console.log(`[${++completed}/${urls.length}] Scanning ${redactUrl(url)}...`);
+            console.log(`[${++completed}/${totalValidUrls}] Scanning ${redactUrl(url)}...`);
           }
           const res = await handleApiCheckFiltered(
             url,
