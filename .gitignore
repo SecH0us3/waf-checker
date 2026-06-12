@@ -21,3 +21,4 @@ yarn-error.log*
 # Wrangler / Cloudflare Workers
 .wrangler/
 .dev.vars
+worker-configuration.d.ts
