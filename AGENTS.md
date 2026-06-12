@@ -3,37 +3,39 @@
 Welcome to the WAF Checker project. This document provides essential information for AI agents working on this codebase.
 
 ## Project Overview
-WAF Checker is a security testing tool designed as a Cloudflare Worker using TypeScript. It allows users to test Web Application Firewalls (WAF) by sending various attack payloads and analyzing the responses.
+WAF Checker is a modular security testing tool designed as an NPM Workspaces monorepo. It features a shared core audit library, a Cloudflare Worker deployment exposing a Web UI, and a standalone Node.js CLI tool.
 
 ## Tech Stack
-- **Runtime**: Cloudflare Workers
+- **Workspaces**: NPM Workspaces (`packages/core`, `packages/worker`, `packages/cli`)
+- **Runtime**: Cloudflare Workers (Worker) & Node.js (CLI)
 - **Language**: TypeScript
-- **Frontend**: HTML/JS/CSS (Bootstrap 5) served as static assets.
-- **Development**: Wrangler CLI
+- **Frontend**: HTML/JS/CSS (Bootstrap 5) served as static assets from `packages/worker/src/static/`
+- **Development**: Wrangler CLI (Worker) & esbuild (CLI compiler)
 - **Testing**: Vitest with `@cloudflare/vitest-pool-workers`
 
 ## Project Structure
-- `/app/src/api.ts`: Entry point and request router.
-- `/app/src/handlers/`: Contains logic for specific API endpoints (check, WAF detect, batch, etc.).
-- `/app/src/payloads.ts`: Base attack payloads and categories.
-- `/app/src/advanced-payloads.ts`: Advanced evasion techniques and WAF-specific payloads.
-- `/app/src/waf-detection.ts`: Fingerprinting logic for various WAF vendors.
-- `/app/src/encoding.ts`: Utilities for payload obfuscation.
-- `/app/src/utils/security.ts`: Security utilities, primarily SSRF protection.
-- `/app/src/static/`: Frontend assets (served via `env.ASSETS`).
-- `/app/test/`: Unit and integration tests.
+- `/packages/core/src/check.ts`: Main check execution logic.
+- `/packages/core/src/payloads.ts`: Base attack payloads and categories.
+- `/packages/core/src/advanced-payloads.ts`: Advanced evasion techniques and WAF-specific payloads.
+- `/packages/core/src/waf-detection.ts`: Fingerprinting logic for various WAF vendors.
+- `/packages/core/src/encoding.ts`: Utilities for payload obfuscation.
+- `/packages/core/src/utils/security.ts`: Security utilities, primarily SSRF protection.
+- `/packages/worker/src/api.ts`: Cloudflare Worker API router.
+- `/packages/worker/src/static/`: Frontend assets (served via `env.ASSETS`).
+- `/packages/cli/src/index.ts`: Standalone CLI executable.
 
 ## Development & Commands
-- **Run Locally**: From the root directory, run `npx wrangler dev`. This uses the root `wrangler.toml` which binds static assets.
-- **Run Tests**: Navigate to the `app` directory and run `npm test`.
+- **Run Worker Locally**: From the root directory, run `npm run dev:worker`.
+- **Build Core/CLI Packages**: Run `npm run build` from the root directory.
+- **Run Tests**: From the root directory, run `npm test`.
 
 ## Coding Guidelines
 
 ### 🛡️ Security First (SSRF Protection)
-Any endpoint that accepts a target URL **MUST** validate it using `isValidTargetUrl` from `app/src/utils/security.ts`. This is critical to prevent the worker from being used as an SSRF proxy to internal services.
+Any endpoint or command that accepts a target URL **MUST** validate it using `isValidTargetUrl` from `@waf-checker/core` (defined in `packages/core/src/utils/security.ts`). This is critical to prevent SSRF proxying to internal services.
 
 ```typescript
-import { isValidTargetUrl } from './utils/security';
+import { isValidTargetUrl } from '@waf-checker/core';
 
 if (url && !isValidTargetUrl(url)) {
     return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
@@ -41,18 +43,18 @@ if (url && !isValidTargetUrl(url)) {
 ```
 
 ### 💉 Extending Payloads
-- **Base Payloads**: Add to `app/src/payloads.ts`. Use `ParamCheck` for query/body params, `FileCheck` for path-based attacks, and `Header` for header-based attacks.
-- **Evasion**: Add complex or WAF-specific bypasses to `app/src/advanced-payloads.ts`.
+- **Base Payloads**: Add to `packages/core/src/payloads.ts`. Use `ParamCheck` for query/body params, `FileCheck` for path-based attacks, and `Header` for header-based attacks.
+- **Evasion**: Add complex or WAF-specific bypasses to `packages/core/src/advanced-payloads.ts`.
 
 ### 🔍 WAF Detection
 When adding support for a new WAF:
-1. Update `app/src/waf-detection.ts` with relevant header signatures or body patterns.
-2. Update the `WAF_BYPASS_PAYLOADS` in `app/src/advanced-payloads.ts` if specific bypasses are known.
+1. Update `packages/core/src/waf-detection.ts` with relevant header signatures or body patterns.
+2. Update the `WAF_BYPASS_PAYLOADS` in `packages/core/src/advanced-payloads.ts` if specific bypasses are known.
 
 ### 🌐 Frontend
-The frontend is a single-page application. Update `app/src/static/main.js` for UI logic and `app/src/static/index.html` for layout changes.
+The frontend is a single-page application. Update `packages/worker/src/static/main.js` for UI logic and `packages/worker/src/static/index.html` for layout changes.
 
 ## Programmatic Checks
 Before submitting any changes to API handlers:
-1. **Check SSRF Validation**: Ensure `grep "isValidTargetUrl" app/src/handlers/*.ts` shows that all new URL-accepting handlers use the validation utility.
-2. **Verify Tests**: All tests in `app/test/` must pass.
+1. **Check SSRF Validation**: Ensure all URL-accepting entry points use `isValidTargetUrl`.
+2. **Verify Tests**: All tests in the workspaces must pass via `npm test`.

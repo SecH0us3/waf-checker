@@ -1,0 +1,3 @@
+<!-- Use this file to provide workspace-specific custom instructions to Copilot. For more details, visit https://code.visualstudio.com/docs/copilot/copilot-customization#_use-a-githubcopilotinstructionsmd-file -->
+
+This project is a Cloudflare Worker-like Python web service. It serves an index.html at '/', allows user input of a URL, and on submit, triggers a GET to '/api/check'. The backend tests the provided URL with grouped attack payloads (SQLi, XSS, Path Traversal, Command Injection, SSRF, NoSQLi, LFI) using GET/POST/PUT/DELETE, and returns an HTML summary with color-coded status codes: 2xx/5xx red, 403 green, other 4xx orange. Payloads are grouped by category for easy extension.

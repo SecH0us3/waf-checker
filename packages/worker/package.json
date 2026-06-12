@@ -1,0 +1,23 @@
+{
+	"name": "@waf-checker/worker",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"deploy": "wrangler deploy",
+		"dev": "wrangler dev",
+		"start": "wrangler dev",
+		"test": "vitest",
+		"cf-typegen": "wrangler types",
+		"build": "echo 'No build step for worker'"
+	},
+	"dependencies": {
+		"@waf-checker/core": "*"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "^0.8.19",
+		"@vitest/coverage-v8": "~3.0.7",
+		"typescript": "^5.5.2",
+		"vitest": "~3.0.7",
+		"wrangler": "^4.17.0"
+	}
+}

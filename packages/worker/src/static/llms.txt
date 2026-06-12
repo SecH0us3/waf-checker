@@ -1,0 +1,28 @@
+# WAF Checker
+
+> A powerful, modular security testing tool designed to test how well your Web Application Firewall (WAF) blocks common attacks. Built as a Cloudflare Worker (with a built-in interactive Web UI) and a standalone Node.js CLI tool.
+
+## Repository
+
+- [GitHub](https://github.com/SecH0us3/waf-checher): Source code and issue tracking.
+
+## Documentation
+
+- [README](README.md): Comprehensive guide on features, usage, and project structure.
+
+## Core Packages & Modules
+
+- [**`packages/core/src/check.ts`**](packages/core/src/check.ts): Main audit check logic handling request routing and payload sending.
+- [**`packages/core/src/payloads.ts`**](packages/core/src/payloads.ts): Base attack categories and payloads.
+- [**`packages/core/src/advanced-payloads.ts`**](packages/core/src/advanced-payloads.ts): Advanced WAF bypass payloads including double encoding and polyglots.
+- [**`packages/core/src/waf-detection.ts`**](packages/core/src/waf-detection.ts): Logic for detecting WAFs based on response headers and behavior.
+- [**`packages/core/src/http-manipulation.ts`**](packages/core/src/http-manipulation.ts): HTTP protocol manipulation tests.
+- [**`packages/core/src/encoding.ts`**](packages/core/src/encoding.ts): Payload encoding and obfuscation utilities.
+- [**`packages/core/src/utils/security.ts`**](packages/core/src/utils/security.ts): SSRF target verification checks.
+- [**`packages/cli/src/index.ts`**](packages/cli/src/index.ts): Standalone command-line interface execution entrypoint.
+- [**`packages/worker/src/api.ts`**](packages/worker/src/api.ts): Cloudflare Worker API router and request handler.
+
+## Frontend (Worker Static Assets)
+
+- [**`packages/worker/src/static/main.js`**](packages/worker/src/static/main.js): Frontend UI logic and stats display.
+- [**`packages/worker/src/static/style.css`**](packages/worker/src/static/style.css): Custom web interface styling.
