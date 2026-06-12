@@ -1,0 +1,7 @@
+name = "waf-checker"
+main = "packages/worker/src/api.ts"
+compatibility_date = "2024-03-29"
+
+[assets]
+directory = "packages/worker/src/static"
+binding = "ASSETS"
