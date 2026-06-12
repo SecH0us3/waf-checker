@@ -5,3 +5,6 @@ compatibility_date = "2024-03-29"
 [assets]
 directory = "packages/worker/src/static"
 binding = "ASSETS"
+
+[build]
+command = "npm run build"
