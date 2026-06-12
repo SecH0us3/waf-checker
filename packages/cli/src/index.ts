@@ -292,6 +292,7 @@ batchCmd
 
 			const batchResults: any[] = [];
 			let completed = 0;
+			const totalValidUrls = validUrls.length;
 
 			// Simple concurrent pool processor
 			const pool = async () => {
@@ -301,7 +302,7 @@ batchCmd
 
 					try {
 						if (!options.json) {
-							console.log(`[${++completed}/${urls.length}] Scanning ${redactUrl(url)}...`);
+							console.log(`[${++completed}/${totalValidUrls}] Scanning ${redactUrl(url)}...`);
 						}
 
 						const res = await handleApiCheckFiltered(
