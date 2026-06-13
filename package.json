@@ -12,7 +12,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "build": "npm run build --workspaces",
+    "build": "npm run build --workspace=@waf-checker/core && npm run build --workspace=@waf-checker/cli",
     "dev:worker": "npm run dev --workspace=packages/worker"
   }
 }
