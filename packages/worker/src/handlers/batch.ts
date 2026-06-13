@@ -1,0 +1,411 @@
+import { handleApiCheckFiltered } from './check';
+import { isValidTargetUrl, redactUrl } from '@waf-checker/core';
+
+// Global batch state storage (in production, use a database or KV store)
+const MAX_BATCH_JOBS = 50;
+const MAX_JOB_AGE_MS = 60 * 60 * 1000; // 1 hour
+
+const batchJobs = new Map<
+	string,
+	{
+		id: string;
+		status: 'running' | 'completed' | 'stopped' | 'error';
+		progress: number;
+		currentUrl: string;
+		startTime: string;
+		results: any[];
+		error?: string;
+		totalUrls: number;
+		completedUrls: number;
+	}
+>();
+
+// Cleanup old batch jobs periodically to prevent memory leaks
+function cleanupOldBatchJobs() {
+	const now = Date.now();
+	const cutoffTime = now - MAX_JOB_AGE_MS;
+
+	// 1. Remove expired jobs (that are not running)
+	for (const [jobId, job] of batchJobs.entries()) {
+		const jobStartTime = new Date(job.startTime).getTime();
+		if (jobStartTime < cutoffTime && job.status !== 'running') {
+			batchJobs.delete(jobId);
+			console.log(`Cleaned up expired batch job: ${jobId}`);
+		}
+	}
+
+	// 2. If still at or over limit, remove oldest non-running jobs to make room
+	if (batchJobs.size >= MAX_BATCH_JOBS) {
+		const nonRunningJobs = Array.from(batchJobs.entries())
+			.filter(([_, job]) => job.status !== 'running')
+			.sort((a, b) => new Date(a[1].startTime).getTime() - new Date(b[1].startTime).getTime());
+
+		// We want to bring the size below MAX_BATCH_JOBS
+		while (batchJobs.size >= MAX_BATCH_JOBS && nonRunningJobs.length > 0) {
+			const [jobId] = nonRunningJobs.shift()!;
+			batchJobs.delete(jobId);
+			console.log(`Cleaned up oldest batch job due to capacity: ${jobId}`);
+		}
+	}
+}
+
+function createErrorResponse(error: string, status: number = 400): Response {
+	return new Response(JSON.stringify({ error }), {
+		status,
+		headers: { 'content-type': 'application/json' },
+	});
+}
+
+function createJobNotFoundResponse(jobId?: string): Response {
+	if (jobId) {
+		console.log(`Job ${jobId} not found. Available jobs:`, Array.from(batchJobs.keys()));
+	}
+	return createErrorResponse('Job not found', 404);
+}
+
+export async function handleBatchStart(request: Request): Promise<Response> {
+	// Run cleanup on each batch start request
+	cleanupOldBatchJobs();
+
+	// Check if we are still at capacity after cleanup
+	if (batchJobs.size >= MAX_BATCH_JOBS) {
+		return createErrorResponse('Server at capacity for batch jobs. Please try again later.', 429);
+	}
+
+	try {
+		const body: any = await request.json();
+		const { urls, config } = body;
+
+		// Remove delay from config as it's handled client-side
+		if (config && config.delayBetweenRequests) {
+			delete config.delayBetweenRequests;
+		}
+
+		if (!urls || !Array.isArray(urls) || urls.length === 0) {
+			return createErrorResponse('No URLs provided');
+		}
+
+		if (urls.length > 100) {
+			return createErrorResponse('Maximum 100 URLs allowed');
+		}
+
+		// Validate URLs
+		const validUrls: string[] = [];
+		const invalidUrls: string[] = [];
+
+		for (const url of urls) {
+			try {
+				if (!isValidTargetUrl(url)) {
+					invalidUrls.push(`${url} (invalid URL format or restricted IP)`);
+				} else {
+					validUrls.push(url);
+				}
+			} catch {
+				invalidUrls.push(`${url} (invalid URL format)`);
+			}
+		}
+
+		if (invalidUrls.length > 0) {
+			return new Response(
+				JSON.stringify({
+					error: `Invalid URLs found: ${invalidUrls.join(', ')}`,
+					validUrls: validUrls.length,
+					invalidUrls: invalidUrls.length,
+				}),
+				{
+					status: 400,
+					headers: { 'content-type': 'application/json' },
+				},
+			);
+		}
+
+		if (validUrls.length === 0) {
+			return createErrorResponse('No valid URLs provided');
+		}
+
+		const jobId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+		const startTime = new Date().toISOString();
+
+		// Initialize batch job
+		batchJobs.set(jobId, {
+			id: jobId,
+			status: 'running',
+			progress: 0,
+			currentUrl: '',
+			startTime,
+			results: [],
+			totalUrls: validUrls.length,
+			completedUrls: 0,
+		});
+
+		console.log(`Batch job ${jobId} initialized with ${validUrls.length} valid URLs (${invalidUrls.length} invalid URLs filtered out)`);
+
+		// Start batch processing asynchronously
+		processBatchAsync(jobId, validUrls, config || {});
+
+		return new Response(
+			JSON.stringify({
+				jobId,
+				status: 'started',
+				totalUrls: validUrls.length,
+				filteredUrls: invalidUrls.length,
+			}),
+			{
+				headers: { 'content-type': 'application/json' },
+			},
+		);
+	} catch (error) {
+		return createErrorResponse('Invalid request body');
+	}
+}
+
+export async function handleBatchStatus(request: Request): Promise<Response> {
+	// Occasionally run cleanup on status requests (every ~20th request)
+	if (Math.random() < 0.05) {
+		cleanupOldBatchJobs();
+	}
+
+	const urlObj = new URL(request.url);
+	const jobId = urlObj.searchParams.get('jobId');
+
+	if (!jobId) {
+		return createErrorResponse('Missing jobId parameter');
+	}
+
+	const job = batchJobs.get(jobId);
+	if (!job) {
+		return createJobNotFoundResponse(jobId);
+	}
+
+	console.log(`Status request for job ${jobId}:`, {
+		progress: job.progress,
+		completedUrls: job.completedUrls,
+		totalUrls: job.totalUrls,
+		currentUrl: redactUrl(job.currentUrl),
+		status: job.status,
+	});
+
+	return new Response(JSON.stringify(job), {
+		headers: { 'content-type': 'application/json' },
+	});
+}
+
+export async function handleBatchStop(request: Request): Promise<Response> {
+	const urlObj = new URL(request.url);
+	const jobId = urlObj.searchParams.get('jobId');
+
+	if (!jobId) {
+		return createErrorResponse('Missing jobId parameter');
+	}
+
+	const job = batchJobs.get(jobId);
+	if (!job) {
+		return createJobNotFoundResponse();
+	}
+
+	if (job.status === 'running') {
+		job.status = 'stopped';
+		job.error = 'Stopped by user';
+	}
+
+	return new Response(JSON.stringify({ status: 'stopped' }), {
+		headers: { 'content-type': 'application/json' },
+	});
+}
+
+async function processBatchAsync(jobId: string, urls: string[], config: any) {
+	const job = batchJobs.get(jobId);
+	if (!job) return;
+
+	const maxConcurrent = Math.min(config.maxConcurrent || 3, 5);
+	let completedCount = 0;
+
+	const semaphore = { permits: maxConcurrent, queue: [] as Array<() => void> };
+
+	async function acquireSemaphore(): Promise<void> {
+		if (semaphore.permits > 0) {
+			semaphore.permits--;
+			return Promise.resolve();
+		}
+		return new Promise<void>((resolve) => {
+			semaphore.queue.push(resolve);
+		});
+	}
+
+	function releaseSemaphore(): void {
+		semaphore.permits++;
+		if (semaphore.queue.length > 0) {
+			const resolve = semaphore.queue.shift();
+			if (resolve) {
+				semaphore.permits--;
+				resolve();
+			}
+		}
+	}
+
+	function updateProgress(currentUrl: string = '') {
+		const currentJob = batchJobs.get(jobId);
+		if (currentJob && currentJob.status === 'running') {
+			currentJob.completedUrls = completedCount;
+			currentJob.progress = Math.round((completedCount / urls.length) * 100);
+			currentJob.currentUrl = currentUrl;
+			console.log(`Batch ${jobId} progress: ${currentJob.progress}% (${completedCount}/${urls.length}) - ${redactUrl(currentUrl)}`);
+		}
+	}
+
+	const processUrl = async (url: string, index: number): Promise<string | null> => {
+		const currentJob = batchJobs.get(jobId);
+		if (!currentJob || currentJob.status !== 'running') return null;
+
+		await acquireSemaphore();
+
+		try {
+			// Update current URL being processed
+			updateProgress(url);
+
+			// Delay is now handled on client-side
+
+			const currentJobCheck = batchJobs.get(jobId);
+			if (!currentJobCheck || currentJobCheck.status !== 'running') return null;
+
+			// Run tests for this URL with timeout
+			const urlResults = await Promise.race([
+				testSingleUrlForBatch(url, config),
+				new Promise<never>(
+					(_, reject) => setTimeout(() => reject(new Error('URL test timeout')), 300000), // 5 minute timeout
+				),
+			]);
+
+			const finalJob = batchJobs.get(jobId);
+			if (finalJob && finalJob.status === 'running') {
+				const resultEntry = {
+					url,
+					success: true,
+					results: urlResults,
+					timestamp: new Date().toISOString(),
+					totalTests: urlResults.length,
+					bypassedTests: urlResults.filter((r) => r.status === 200 || r.status === '200').length,
+					bypassRate:
+						urlResults.length > 0
+							? Math.round((urlResults.filter((r) => r.status === 200 || r.status === '200').length / urlResults.length) * 100)
+							: 0,
+				};
+
+				finalJob.results.push(resultEntry);
+				completedCount++;
+				updateProgress(url);
+			}
+
+			return url;
+		} catch (error) {
+			console.error(`Error processing URL ${redactUrl(url)}:`, error);
+			const errorJob = batchJobs.get(jobId);
+			if (errorJob && errorJob.status === 'running') {
+				errorJob.results.push({
+					url,
+					success: false,
+					error: error instanceof Error ? error.message : 'Unknown error',
+					timestamp: new Date().toISOString(),
+					totalTests: 0,
+					bypassedTests: 0,
+					bypassRate: 0,
+				});
+
+				completedCount++;
+				updateProgress(url);
+			}
+			return null;
+		} finally {
+			releaseSemaphore();
+		}
+	};
+
+	try {
+		// Process all URLs. The semaphore inside processUrl handles concurrency.
+		await Promise.all(
+			urls.map(async (url, index) => {
+				try {
+					return await processUrl(url, index);
+				} catch (error) {
+					console.error(`Unexpected error in processUrl for ${url}:`, error);
+					return null;
+				}
+			}),
+		);
+
+		const finalJob = batchJobs.get(jobId);
+		if (finalJob) {
+			finalJob.status = finalJob.status === 'running' ? 'completed' : finalJob.status;
+			finalJob.progress = 100;
+			finalJob.completedUrls = completedCount;
+			finalJob.currentUrl = '';
+			console.log(`Batch ${jobId} finished with status: ${finalJob.status}`);
+		}
+	} catch (error) {
+		console.error(`Batch ${jobId} failed:`, error);
+		const errorJob = batchJobs.get(jobId);
+		if (errorJob) {
+			errorJob.status = 'error';
+			errorJob.error = error instanceof Error ? error.message : 'Unknown error';
+		}
+	}
+}
+
+async function testSingleUrlForBatch(url: string, config: any): Promise<any[]> {
+	console.log(`Starting batch test for URL: ${redactUrl(url)}`);
+	const methods = config.methods || ['GET'];
+	const categories = config.categories || ['SQL Injection', 'XSS'];
+
+	let allResults: any[] = [];
+	let page = 0;
+	let maxPages = 10; // Limit to prevent infinite loops
+
+	while (page < maxPages) {
+		try {
+			const results = await handleApiCheckFiltered(
+				url,
+				page,
+				methods,
+				categories,
+				config.payloadTemplate,
+				config.followRedirect || false,
+				config.customHeaders,
+				config.falsePositiveTest || false,
+				config.caseSensitiveTest || false,
+				config.enhancedPayloads || false,
+				config.useAdvancedPayloads || false,
+				config.autoDetectWAF || false,
+				config.useEncodingVariations || false,
+				undefined,
+				config.httpManipulation
+					? {
+							enableParameterPollution: true,
+							enableVerbTampering: true,
+							enableContentTypeConfusion: true,
+						}
+					: undefined,
+			);
+
+			if (!results || !results.length) {
+				console.log(`No more results for ${redactUrl(url)} at page ${page}`);
+				break;
+			}
+
+			allResults = allResults.concat(results);
+			console.log(`Batch test ${redactUrl(url)}: page ${page} completed, ${results.length} results, total: ${allResults.length}`);
+			page++;
+
+			// Limit results to prevent memory issues
+			if (allResults.length > 1000) {
+				console.log(`Result limit reached for ${redactUrl(url)}`);
+				break;
+			}
+		} catch (error) {
+			console.error(`Error testing ${redactUrl(url)} at page ${page}:`, error);
+			break;
+		}
+	}
+
+	console.log(`Batch test completed for ${redactUrl(url)}: ${allResults.length} total results`);
+	return allResults;
+}

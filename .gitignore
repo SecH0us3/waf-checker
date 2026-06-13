@@ -1,5 +1,4 @@
 __pycache__/
-.github
 *.pyc
 *.pyo
 *.pyd
@@ -10,6 +9,16 @@ venv/
 .DS_Store
 .idea/
 .vscode/
-*.log
+
+# Node.js
 node_modules/
-.wrangler
+dist/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Wrangler / Cloudflare Workers
+.wrangler/
+.dev.vars
+worker-configuration.d.ts

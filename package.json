@@ -1,5 +1,18 @@
 {
+  "name": "waf-checker-monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "devDependencies": {
+    "esbuild": "^0.28.1",
+    "typescript": "^5.5.2",
+    "vitest": "~3.0.7",
     "wrangler": "^4.65.0"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "build": "npm run build --workspace=@waf-checker/core && npm run build --workspace=@waf-checker/cli",
+    "dev:worker": "npm run dev --workspace=packages/worker"
   }
 }

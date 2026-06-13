@@ -1,6 +1,7 @@
-# WAF Checker
+# WAF Checker App Docs Full
+> A comprehensive guide to the WAF Checker application, built as an NPM workspaces monorepo containing core library, worker deployment, and CLI executable.
 
-This project helps you check how well your Web Application Firewall (WAF) protects your product against common web attacks. It can be run as a Cloudflare Worker (with a built-in interactive Web UI) or as a standalone Node.js CLI tool.
+WAF Checker is a powerful, modular security testing tool designed to test how well your Web Application Firewall (WAF) blocks common attacks. It can be run as a Cloudflare Worker (with a built-in interactive Web UI) or as a standalone Node.js CLI tool. This document contains combined contents from README and AGENTS files.
 
 ## Features
 
@@ -43,9 +44,9 @@ SQL Injection, XSS, Path Traversal, Command Injection, SSRF, NoSQL Injection, Lo
 
 The project is structured as an NPM Workspaces monorepo:
 
-- [**`packages/core/`**](file:///Users/alex/src/waf-checker/packages/core): The core security testing library, payloads definition, WAF fingerprinting signatures, and obfuscation encoders.
-- [**`packages/worker/`**](file:///Users/alex/src/waf-checker/packages/worker): Cloudflare Worker package serving the static HTML/JS Web UI and JSON API endpoints.
-- [**`packages/cli/`**](file:///Users/alex/src/waf-checker/packages/cli): Node.js command-line interface tool for executing audits directly from your terminal.
+- [**`packages/core/`**](packages/core): The core security testing library, payloads definition, WAF fingerprinting signatures, and obfuscation encoders.
+- [**`packages/worker/`**](packages/worker): Cloudflare Worker package serving the static HTML/JS Web UI and JSON API endpoints.
+- [**`packages/cli/`**](packages/cli): Node.js command-line interface tool for executing audits directly from your terminal.
 
 ---
 
@@ -111,30 +112,6 @@ Run batch audits for a list of URLs defined in a file:
 node packages/cli/dist/index.js batch targets.txt --concurrency 3
 ```
 
-### 3. Docker Version
-
-To build and run the CLI using Docker:
-
-#### Build the image
-```bash
-docker build -t waf-checker-cli .
-```
-
-#### Print help
-```bash
-docker run --rm waf-checker-cli --help
-```
-
-#### Run a check
-```bash
-docker run --rm -it waf-checker-cli check https://example.com
-```
-
-#### Run batch audits (mounting a local targets file)
-```bash
-docker run --rm -it -v "$(pwd)/targets.txt:/app/targets.txt" waf-checker-cli batch targets.txt --concurrency 3
-```
-
 ---
 
 ## Testing
@@ -144,6 +121,46 @@ To run the workspace-wide test suite (utilizing Vitest):
 ```bash
 npm test
 ```
+
+---
+
+## Agent Info: Tech Stack
+- **Workspaces**: NPM Workspaces (`packages/core`, `packages/worker`, `packages/cli`)
+- **Runtime**: Cloudflare Workers (Worker) & Node.js (CLI)
+- **Language**: TypeScript
+- **Frontend**: HTML/JS/CSS (Bootstrap 5) served as static assets from `packages/worker/src/static/`
+- **Development**: Wrangler CLI (Worker) & esbuild (CLI compiler)
+- **Testing**: Vitest with `@cloudflare/vitest-pool-workers`
+
+## Agent Info: Coding Guidelines
+
+### 🛡️ Security First (SSRF Protection)
+Any endpoint or command that accepts a target URL **MUST** validate it using `isValidTargetUrl` from `@waf-checker/core` (defined in `packages/core/src/utils/security.ts`). This is critical to prevent SSRF proxying to internal services.
+
+```typescript
+import { isValidTargetUrl } from '@waf-checker/core';
+
+if (url && !isValidTargetUrl(url)) {
+    return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
+}
+```
+
+### 💉 Extending Payloads
+- **Base Payloads**: Add to `packages/core/src/payloads.ts`. Use `ParamCheck` for query/body params, `FileCheck` for path-based attacks, and `Header` for header-based attacks.
+- **Evasion**: Add complex or WAF-specific bypasses to `packages/core/src/advanced-payloads.ts`.
+
+### 🔍 WAF Detection
+When adding support for a new WAF:
+1. Update `packages/core/src/waf-detection.ts` with relevant header signatures or body patterns.
+2. Update the `WAF_BYPASS_PAYLOADS` in `packages/core/src/advanced-payloads.ts` if specific bypasses are known.
+
+### 🌐 Frontend
+The frontend is a single-page application. Update `packages/worker/src/static/main.js` for UI logic and `packages/worker/src/static/index.html` for layout changes.
+
+## Agent Info: Programmatic Checks
+Before submitting any changes to API handlers:
+1. **Check SSRF Validation**: Ensure all URL-accepting entry points use `isValidTargetUrl`.
+2. **Verify Tests**: All tests in the workspaces must pass via `npm test`.
 
 ---
 
