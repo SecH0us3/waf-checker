@@ -113,26 +113,31 @@ node packages/cli/dist/index.js batch targets.txt --concurrency 3
 
 ### 3. Docker Version
 
-To build and run the CLI using Docker:
+A pre-built Docker image is hosted on GitHub Packages at [ghcr.io/sech0us3/waf-checker-cli](https://github.com/SecH0us3/waf-checker/pkgs/container/waf-checker-cli).
 
-#### Build the image
+#### Run using the pre-built image
+You can run audits immediately without building the image locally:
+
 ```bash
+# Print help
+docker run --rm ghcr.io/sech0us3/waf-checker-cli --help
+
+# Run a check against a target URL
+docker run --rm -it ghcr.io/sech0us3/waf-checker-cli check https://example.com
+
+# Run batch audits (mounting a local targets.txt file)
+docker run --rm -it -v "$(pwd)/targets.txt:/app/targets.txt" ghcr.io/sech0us3/waf-checker-cli batch targets.txt --concurrency 3
+```
+
+#### Build and run locally
+Alternatively, if you want to build the image yourself from the source:
+
+```bash
+# Build the image locally
 docker build -t waf-checker-cli .
-```
 
-#### Print help
-```bash
-docker run --rm waf-checker-cli --help
-```
-
-#### Run a check
-```bash
+# Run a check using the local image
 docker run --rm -it waf-checker-cli check https://example.com
-```
-
-#### Run batch audits (mounting a local targets file)
-```bash
-docker run --rm -it -v "$(pwd)/targets.txt:/app/targets.txt" waf-checker-cli batch targets.txt --concurrency 3
 ```
 
 ---
