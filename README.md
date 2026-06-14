@@ -134,9 +134,9 @@ docker run --rm ghcr.io/sech0us3/waf-checker-cli:latest --help
 docker run --rm -it ghcr.io/sech0us3/waf-checker-cli:latest check https://example.com
 ```
 
-##### Run batch audits (mounting a local targets file)
+##### Run batch audits (mounting a local directory)
 ```bash
-docker run --rm -it -v "$(pwd)/targets.txt:/app/targets.txt" ghcr.io/sech0us3/waf-checker-cli:latest batch targets.txt --concurrency 3
+docker run --rm -it -v "$(pwd):/data" ghcr.io/sech0us3/waf-checker-cli:latest batch /data/targets.txt --concurrency 3
 ```
 
 #### Building Locally
@@ -156,9 +156,9 @@ docker run --rm waf-checker-cli --help
 docker run --rm -it waf-checker-cli check https://example.com
 ```
 
-##### Run batch audits (mounting a local targets file)
+##### Run batch audits (mounting a local directory)
 ```bash
-docker run --rm -it -v "$(pwd)/targets.txt:/app/targets.txt" waf-checker-cli batch targets.txt --concurrency 3
+docker run --rm -it -v "$(pwd):/data" waf-checker-cli batch /data/targets.txt --concurrency 3
 ```
 
 ---
