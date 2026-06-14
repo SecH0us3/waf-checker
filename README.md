@@ -113,26 +113,52 @@ node packages/cli/dist/index.js batch targets.txt --concurrency 3
 
 ### 3. Docker Version
 
-To build and run the CLI using Docker:
+You can run the CLI using Docker, either by pulling the pre-built image from GitHub Container Registry or by building it locally.
 
-#### Build the image
+#### Using Pre-built Image (Recommended)
+
+The pre-built Docker image is available on [GitHub Container Registry](https://github.com/SecH0us3/waf-checker/pkgs/container/waf-checker-cli) at `ghcr.io/sech0us3/waf-checker-cli`.
+
+##### Pull the image
+```bash
+docker pull ghcr.io/sech0us3/waf-checker-cli:latest
+```
+
+##### Print help
+```bash
+docker run --rm ghcr.io/sech0us3/waf-checker-cli:latest --help
+```
+
+##### Run a check
+```bash
+docker run --rm -it ghcr.io/sech0us3/waf-checker-cli:latest check https://example.com
+```
+
+##### Run batch audits (mounting a local directory)
+```bash
+docker run --rm -it -v "$(pwd):/data" ghcr.io/sech0us3/waf-checker-cli:latest batch /data/targets.txt --concurrency 3
+```
+
+#### Building Locally
+
+##### Build the image
 ```bash
 docker build -t waf-checker-cli .
 ```
 
-#### Print help
+##### Print help
 ```bash
 docker run --rm waf-checker-cli --help
 ```
 
-#### Run a check
+##### Run a check
 ```bash
 docker run --rm -it waf-checker-cli check https://example.com
 ```
 
-#### Run batch audits (mounting a local targets file)
+##### Run batch audits (mounting a local directory)
 ```bash
-docker run --rm -it -v "$(pwd)/targets.txt:/app/targets.txt" waf-checker-cli batch targets.txt --concurrency 3
+docker run --rm -it -v "$(pwd):/data" waf-checker-cli batch /data/targets.txt --concurrency 3
 ```
 
 ---
