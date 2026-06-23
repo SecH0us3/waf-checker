@@ -139,6 +139,8 @@ const PAYLOAD_CATEGORIES = [
 	'Web Cache Poisoning',
 	'IP Bypass',
 	'User-Agent',
+	'Prototype Pollution (URL/Param)',
+	'Prototype Pollution (JSON Body)',
 ];
 
 function renderCategoryCheckboxes() {

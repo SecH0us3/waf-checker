@@ -429,6 +429,43 @@ export const ADVANCED_PAYLOADS: Record<string, PayloadCategory> = {
 		],
 		falsePayloads: ['/path/to/file', 'Normal user login', 'Standard parameter'],
 	},
+
+	'Prototype Pollution - Advanced Bypasses': {
+		type: 'ParamCheck',
+		payloads: [
+			// Double URL encoded keys
+			'%255f%255fproto%255f%255f[polluted]=true',
+			'%255f%255fproto%255f%255f%252e%2570%256f%256c%256c%2575%2574%2565%2564=true',
+			'constructor%255b%2570%2572%256f%2574%256f%2574%2579%2570%2565%255d[polluted]=true',
+
+			// Unicode variation / normalization bypasses
+			'\\u005f\\u005fproto\\u005f\\u005f[polluted]=true',
+			'\\u005f\\u005fproto\\u005f\\u005f.polluted=true',
+			'__pr\\u006f\\u0074o__[polluted]=true',
+			'const\\u0072uctor[prot\\u006ftype][polluted]=true',
+
+			// Nested keyword evasion
+			'__pro__proto__to__[polluted]=true',
+			'__pro__proto__to__.polluted=true',
+			'constconstrucructor[proto__proto__type][polluted]=true',
+
+			// built-in method overrides (DoS / Crash vectors)
+			'__proto__.toString=1',
+			'__proto__.valueOf=1',
+			'__proto__.toLocaleString=1',
+			'__proto__.hasOwnProperty=1',
+			'constructor.prototype.toString=1',
+		],
+		falsePayloads: [
+			'__proto_normal=value',
+			'__prototype_normal=value',
+			'proto=normal',
+			'prototype=normal',
+			'constructor=normal',
+			'toString=normal',
+			'valueOf=normal',
+		],
+	},
 };
 
 /**
