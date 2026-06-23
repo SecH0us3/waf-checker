@@ -43,9 +43,21 @@ vi.mock('fs', async () => {
 	};
 });
 
+vi.mock('../src/report', () => {
+	return {
+		writeReport: vi.fn(),
+		deduceFormat: vi.fn((path: string) => {
+			if (path.endsWith('.json')) return 'json';
+			if (path.endsWith('.csv')) return 'csv';
+			return 'html';
+		})
+	};
+});
+
 import * as fs from 'fs';
 import { program } from '../src/index';
 import * as core from '@waf-checker/core';
+import { writeReport } from '../src/report';
 
 describe('CLI Argument Processing', () => {
 	let exitCode: number | null = null;
@@ -82,6 +94,7 @@ describe('CLI Argument Processing', () => {
 		vi.mocked(core.isValidTargetUrl).mockClear();
 		vi.mocked(core.handleApiCheckFiltered).mockClear();
 		vi.mocked(core.WAFDetector.activeDetection).mockClear();
+		vi.mocked(writeReport).mockClear();
 	});
 
 	afterEach(() => {
@@ -337,6 +350,35 @@ describe('CLI Argument Processing', () => {
 			expect(exitCode).toBe(1);
 			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Invalid target URL'));
 		});
+
+		it('should write report when --output is specified', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--output', 'report.html'])
+			).resolves.toBeDefined();
+
+			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array));
+		});
+
+		it('should exit with 1 on bypass when --fail-on-bypass is specified', async () => {
+			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
+				{ status: 200, method: 'GET', payload: 'bypass', responseTime: 80, category: 'SQL Injection' }
+			]);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--fail-on-bypass'])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CI/CD Check Failed'));
+		});
+
+		it('should exit with 0 if no bypasses and --fail-on-bypass is specified', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--fail-on-bypass'])
+			).resolves.toBeDefined();
+
+			expect(exitCode).toBeNull();
+		});
 	});
 
 	describe('batch command', () => {
@@ -374,6 +416,40 @@ describe('CLI Argument Processing', () => {
 
 			expect(exitCode).toBe(1);
 			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('No valid URLs found in file'));
+		});
+
+		it('should write batch report when --output is specified', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'batch', mockFile, '--output', 'batch-report.html'])
+			).resolves.toBeDefined();
+
+			expect(writeReport).toHaveBeenCalledWith('batch-report.html', 'html', 'batch', mockFile, expect.any(Array));
+		});
+
+		it('should exit with 1 on bypass when --fail-on-bypass is specified', async () => {
+			// Mock so first target returns blocked, second returns bypass
+			vi.mocked(core.handleApiCheckFiltered)
+				.mockResolvedValueOnce([
+					{ status: 403, method: 'GET', payload: 'test', responseTime: 120, category: 'SQL Injection' }
+				])
+				.mockResolvedValueOnce([
+					{ status: 200, method: 'GET', payload: 'bypass', responseTime: 80, category: 'SQL Injection' }
+				]);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'batch', mockFile, '--fail-on-bypass'])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CI/CD Check Failed'));
+		});
+
+		it('should exit with 0 if no targets bypassed and --fail-on-bypass is specified', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'batch', mockFile, '--fail-on-bypass'])
+			).resolves.toBeDefined();
+
+			expect(exitCode).toBeNull();
 		});
 	});
 });
