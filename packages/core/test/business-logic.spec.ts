@@ -221,6 +221,10 @@ describe('Business Logic Tests for Visual Controls', () => {
             const payloads = generateWAFSpecificPayloads('AWS WAF', base);
             expect(payloads.some(p => p.includes('__pr\\u006f\\u0074o__'))).toBe(true);
             expect(payloads.some(p => p.includes('const\\u0072uctor'))).toBe(true);
+
+            const constructorBase = 'constructor.prototype.polluted=true';
+            const constructorPayloads = generateWAFSpecificPayloads('AWS WAF', constructorBase);
+            expect(constructorPayloads.some(p => p.includes('const\\u0072uctor'))).toBe(true);
         });
 
         it('should generate ModSecurity-specific prototype pollution bypasses', () => {
@@ -233,6 +237,23 @@ describe('Business Logic Tests for Visual Controls', () => {
             const base = '__proto__[polluted]=true';
             const payloads = generateWAFSpecificPayloads('Akamai', base);
             expect(payloads.some(p => p.includes('%255f%255fproto%255f%255f'))).toBe(true);
+            expect(payloads.some(p => p.includes('%255f%255fproto%255f%255f%255bpolluted%255d'))).toBe(true);
+
+            const constructorBase = 'constructor.prototype.polluted=true';
+            const constructorPayloads = generateWAFSpecificPayloads('Akamai', constructorBase);
+            expect(constructorPayloads.some(p => p.includes('%2563onstructor'))).toBe(true);
+        });
+
+        it('should generate Azure-specific prototype pollution bypasses', () => {
+            const base = '__proto__[polluted]=true';
+            const payloads = generateWAFSpecificPayloads('Azure Front Door', base);
+            expect(payloads.some(p => p.includes('__PrOtO__'))).toBe(true);
+            expect(payloads.some(p => p.includes('__pr/**/oto__'))).toBe(true);
+
+            const constructorBase = 'constructor.prototype.polluted=true';
+            const constructorPayloads = generateWAFSpecificPayloads('Azure Front Door', constructorBase);
+            expect(constructorPayloads.some(p => p.includes('CoNsTrUcToR'))).toBe(true);
+            expect(constructorPayloads.some(p => p.includes('const/**/ructor'))).toBe(true);
         });
 
         it('should have separate Prototype Pollution (URL/Param) and Prototype Pollution (JSON Body) categories', () => {
