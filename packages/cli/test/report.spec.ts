@@ -93,5 +93,34 @@ describe('Report Module', () => {
 
 			expect(fs.mkdirSync).toHaveBeenCalledWith('new-dir', { recursive: true });
 		});
+
+		it('should escape target URL in HTML report to prevent HTML injection/XSS', () => {
+			vi.mocked(fs.writeFileSync).mockClear();
+			const maliciousUrl = 'https://example.com/</title><script>alert(1)</script>';
+			writeReport('report.html', 'html', 'check', maliciousUrl, checkResults);
+			expect(fs.writeFileSync).toHaveBeenCalledWith(
+				'report.html',
+				expect.not.stringContaining(maliciousUrl),
+				'utf8'
+			);
+			expect(fs.writeFileSync).toHaveBeenCalledWith(
+				'report.html',
+				expect.stringContaining('https://example.com/&lt;/title&gt;&lt;script&gt;alert(1)&lt;/script&gt;'),
+				'utf8'
+			);
+		});
+
+		it('should escape CSV values containing carriage returns', () => {
+			vi.mocked(fs.writeFileSync).mockClear();
+			const carriageReturnResults = [
+				{ status: 200, method: 'GET', payload: 'test\rvalue', responseTime: 100, category: 'SQL Injection' }
+			];
+			writeReport('report.csv', 'csv', 'check', 'https://example.com', carriageReturnResults);
+			expect(fs.writeFileSync).toHaveBeenCalledWith(
+				'report.csv',
+				expect.stringContaining('"test\rvalue"'),
+				'utf8'
+			);
+		});
 	});
 });

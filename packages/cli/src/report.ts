@@ -35,13 +35,25 @@ export function deduceFormat(outputPath: string): ReportFormat {
 }
 
 /**
+ * Escape HTML characters to prevent XSS / HTML injection.
+ */
+function escapeHtml(str: string): string {
+	return String(str || '')
+		.replace(/&/g, '&amp;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&#039;');
+}
+
+/**
  * Generate a CSV report for CheckResults.
  */
 function generateCheckCsv(results: CheckResult[]): string {
 	const headers = ['Category', 'Method', 'Status', 'Response Time (ms)', 'Is Redirect', 'Payload', 'Error'];
 	const escape = (val: any) => {
 		const str = String(val ?? '');
-		if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+		if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
 			return `"${str.replace(/"/g, '""')}"`;
 		}
 		return str;
@@ -70,7 +82,7 @@ function generateBatchCsv(results: BatchResult[]): string {
 	const headers = ['Target URL', 'Success', 'Total Tests', 'Blocked', 'Bypassed', 'Bypass Rate (%)', 'Error'];
 	const escape = (val: any) => {
 		const str = String(val ?? '');
-		if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+		if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
 			return `"${str.replace(/"/g, '""')}"`;
 		}
 		return str;
@@ -105,6 +117,8 @@ function generateCheckHtml(url: string, results: CheckResult[]): string {
 	const blockRate = total ? Math.round((blocked / total) * 100) : 0;
 	const bypassRate = total ? Math.round((bypassed / total) * 100) : 0;
 
+	const escapedUrl = escapeHtml(url);
+
 	// Escape JSON for embedded script
 	const escapedJson = JSON.stringify(results).replace(/</g, '\\u003c');
 
@@ -113,7 +127,7 @@ function generateCheckHtml(url: string, results: CheckResult[]): string {
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>WAF Audit Report - ${url}</title>
+	<title>WAF Audit Report - ${escapedUrl}</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -348,7 +362,7 @@ function generateCheckHtml(url: string, results: CheckResult[]): string {
 	<header>
 		<div class="title-area">
 			<h1>WAF Audit Report</h1>
-			<p>Target: ${url}</p>
+			<p>Target: ${escapedUrl}</p>
 		</div>
 		<div>
 			<span class="badge ${bypassRate > 0 ? 'badge-danger' : 'badge-success'}">
