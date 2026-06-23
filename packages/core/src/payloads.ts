@@ -504,6 +504,42 @@ export const PAYLOADS: Record<string, PayloadCategory> = {
 			'User-Agent: Apache-HttpClient/4.5.13',
 		],
 	},
+	'Prototype Pollution (URL/Param)': {
+		type: 'ParamCheck',
+		payloads: [
+			'__proto__[polluted]=true',
+			'__proto__.polluted=true',
+			'constructor[prototype][polluted]=true',
+			'constructor.prototype.polluted=true',
+			'__proto__%5Bpolluted%5D=true',
+			'__pro__proto__to__[polluted]=true',
+			'constructor%5Bprototype%5D%5Bpolluted%5D=true',
+			'__proto__.toString=1',
+			'__proto__.valueOf=1',
+		],
+		falsePayloads: [
+			'proto=normal',
+			'prototype=normal',
+			'constructor=normal',
+			'__proto_normal=value',
+			'__prototype_normal=value',
+			'Normal parameter value with proto word',
+		],
+	},
+	'Prototype Pollution (JSON Body)': {
+		type: 'ParamCheck',
+		payloads: [
+			'{"__proto__":{"polluted":true}}',
+			'{"constructor":{"prototype":{"polluted":true}}}',
+			'{"__proto__":{"toString":1}}',
+			'{"__proto__":{"valueOf":1}}',
+		],
+		falsePayloads: [
+			'{"proto": "normal"}',
+			'{"constructor": "developer"}',
+			'{"prototype": "value"}',
+		],
+	},
 	// Merge advanced payloads
 	...ADVANCED_PAYLOADS,
 };

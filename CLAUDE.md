@@ -103,3 +103,7 @@ Before pushing your changes:
    ```bash
    rtk npm test -- --run
    ```
+
+### 5. Git Branching Policy
+- **Branching Rule**: Always create a separate branch for implementing any new features, changes, or experiments. Never perform new work directly on the main branch.
+

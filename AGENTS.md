@@ -29,6 +29,10 @@ WAF Checker is a modular security testing tool designed as an NPM Workspaces mon
 - **Build Core/CLI Packages**: Run `npm run build` from the root directory.
 - **Run Tests**: From the root directory, run `npm test`.
 
+## Git Workflow & Branching Policy
+- **Branching Rule**: Always create a separate branch for implementing any new features, changes, or experiments. Never perform new work directly on the main branch.
+
+
 ## Coding Guidelines
 
 ### 🛡️ Security First (SSRF Protection)

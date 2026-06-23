@@ -4,6 +4,7 @@ import { WAFDetector } from '../src/waf-detection';
 import { PayloadEncoder } from '../src/encoding';
 import { generateWAFSpecificPayloads } from '../src/advanced-payloads';
 import { HTTPManipulator } from '../src/http-manipulation';
+import { PAYLOADS } from '../src/payloads';
 
 describe('Business Logic Tests for Visual Controls', () => {
     describe('Control: "Run WAF Detection" Button', () => {
@@ -198,6 +199,70 @@ describe('Business Logic Tests for Visual Controls', () => {
             const payloads = generateWAFSpecificPayloads('Azure Front Door', base);
             expect(payloads.some(p => p.includes('/**/'))).toBe(true);
             expect(payloads.some(p => p.toLowerCase().includes('union'))).toBe(true);
+        });
+    });
+
+    describe('Prototype Pollution Payload Generation Tests', () => {
+        it('should generate Cloudflare-specific prototype pollution bypasses', () => {
+            const base = '__proto__[polluted]=true';
+            const payloads = generateWAFSpecificPayloads('Cloudflare', base);
+            expect(payloads.some(p => p.includes('__pr\\u006f\\u0074o__'))).toBe(true);
+            expect(payloads.some(p => p.includes('__pro__proto__to__'))).toBe(true);
+        });
+
+        it('should generate Cloudflare-specific prototype pollution bypasses with mixed-case input', () => {
+            const base = '__PrOtO__[polluted]=true';
+            const payloads = generateWAFSpecificPayloads('Cloudflare', base);
+            expect(payloads.some(p => p.includes('__pr\\u006f\\u0074o__'))).toBe(true);
+        });
+
+        it('should generate AWS-specific prototype pollution bypasses', () => {
+            const base = '__proto__[polluted]=true';
+            const payloads = generateWAFSpecificPayloads('AWS WAF', base);
+            expect(payloads.some(p => p.includes('__pr\\u006f\\u0074o__'))).toBe(true);
+            expect(payloads.some(p => p.includes('const\\u0072uctor'))).toBe(true);
+
+            const constructorBase = 'constructor.prototype.polluted=true';
+            const constructorPayloads = generateWAFSpecificPayloads('AWS WAF', constructorBase);
+            expect(constructorPayloads.some(p => p.includes('const\\u0072uctor'))).toBe(true);
+        });
+
+        it('should generate ModSecurity-specific prototype pollution bypasses', () => {
+            const base = '__proto__[polluted]=true';
+            const payloads = generateWAFSpecificPayloads('ModSecurity', base);
+            expect(payloads.some(p => p.includes('__pr/**/oto__'))).toBe(true);
+        });
+
+        it('should generate Akamai-specific prototype pollution bypasses', () => {
+            const base = '__proto__[polluted]=true';
+            const payloads = generateWAFSpecificPayloads('Akamai', base);
+            expect(payloads.some(p => p.includes('%255f%255fproto%255f%255f'))).toBe(true);
+            expect(payloads.some(p => p.includes('%255f%255fproto%255f%255f%255bpolluted%255d'))).toBe(true);
+
+            const constructorBase = 'constructor.prototype.polluted=true';
+            const constructorPayloads = generateWAFSpecificPayloads('Akamai', constructorBase);
+            expect(constructorPayloads.some(p => p.includes('%2563onstructor'))).toBe(true);
+        });
+
+        it('should generate Azure-specific prototype pollution bypasses', () => {
+            const base = '__proto__[polluted]=true';
+            const payloads = generateWAFSpecificPayloads('Azure Front Door', base);
+            expect(payloads.some(p => p.includes('__PrOtO__'))).toBe(true);
+            expect(payloads.some(p => p.includes('__pr/**/oto__'))).toBe(true);
+
+            const constructorBase = 'constructor.prototype.polluted=true';
+            const constructorPayloads = generateWAFSpecificPayloads('Azure Front Door', constructorBase);
+            expect(constructorPayloads.some(p => p.includes('CoNsTrUcToR'))).toBe(true);
+            expect(constructorPayloads.some(p => p.includes('const/**/ructor'))).toBe(true);
+        });
+
+        it('should have separate Prototype Pollution (URL/Param) and Prototype Pollution (JSON Body) categories', () => {
+            expect(PAYLOADS['Prototype Pollution (URL/Param)']).toBeDefined();
+            expect(PAYLOADS['Prototype Pollution (JSON Body)']).toBeDefined();
+            expect(PAYLOADS['Prototype Pollution (URL/Param)'].type).toBe('ParamCheck');
+            expect(PAYLOADS['Prototype Pollution (JSON Body)'].type).toBe('ParamCheck');
+            expect(PAYLOADS['Prototype Pollution (URL/Param)'].payloads.some(p => p.includes('='))).toBe(true);
+            expect(PAYLOADS['Prototype Pollution (JSON Body)'].payloads.some(p => p.startsWith('{'))).toBe(true);
         });
     });
 
