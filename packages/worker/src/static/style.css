@@ -1168,10 +1168,15 @@ body[data-theme='dark'] .middle-footer {
 
 .category-grid-1col .form-check {
 	margin: 0;
-	padding: 0.35rem 0.5rem 0.35rem 1.75rem;
+	padding: 0.35rem 0.15rem 0rem 1.75rem;
 	border-radius: 0.5rem;
 	transition: background-color 0.15s;
 	cursor: pointer;
+}
+
+.category-grid-1col .form-check-label {
+	font-size: 1rem;
+	font-family: monospace;
 }
 
 .category-grid-1col .form-check:hover {

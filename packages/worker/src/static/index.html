@@ -55,12 +55,11 @@
 			<div id="categoryCheckboxesContainer">
 				<div class="settings-section">
 					<div class="d-flex justify-content-between align-items-center mb-2">
-						<div class="section-label mb-0">Select Categories</div>
-						<div class="d-flex gap-1">
+						<div class="d-flex gap-1" style="position: relative; width: 100%;">
 							<button type="button" class="btn btn-xs btn-outline-secondary" id="selectAllCategoriesBtn"
 								title="Select All">All</button>
 							<button type="button" class="btn btn-xs btn-outline-secondary" id="deselectAllCategoriesBtn"
-								title="Deselect All">None</button>
+								title="Deselect All" style="position: absolute; right: 0;">None</button>
 						</div>
 					</div>
 					<div id="categoryCheckboxes" class="category-grid-1col"></div>
@@ -89,9 +88,7 @@
 						<span class="btn-icon">▶</span> Check
 					</button>
                     <button type="button" id="cancelBtn" class="btn btn-danger" onclick="cancelCurrentScan()" style="display: none;" title="Cancel Scan">
-                        </small>
-                        <a href="https://github.com/sponsors/SecH0us3?frequency=one-time&sponsor=SecH0us3" class="btn btn-sm btn-outline-primary mt-2" target="_blank">Say Thanks</a>
-                        <a href="https://github.com/sponsors/SecH0us3?frequency=one-time&sponsor=SecH0us3" class="btn btn-sm btn-outline-primary mt-2" target="_blank">Say Thanks</a>
+                        ❌
                     </button>
 				</div>
 
@@ -287,10 +284,11 @@
 				</div>
 
 				<!-- Footer Help Text -->
-				<div class="mt-4 pt-3">
-					<small class="text-muted d-block text-center">
+				<div class="mt-0 pt-0 text-center">
+					<small class="text-muted d-block">
 						Use <code>{PAYLOAD}</code> as a placeholder
 					</small>
+					<a href="https://github.com/sponsors/SecH0us3?frequency=one-time&sponsor=SecH0us3" class="btn btn-sm btn-outline-primary mt-2" target="_blank">❤️ Say Thanks</a>
 				</div>
 			</div>
 		</aside>
