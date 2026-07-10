@@ -10,6 +10,7 @@ import {
 	redactUrl,
 	PAYLOADS
 } from '@waf-checker/core';
+import { writeReport, deduceFormat, ReportFormat } from './report';
 
 let useColor = true;
 
@@ -153,6 +154,9 @@ checkCmd
 	.option('--encoding-variations', 'Use encoding and obfuscation variations', false)
 	.option('--http-manipulation', 'Run HTTP manipulation tests (Verb Tampering, Parameter Pollution, etc.)', false)
 	.option('--json', 'Output results in JSON format')
+	.option('--format <format>', 'Output format for report: json, csv, html')
+	.option('--output <path>', 'File path to save the report to')
+	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
 	.addHelpText('after', detailedHelp)
 	.action(async (url: string, options: any) => {
 		try {
@@ -230,6 +234,21 @@ checkCmd
 				console.log(`\n${colors.green('🛡️ Perfect Score: All attack vectors were successfully blocked.')}`);
 			}
 			console.log();
+
+			if (options.output) {
+				const format = (options.format || deduceFormat(options.output)) as ReportFormat;
+				try {
+					writeReport(options.output, format, 'check', url, results);
+					console.log(colors.green(`Report saved to ${options.output} (${format.toUpperCase()})`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing report: ${err.message}`));
+				}
+			}
+
+			if (options.failOnBypass && bypassed.length > 0) {
+				console.error(colors.red(`CI/CD Check Failed: ${bypassed.length} bypasses detected.`));
+				process.exit(1);
+			}
 		} catch (err: any) {
 			console.error(`Error: Audit failed: ${err.message}`);
 			process.exit(1);
@@ -256,6 +275,9 @@ batchCmd
 	.option('--http-manipulation', 'Run HTTP manipulation tests', false)
 	.option('--concurrency <number>', 'Number of concurrent URLs to test', '3')
 	.option('--json', 'Output results in JSON format')
+	.option('--format <format>', 'Output format for report: json, csv, html')
+	.option('--output <path>', 'File path to save the report to')
+	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
 	.addHelpText('after', detailedHelp)
 	.action(async (file: string, options: any) => {
 		try {
@@ -373,6 +395,22 @@ batchCmd
 				console.log(`| ${urlStr} | ${succ} | ${tot} | ${blk} | ${byp} |`);
 			});
 			console.log('--------------------------------------------------------------------------------\n');
+
+			if (options.output) {
+				const format = (options.format || deduceFormat(options.output)) as ReportFormat;
+				try {
+					writeReport(options.output, format, 'batch', file, batchResults);
+					console.log(colors.green(`Batch report saved to ${options.output} (${format.toUpperCase()})`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing batch report: ${err.message}`));
+				}
+			}
+
+			if (options.failOnBypass && batchResults.some((r: any) => r.bypassed > 0)) {
+				const bypassCount = batchResults.reduce((acc, r) => acc + (r.bypassed || 0), 0);
+				console.error(colors.red(`CI/CD Check Failed: ${bypassCount} bypasses detected across batch targets.`));
+				process.exit(1);
+			}
 		} catch (err: any) {
 			console.error(`Error: Batch audit failed: ${err.message}`);
 			process.exit(1);
