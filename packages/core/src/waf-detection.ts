@@ -2,6 +2,7 @@
 // Based on response headers, behavior patterns, and timing analysis
 
 import { redactHeaders } from './utils/payload-utils';
+import { isValidTargetUrl } from './utils/security';
 
 export interface WAFDetectionResult {
 	detected: boolean;
@@ -381,6 +382,9 @@ export class WAFDetector {
 	 * Perform active WAF detection by sending probe requests
 	 */
 	static async activeDetection(url: string, options?: { fetch?: typeof fetch }): Promise<WAFDetectionResult> {
+		if (!isValidTargetUrl(url)) {
+			throw new Error('Invalid URL or restricted IP');
+		}
 		const fetchFn = options?.fetch || globalThis.fetch;
 		const probePayloads = ["' OR '1'='1", '<script>alert(1)</script>', '../../../etc/passwd', 'UNION SELECT 1,2,3--'];
 
@@ -509,6 +513,9 @@ export class WAFDetector {
 		encodingBypass: boolean;
 		parameterPollution: boolean;
 	}> {
+		if (!isValidTargetUrl(url)) {
+			throw new Error('Invalid URL or restricted IP');
+		}
 		const fetchFn = options?.fetch || globalThis.fetch;
 		const opportunities = {
 			httpMethodsBypass: false,
