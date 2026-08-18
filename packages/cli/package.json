@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@waf-checker/core": "*",
-    "commander": "^12.1.0",
+    "commander": "^15.0.0",
     "undici": "^8.7.0"
   },
   "devDependencies": {
