@@ -4,7 +4,8 @@
   "type": "module",
   "bin": "./dist/index.js",
   "scripts": {
-    "build": "tsc --noEmit && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:commander --external:undici"
+    "build": "tsc --noEmit && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:commander --external:undici",
+    "test": "vitest run"
   },
   "dependencies": {
     "@waf-checker/core": "*",
