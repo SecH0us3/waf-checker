@@ -8,7 +8,7 @@
     "esbuild": "^0.28.1",
     "typescript": "^5.5.2",
     "vitest": "~4.1.10",
-    "wrangler": "^4.66.0"
+    "wrangler": "^4.110.0"
   },
   "scripts": {
     "test": "vitest run",
