@@ -14,10 +14,10 @@
 		"@waf-checker/core": "*"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "^0.18.4",
+		"@cloudflare/vitest-pool-workers": "^0.22.0",
 		"@vitest/coverage-v8": "~3.0.7",
 		"typescript": "^5.5.2",
 		"vitest": "~4.1.10",
-		"wrangler": "^4.110.0"
+		"wrangler": "^4.119.0"
 	}
 }

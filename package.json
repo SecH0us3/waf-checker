@@ -8,10 +8,10 @@
     "esbuild": "^0.28.1",
     "typescript": "^5.5.2",
     "vitest": "~4.1.10",
-    "wrangler": "^4.110.0"
+    "wrangler": "^4.119.0"
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "npm run test --workspaces --if-present",
     "build": "npm run build --workspace=@waf-checker/core && npm run build --workspace=@waf-checker/cli",
     "dev:worker": "npm run dev --workspace=packages/worker"
   }
