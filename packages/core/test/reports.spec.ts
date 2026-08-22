@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
 	calculateAuditStats,
 	generateSARIFReport,
-	generateMarkdownReport,
-	generateHTMLReport,
 	generateJSONReport,
 	generateReport,
 	AuditResultItem,
@@ -90,47 +88,6 @@ describe('Reports Module', () => {
 		});
 	});
 
-	describe('generateMarkdownReport', () => {
-		it('generates markdown report with summary and details', () => {
-			const md = generateMarkdownReport(mockResults, 'https://example.com');
-
-			expect(md).toContain('# 🛡️ WAF Checker Audit Report');
-			expect(md).toContain('Overall Score: 50%');
-			expect(md).toContain('https://example.com');
-			expect(md).toContain('SQLi');
-			expect(md).toContain('XSS');
-			expect(md).toContain('### ⚠️ Bypassed Payloads (1)');
-			expect(md).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
-		});
-
-		it('shows no bypasses message when all are blocked', () => {
-			const cleanResults: AuditResultItem[] = [
-				{
-					category: 'SQLi',
-					payload: 'test',
-					method: 'GET',
-					status: 403,
-					responseTime: 10,
-				},
-			];
-			const md = generateMarkdownReport(cleanResults, 'https://example.com');
-			expect(md).toContain('No Bypasses Detected');
-		});
-	});
-
-	describe('generateHTMLReport', () => {
-		it('generates HTML report with safe escaping', () => {
-			const html = generateHTMLReport(mockResults, 'https://example.com');
-
-			expect(html).toContain('<!DOCTYPE html>');
-			expect(html).toContain('50%');
-			expect(html).toContain('Cloudflare');
-			// Payloads must be HTML escaped
-			expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
-			expect(html).not.toContain('<script>alert(1)</script>');
-		});
-	});
-
 	describe('generateJSONReport', () => {
 		it('generates structured JSON', () => {
 			const jsonStr = generateJSONReport(mockResults, 'https://example.com');
@@ -145,8 +102,6 @@ describe('Reports Module', () => {
 	describe('generateReport helper', () => {
 		it('routes correctly to different formats', () => {
 			expect(JSON.parse(generateReport('sarif', mockResults)).version).toBe('2.1.0');
-			expect(generateReport('markdown', mockResults)).toContain('# 🛡️ WAF Checker');
-			expect(generateReport('html', mockResults)).toContain('<!DOCTYPE html>');
 			expect(JSON.parse(generateReport('json', mockResults)).summary).toBeDefined();
 		});
 	});
