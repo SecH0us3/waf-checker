@@ -71,10 +71,13 @@ export function generateMarkdownReport(results: AuditResultItem[], targetUrl?: s
 
 		for (const item of bypassedItems) {
 			const safePayload = item.payload
-				.replace(/\r?\n/g, ' ')
-				.replace(/\|/g, '\\|')
+				.replace(/&/g, '&amp;')
 				.replace(/</g, '&lt;')
-				.replace(/>/g, '&gt;');
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#39;')
+				.replace(/\|/g, '&#124;')
+				.replace(/\r?\n/g, ' ');
 			lines.push(
 				`| \`${item.category}\` | \`${item.method}\` | \`${item.status}\` | \`${item.responseTime}ms\` | \`${item.bypassTechnique || 'Standard'}\` | <code>${safePayload}</code> |`,
 			);
