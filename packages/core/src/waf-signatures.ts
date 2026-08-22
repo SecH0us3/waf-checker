@@ -22,7 +22,18 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 			'cf-mitigated': /.*/,
 		},
 		statusCodes: [403, 429],
-		bodyPatterns: [/attention required! \| cloudflare/i, /ray id: [a-f0-9]+-[A-Z]{3}/i, /Cloudflare Ray ID:/i, /Please turn JavaScript on and reload the page\./i],
+		cookiePatterns: [/__cfduid/i, /cf_clearance/i, /__cf_bm/i, /__cf_chl/i],
+		bodyPatterns: [
+			/attention required! \| cloudflare/i,
+			/ray id: [a-f0-9]+-[A-Z]{3}/i,
+			/Cloudflare Ray ID:/i,
+			/Please turn JavaScript on and reload the page\./i,
+			/cdn-cgi\/challenge-platform/i,
+			/cf_chl_opt/i,
+			/cf_chl_tk/i,
+			/<title>Just a moment...<\/title>/i,
+			/Enable JavaScript and cookies to continue/i,
+		],
 	},
 
 	// AWS WAF
