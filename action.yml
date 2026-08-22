@@ -86,71 +86,72 @@ runs:
       shell: bash
       run: |
         CLI_PATH="${{ github.action_path }}/packages/cli/dist/index.js"
-        CMD="node $CLI_PATH"
         
+        ARGS=()
         if [ -n "${{ inputs.batch-file }}" ]; then
-          CMD="$CMD batch '${{ inputs.batch-file }}'"
+          ARGS+=("batch" "${{ inputs.batch-file }}")
         elif [ -n "${{ inputs.target-url }}" ]; then
-          CMD="$CMD check '${{ inputs.target-url }}'"
+          ARGS+=("check" "${{ inputs.target-url }}")
         else
           echo "::error::Either 'target-url' or 'batch-file' input must be provided."
           exit 1
         fi
 
         if [ -n "${{ inputs.methods }}" ]; then
-          CMD="$CMD --methods '${{ inputs.methods }}'"
+          ARGS+=("--methods" "${{ inputs.methods }}")
         fi
 
         if [ -n "${{ inputs.categories }}" ]; then
-          CMD="$CMD --categories '${{ inputs.categories }}'"
+          ARGS+=("--categories" "${{ inputs.categories }}")
         fi
 
         if [ "${{ inputs.enhanced }}" = "true" ]; then
-          CMD="$CMD --enhanced"
+          ARGS+=("--enhanced")
         fi
 
         if [ "${{ inputs.advanced }}" = "true" ]; then
-          CMD="$CMD --advanced"
+          ARGS+=("--advanced")
         fi
 
         if [ "${{ inputs.auto-detect }}" = "true" ]; then
-          CMD="$CMD --auto-detect-waf"
+          ARGS+=("--auto-detect-waf")
         fi
 
         if [ "${{ inputs.encoding }}" = "true" ]; then
-          CMD="$CMD --encoding-variations"
+          ARGS+=("--encoding-variations")
         fi
 
         if [ "${{ inputs.http-manipulation }}" = "true" ]; then
-          CMD="$CMD --http-manipulation"
+          ARGS+=("--http-manipulation")
         fi
 
         if [ "${{ inputs.fail-on-bypass }}" = "true" ]; then
-          CMD="$CMD --fail-on-bypass"
+          ARGS+=("--fail-on-bypass")
         fi
 
         if [ -n "${{ inputs.threshold }}" ]; then
-          CMD="$CMD --threshold '${{ inputs.threshold }}'"
+          ARGS+=("--threshold" "${{ inputs.threshold }}")
         fi
+
+        if [ -n "${{ inputs.summary-output }}" ]; then
+          ARGS+=("--markdown-output" "${{ inputs.summary-output }}")
+        fi
+
+        if [ -n "${{ inputs.sarif-output }}" ] && [ -n "${{ inputs.target-url }}" ]; then
+          ARGS+=("--sarif-output" "${{ inputs.sarif-output }}")
+        fi
+
+        if [ -n "${{ inputs.html-output }}" ]; then
+          ARGS+=("--html-output" "${{ inputs.html-output }}")
+        fi
+
+        ARGS+=("-q")
 
         AUDIT_EXIT_CODE=0
+        node "$CLI_PATH" "${ARGS[@]}" || AUDIT_EXIT_CODE=$?
 
-        # Generate Markdown summary for GITHUB_STEP_SUMMARY
-        if [ -n "${{ inputs.summary-output }}" ]; then
-          eval "$CMD -q -o '${{ inputs.summary-output }}' -f markdown" || AUDIT_EXIT_CODE=$?
-          if [ -f "${{ inputs.summary-output }}" ] && [ -n "$GITHUB_STEP_SUMMARY" ]; then
-            cat "${{ inputs.summary-output }}" >> "$GITHUB_STEP_SUMMARY"
-          fi
-        fi
-
-        # Generate SARIF Report
-        if [ -n "${{ inputs.sarif-output }}" ] && [ -n "${{ inputs.target-url }}" ]; then
-          eval "$CMD -q -o '${{ inputs.sarif-output }}' -f sarif" || true
-        fi
-
-        # Generate HTML Report if requested
-        if [ -n "${{ inputs.html-output }}" ]; then
-          eval "$CMD -q -o '${{ inputs.html-output }}' -f html" || true
+        if [ -f "${{ inputs.summary-output }}" ] && [ -n "$GITHUB_STEP_SUMMARY" ]; then
+          cat "${{ inputs.summary-output }}" >> "$GITHUB_STEP_SUMMARY"
         fi
 
         if [ "$AUDIT_EXIT_CODE" -ne 0 ]; then

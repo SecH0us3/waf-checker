@@ -364,12 +364,19 @@ describe('CLI Argument Processing', () => {
 			expect(writeReport).toHaveBeenCalledWith('report.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array));
 		});
 
-		it('should write markdown report when .md extension is specified', async () => {
+		it('should write multiple reports simultaneously when flags are specified', async () => {
 			await expect(
-				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--output', 'report.md'])
+				program.parseAsync([
+					'node', 'index.js', 'check', 'https://example.com',
+					'--sarif-output', 'results.sarif',
+					'--markdown-output', 'summary.md',
+					'--html-output', 'report.html',
+				])
 			).resolves.toBeDefined();
 
-			expect(writeReport).toHaveBeenCalledWith('report.md', 'markdown', 'check', 'https://example.com', expect.any(Array));
+			expect(writeReport).toHaveBeenCalledWith('results.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array));
+			expect(writeReport).toHaveBeenCalledWith('summary.md', 'markdown', 'check', 'https://example.com', expect.any(Array));
+			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array));
 		});
 
 		it('should pass quiet option when --quiet is set', async () => {

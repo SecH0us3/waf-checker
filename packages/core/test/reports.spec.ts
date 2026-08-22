@@ -100,7 +100,7 @@ describe('Reports Module', () => {
 			expect(md).toContain('SQLi');
 			expect(md).toContain('XSS');
 			expect(md).toContain('### ⚠️ Bypassed Payloads (1)');
-			expect(md).toContain('<script>alert(1)</script>');
+			expect(md).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
 		});
 
 		it('shows no bypasses message when all are blocked', () => {

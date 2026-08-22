@@ -156,6 +156,9 @@ checkCmd
 	.option('--json', 'Output results in JSON format')
 	.option('-f, --format <format>', 'Output format for report: json, csv, html, sarif, markdown')
 	.option('-o, --output <path>', 'File path to save the report to')
+	.option('--sarif-output <path>', 'File path to save SARIF report to')
+	.option('--markdown-output <path>', 'File path to save Markdown report to')
+	.option('--html-output <path>', 'File path to save HTML report to')
 	.option('--threshold <percent>', 'Minimum protection score percentage required to pass (e.g. 95). Exits with code 1 if score is lower')
 	.option('-q, --quiet', 'Suppress per-request logging, displaying only final results')
 	.option('--silent', 'Alias for --quiet')
@@ -251,6 +254,33 @@ checkCmd
 				}
 			}
 
+			if (options.sarifOutput) {
+				try {
+					writeReport(options.sarifOutput, 'sarif', 'check', url, results);
+					console.log(colors.green(`SARIF report saved to ${options.sarifOutput}`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing SARIF report: ${err.message}`));
+				}
+			}
+
+			if (options.markdownOutput) {
+				try {
+					writeReport(options.markdownOutput, 'markdown', 'check', url, results);
+					console.log(colors.green(`Markdown report saved to ${options.markdownOutput}`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing Markdown report: ${err.message}`));
+				}
+			}
+
+			if (options.htmlOutput) {
+				try {
+					writeReport(options.htmlOutput, 'html', 'check', url, results);
+					console.log(colors.green(`HTML report saved to ${options.htmlOutput}`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing HTML report: ${err.message}`));
+				}
+			}
+
 			if (options.threshold !== undefined) {
 				const minThreshold = parseFloat(options.threshold);
 				if (!isNaN(minThreshold) && protectionScore < minThreshold) {
@@ -291,6 +321,8 @@ batchCmd
 	.option('--json', 'Output results in JSON format')
 	.option('-f, --format <format>', 'Output format for report: json, csv, html, markdown')
 	.option('-o, --output <path>', 'File path to save the report to')
+	.option('--markdown-output <path>', 'File path to save Markdown report to')
+	.option('--html-output <path>', 'File path to save HTML report to')
 	.option('--threshold <percent>', 'Minimum average protection score percentage required across all targets')
 	.option('-q, --quiet', 'Suppress per-request logging')
 	.option('--silent', 'Alias for --quiet')
@@ -423,6 +455,24 @@ batchCmd
 					console.log(colors.green(`Batch report saved to ${options.output} (${format.toUpperCase()})`));
 				} catch (err: any) {
 					console.error(colors.red(`Error writing batch report: ${err.message}`));
+				}
+			}
+
+			if (options.markdownOutput) {
+				try {
+					writeReport(options.markdownOutput, 'markdown', 'batch', file, batchResults);
+					console.log(colors.green(`Batch Markdown report saved to ${options.markdownOutput}`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing Markdown report: ${err.message}`));
+				}
+			}
+
+			if (options.htmlOutput) {
+				try {
+					writeReport(options.htmlOutput, 'html', 'batch', file, batchResults);
+					console.log(colors.green(`Batch HTML report saved to ${options.htmlOutput}`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing HTML report: ${err.message}`));
 				}
 			}
 
