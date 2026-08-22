@@ -1,0 +1,1415 @@
+diff --git a/README.md b/README.md
+index ede7f49..6411e90 100644
+--- a/README.md
++++ b/README.md
+@@ -111,6 +111,78 @@ Run batch audits for a list of URLs defined in a file:
+ node packages/cli/dist/index.js batch targets.txt --concurrency 3
+ ```
+ 
++#### Generating Reports
++Save audit results in **SARIF**, **HTML**, **Markdown**, **CSV**, or **JSON** format:
++```bash
++# Generate SARIF report for GitHub Code Scanning
++node packages/cli/dist/index.js check https://example.com -o results.sarif
++
++# Generate interactive HTML report
++node packages/cli/dist/index.js check https://example.com -o report.html
++
++# Generate Markdown summary for CI
++node packages/cli/dist/index.js check https://example.com -o summary.md
++```
++
++#### CI/CD Integration & Protection Thresholds
++Fail CI/CD pipelines when protection rate is below required threshold or when bypasses are detected:
++```bash
++# Fail if WAF protection rate is below 95%
++node packages/cli/dist/index.js check https://example.com --threshold 95 -q
++
++# Fail immediately on any detected bypass
++node packages/cli/dist/index.js check https://example.com --fail-on-bypass -q
++```
++
++---
++
++## 🚀 GitHub Action (CI/CD)
++
++Integrate automated WAF security testing into your GitHub Actions workflow:
++
++```yaml
++name: WAF Security Audit
++
++on:
++  push:
++    branches: [ main ]
++  schedule:
++    - cron: '0 0 * * 1' # Weekly audit
++
++jobs:
++  waf-audit:
++    runs-on: ubuntu-latest
++    permissions:
++      security-events: write # Required for SARIF upload
++      contents: read
++    steps:
++      - name: Checkout repository
++        uses: actions/checkout@v4
++
++      - name: Run WAF Checker
++        uses: SecH0us3/waf-checker@main
++        with:
++          target-url: 'https://staging.example.com'
++          threshold: '95'
++          enhanced: 'true'
++          advanced: 'true'
++          sarif-output: 'waf-results.sarif'
++          html-output: 'waf-report.html'
++
++      - name: Upload SARIF to GitHub Security Tab
++        if: always()
++        uses: github/codeql-action/upload-sarif@v3
++        with:
++          sarif_file: 'waf-results.sarif'
++
++      - name: Upload HTML Report Artifact
++        if: always()
++        uses: actions/upload-artifact@v4
++        with:
++          name: waf-audit-report
++          path: waf-report.html
++```
++
+ ### 3. Docker Version
+ 
+ You can run the CLI using Docker, either by pulling the pre-built image from GitHub Container Registry or by building it locally.
+diff --git a/action.yml b/action.yml
+new file mode 100644
+index 0000000..d9233d5
+--- /dev/null
++++ b/action.yml
+@@ -0,0 +1,175 @@
++name: 'WAF Security Audit'
++description: 'Automated Web Application Firewall (WAF) security testing and bypass detection'
++author: 'SecH0us3'
++branding:
++  icon: 'shield'
++  color: 'blue'
++
++inputs:
++  target-url:
++    description: 'Target URL to test with attack payloads'
++    required: false
++  batch-file:
++    description: 'Path to a text file containing a list of target URLs for batch audit'
++    required: false
++  methods:
++    description: 'Comma-separated HTTP methods to test (e.g., "GET,POST,PUT,DELETE")'
++    required: false
++    default: 'GET'
++  categories:
++    description: 'Comma-separated payload categories (e.g., "SQL Injection,XSS,RCE")'
++    required: false
++  threshold:
++    description: 'Minimum required protection score percentage (0-100). Fails the action if score is lower'
++    required: false
++  fail-on-bypass:
++    description: 'Fail step if any attack bypass is detected (true/false)'
++    required: false
++    default: 'false'
++  enhanced:
++    description: 'Use enhanced payload set (true/false)'
++    required: false
++    default: 'false'
++  advanced:
++    description: 'Use advanced bypass payloads (true/false)'
++    required: false
++    default: 'false'
++  auto-detect:
++    description: 'Auto-detect WAF vendor first (true/false)'
++    required: false
++    default: 'false'
++  encoding:
++    description: 'Use encoding and obfuscation variations (true/false)'
++    required: false
++    default: 'false'
++  http-manipulation:
++    description: 'Run HTTP manipulation tests (true/false)'
++    required: false
++    default: 'false'
++  sarif-output:
++    description: 'Path to save SARIF report (e.g., "waf-results.sarif")'
++    required: false
++    default: 'waf-results.sarif'
++  html-output:
++    description: 'Path to save HTML report (e.g., "waf-report.html")'
++    required: false
++  summary-output:
++    description: 'Path to save Markdown summary report'
++    required: false
++    default: 'waf-summary.md'
++
++outputs:
++  sarif-file:
++    description: 'Path to the generated SARIF report file'
++    value: ${{ inputs.sarif-output }}
++  summary-file:
++    description: 'Path to the generated Markdown summary file'
++    value: ${{ inputs.summary-output }}
++
++runs:
++  using: 'composite'
++  steps:
++    - name: Set up Node.js
++      uses: actions/setup-node@v4
++      with:
++        node-version: '20'
++
++    - name: Install and Build WAF-Checker CLI
++      shell: bash
++      working-directory: ${{ github.action_path }}
++      run: |
++        npm ci
++        npm run build --workspace=@waf-checker/core
++        npm run build --workspace=@waf-checker/cli
++
++    - name: Run WAF Audit
++      shell: bash
++      env:
++        ACTION_PATH: ${{ github.action_path }}
++        INPUT_TARGET_URL: ${{ inputs.target-url }}
++        INPUT_BATCH_FILE: ${{ inputs.batch-file }}
++        INPUT_METHODS: ${{ inputs.methods }}
++        INPUT_CATEGORIES: ${{ inputs.categories }}
++        INPUT_ENHANCED: ${{ inputs.enhanced }}
++        INPUT_ADVANCED: ${{ inputs.advanced }}
++        INPUT_AUTO_DETECT: ${{ inputs.auto-detect }}
++        INPUT_ENCODING: ${{ inputs.encoding }}
++        INPUT_HTTP_MANIPULATION: ${{ inputs.http-manipulation }}
++        INPUT_FAIL_ON_BYPASS: ${{ inputs.fail-on-bypass }}
++        INPUT_THRESHOLD: ${{ inputs.threshold }}
++        INPUT_SUMMARY_OUTPUT: ${{ inputs.summary-output }}
++        INPUT_SARIF_OUTPUT: ${{ inputs.sarif-output }}
++        INPUT_HTML_OUTPUT: ${{ inputs.html-output }}
++      run: |
++        CLI_PATH="$ACTION_PATH/packages/cli/dist/index.js"
++        
++        ARGS=()
++        if [ -n "$INPUT_BATCH_FILE" ]; then
++          ARGS+=("batch" "$INPUT_BATCH_FILE")
++        elif [ -n "$INPUT_TARGET_URL" ]; then
++          ARGS+=("check" "$INPUT_TARGET_URL")
++        else
++          echo "::error::Either 'target-url' or 'batch-file' input must be provided."
++          exit 1
++        fi
++
++        if [ -n "$INPUT_METHODS" ]; then
++          ARGS+=("--methods" "$INPUT_METHODS")
++        fi
++
++        if [ -n "$INPUT_CATEGORIES" ]; then
++          ARGS+=("--categories" "$INPUT_CATEGORIES")
++        fi
++
++        if [ "$INPUT_ENHANCED" = "true" ]; then
++          ARGS+=("--enhanced")
++        fi
++
++        if [ "$INPUT_ADVANCED" = "true" ]; then
++          ARGS+=("--advanced")
++        fi
++
++        if [ "$INPUT_AUTO_DETECT" = "true" ]; then
++          ARGS+=("--auto-detect-waf")
++        fi
++
++        if [ "$INPUT_ENCODING" = "true" ]; then
++          ARGS+=("--encoding-variations")
++        fi
++
++        if [ "$INPUT_HTTP_MANIPULATION" = "true" ]; then
++          ARGS+=("--http-manipulation")
++        fi
++
++        if [ "$INPUT_FAIL_ON_BYPASS" = "true" ]; then
++          ARGS+=("--fail-on-bypass")
++        fi
++
++        if [ -n "$INPUT_THRESHOLD" ]; then
++          ARGS+=("--threshold" "$INPUT_THRESHOLD")
++        fi
++
++        if [ -n "$INPUT_SUMMARY_OUTPUT" ]; then
++          ARGS+=("--markdown-output" "$INPUT_SUMMARY_OUTPUT")
++        fi
++
++        if [ -n "$INPUT_SARIF_OUTPUT" ] && [ -n "$INPUT_TARGET_URL" ]; then
++          ARGS+=("--sarif-output" "$INPUT_SARIF_OUTPUT")
++        fi
++
++        if [ -n "$INPUT_HTML_OUTPUT" ]; then
++          ARGS+=("--html-output" "$INPUT_HTML_OUTPUT")
++        fi
++
++        ARGS+=("-q")
++
++        AUDIT_EXIT_CODE=0
++        node "$CLI_PATH" "${ARGS[@]}" || AUDIT_EXIT_CODE=$?
++
++        if [ -f "$INPUT_SUMMARY_OUTPUT" ] && [ -n "$GITHUB_STEP_SUMMARY" ]; then
++          cat "$INPUT_SUMMARY_OUTPUT" >> "$GITHUB_STEP_SUMMARY"
++        fi
++
++        if [ "$AUDIT_EXIT_CODE" -ne 0 ]; then
++          exit $AUDIT_EXIT_CODE
++        fi
+diff --git a/packages/cli/src/index.ts b/packages/cli/src/index.ts
+index 52e47d0..be9f97c 100644
+--- a/packages/cli/src/index.ts
++++ b/packages/cli/src/index.ts
+@@ -154,8 +154,14 @@ checkCmd
+ 	.option('--encoding-variations', 'Use encoding and obfuscation variations', false)
+ 	.option('--http-manipulation', 'Run HTTP manipulation tests (Verb Tampering, Parameter Pollution, etc.)', false)
+ 	.option('--json', 'Output results in JSON format')
+-	.option('--format <format>', 'Output format for report: json, csv, html')
+-	.option('--output <path>', 'File path to save the report to')
++	.option('-f, --format <format>', 'Output format for report: json, csv, html, sarif, markdown')
++	.option('-o, --output <path>', 'File path to save the report to')
++	.option('--sarif-output <path>', 'File path to save SARIF report to')
++	.option('--markdown-output <path>', 'File path to save Markdown report to')
++	.option('--html-output <path>', 'File path to save HTML report to')
++	.option('--threshold <percent>', 'Minimum protection score percentage required to pass (e.g. 95). Exits with code 1 if score is lower')
++	.option('-q, --quiet', 'Suppress per-request logging, displaying only final results')
++	.option('--silent', 'Alias for --quiet')
+ 	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
+ 	.addHelpText('after', detailedHelp)
+ 	.action(async (url: string, options: any) => {
+@@ -167,6 +173,7 @@ checkCmd
+ 				process.exit(1);
+ 			}
+ 
++			const isQuiet = Boolean(options.quiet || options.silent);
+ 			const customFetch = getFetch(options.proxy);
+ 			const methods = parseCommaList(options.methods) || ['GET'];
+ 			const categories = parseCommaList(options.categories);
+@@ -192,7 +199,7 @@ checkCmd
+ 					enableVerbTampering: true,
+ 					enableContentTypeConfusion: true,
+ 				} : undefined,
+-				{ fetch: customFetch, color: useColor }
++				{ fetch: customFetch, color: useColor, quiet: isQuiet }
+ 			);
+ 
+ 			if (options.json) {
+@@ -208,7 +215,9 @@ checkCmd
+ 			const redirect = results.filter((r: any) => r.is_redirect);
+ 			const errors = results.filter((r: any) => r.status === 'ERR');
+ 
+-			console.log(`  🛡️ Blocked:   ${colors.green(`${blocked.length} (${results.length ? Math.round(blocked.length / results.length * 100) : 0}%)`)}`);
++			const protectionScore = results.length ? Math.round((blocked.length / results.length) * 100) : 100;
++
++			console.log(`  🛡️ Blocked:   ${colors.green(`${blocked.length} (${protectionScore}%)`)}`);
+ 			console.log(`  🔓 Bypassed:  ${bypassed.length > 0 ? colors.red(`${bypassed.length} (${results.length ? Math.round(bypassed.length / results.length * 100) : 0}%)`) : colors.green('0 (0%)')}`);
+ 			if (redirect.length > 0) console.log(`  🔄 Redirects: ${colors.yellow(String(redirect.length))}`);
+ 			if (errors.length > 0) console.log(`  ⚠️ Errors:    ${colors.red(String(errors.length))}`);
+@@ -245,6 +254,45 @@ checkCmd
+ 				}
+ 			}
+ 
++			if (options.sarifOutput) {
++				try {
++					writeReport(options.sarifOutput, 'sarif', 'check', url, results);
++					console.log(colors.green(`SARIF report saved to ${options.sarifOutput}`));
++				} catch (err: any) {
++					console.error(colors.red(`Error writing SARIF report: ${err.message}`));
++				}
++			}
++
++			if (options.markdownOutput) {
++				try {
++					writeReport(options.markdownOutput, 'markdown', 'check', url, results);
++					console.log(colors.green(`Markdown report saved to ${options.markdownOutput}`));
++				} catch (err: any) {
++					console.error(colors.red(`Error writing Markdown report: ${err.message}`));
++				}
++			}
++
++			if (options.htmlOutput) {
++				try {
++					writeReport(options.htmlOutput, 'html', 'check', url, results);
++					console.log(colors.green(`HTML report saved to ${options.htmlOutput}`));
++				} catch (err: any) {
++					console.error(colors.red(`Error writing HTML report: ${err.message}`));
++				}
++			}
++
++			if (options.threshold !== undefined) {
++				const minThreshold = parseFloat(options.threshold);
++				if (isNaN(minThreshold) || minThreshold < 0 || minThreshold > 100) {
++					console.error(colors.red(`Error: --threshold must be a valid number between 0 and 100 (received: ${options.threshold})`));
++					process.exit(1);
++				}
++				if (protectionScore < minThreshold) {
++					console.error(colors.red(`CI/CD Threshold Failed: Protection score ${protectionScore}% is below required threshold of ${minThreshold}%.`));
++					process.exit(1);
++				}
++			}
++
+ 			if (options.failOnBypass && bypassed.length > 0) {
+ 				console.error(colors.red(`CI/CD Check Failed: ${bypassed.length} bypasses detected.`));
+ 				process.exit(1);
+@@ -275,8 +323,13 @@ batchCmd
+ 	.option('--http-manipulation', 'Run HTTP manipulation tests', false)
+ 	.option('--concurrency <number>', 'Number of concurrent URLs to test', '3')
+ 	.option('--json', 'Output results in JSON format')
+-	.option('--format <format>', 'Output format for report: json, csv, html')
+-	.option('--output <path>', 'File path to save the report to')
++	.option('-f, --format <format>', 'Output format for report: json, csv, html, markdown')
++	.option('-o, --output <path>', 'File path to save the report to')
++	.option('--markdown-output <path>', 'File path to save Markdown report to')
++	.option('--html-output <path>', 'File path to save HTML report to')
++	.option('--threshold <percent>', 'Minimum average protection score percentage required across all targets')
++	.option('-q, --quiet', 'Suppress per-request logging')
++	.option('--silent', 'Alias for --quiet')
+ 	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
+ 	.addHelpText('after', detailedHelp)
+ 	.action(async (file: string, options: any) => {
+@@ -286,6 +339,7 @@ batchCmd
+ 				process.exit(1);
+ 			}
+ 
++			const isQuiet = Boolean(options.quiet || options.silent);
+ 			const content = fs.readFileSync(file, 'utf8');
+ 			const urls = content.split(/\r?\n/).map((u) => u.trim()).filter((u) => u && !u.startsWith('#'));
+ 
+@@ -310,7 +364,9 @@ batchCmd
+ 			const categories = parseCommaList(options.categories);
+ 			const headers = parseCustomHeaders(options.customHeaders);
+ 
+-			console.log(`\nStarting batch audit for ${validUrls.length} targets (concurrency = ${concurrency})...\n`);
++			if (!isQuiet && !options.json) {
++				console.log(`\nStarting batch audit for ${validUrls.length} targets (concurrency = ${concurrency})...\n`);
++			}
+ 
+ 			const batchResults: any[] = [];
+ 			let completed = 0;
+@@ -323,7 +379,7 @@ batchCmd
+ 					if (!url) break;
+ 
+ 					try {
+-						if (!options.json) {
++						if (!options.json && !isQuiet) {
+ 							console.log(`[${++completed}/${totalValidUrls}] Scanning ${redactUrl(url)}...`);
+ 						}
+ 
+@@ -347,7 +403,7 @@ batchCmd
+ 								enableVerbTampering: true,
+ 								enableContentTypeConfusion: true,
+ 							} : undefined,
+-							{ fetch: customFetch, color: useColor }
++							{ fetch: customFetch, color: useColor, quiet: isQuiet }
+ 						);
+ 
+ 						const blocked = res.filter((r: any) => r.status === 403 || r.status === 'BLOCKED');
+@@ -362,7 +418,7 @@ batchCmd
+ 							bypassRate: res.length ? Math.round(bypassed.length / res.length * 100) : 0
+ 						});
+ 					} catch (err: any) {
+-						if (!options.json) {
++						if (!options.json && !isQuiet) {
+ 							console.error(`Error scanning ${redactUrl(url)}: ${err.message}`);
+ 						}
+ 						batchResults.push({
+@@ -406,6 +462,39 @@ batchCmd
+ 				}
+ 			}
+ 
++			if (options.markdownOutput) {
++				try {
++					writeReport(options.markdownOutput, 'markdown', 'batch', file, batchResults);
++					console.log(colors.green(`Batch Markdown report saved to ${options.markdownOutput}`));
++				} catch (err: any) {
++					console.error(colors.red(`Error writing Markdown report: ${err.message}`));
++				}
++			}
++
++			if (options.htmlOutput) {
++				try {
++					writeReport(options.htmlOutput, 'html', 'batch', file, batchResults);
++					console.log(colors.green(`Batch HTML report saved to ${options.htmlOutput}`));
++				} catch (err: any) {
++					console.error(colors.red(`Error writing HTML report: ${err.message}`));
++				}
++			}
++
++			if (options.threshold !== undefined) {
++				const minThreshold = parseFloat(options.threshold);
++				if (isNaN(minThreshold) || minThreshold < 0 || minThreshold > 100) {
++					console.error(colors.red(`Error: --threshold must be a valid number between 0 and 100 (received: ${options.threshold})`));
++					process.exit(1);
++				}
++				const totalBatchTests = batchResults.reduce((acc, r) => acc + (r.total || 0), 0);
++				const totalBatchBlocked = batchResults.reduce((acc, r) => acc + (r.blocked || 0), 0);
++				const batchScore = totalBatchTests > 0 ? Math.round((totalBatchBlocked / totalBatchTests) * 100) : 0;
++				if (batchScore < minThreshold) {
++					console.error(colors.red(`CI/CD Threshold Failed: Overall batch protection score ${batchScore}% is below required threshold of ${minThreshold}%.`));
++					process.exit(1);
++				}
++			}
++
+ 			if (options.failOnBypass && batchResults.some((r: any) => r.bypassed > 0)) {
+ 				const bypassCount = batchResults.reduce((acc, r) => acc + (r.bypassed || 0), 0);
+ 				console.error(colors.red(`CI/CD Check Failed: ${bypassCount} bypasses detected across batch targets.`));
+diff --git a/packages/cli/src/report.ts b/packages/cli/src/report.ts
+index ff4662b..7eb0fb6 100644
+--- a/packages/cli/src/report.ts
++++ b/packages/cli/src/report.ts
+@@ -1,7 +1,8 @@
+ import * as fs from 'fs';
+ import * as path from 'path';
++import { generateSARIFReport, generateMarkdownReport } from '@waf-checker/core';
+ 
+-export type ReportFormat = 'json' | 'csv' | 'html';
++export type ReportFormat = 'json' | 'csv' | 'html' | 'sarif' | 'markdown' | 'md';
+ 
+ export interface CheckResult {
+ 	status: number | string;
+@@ -11,6 +12,10 @@ export interface CheckResult {
+ 	category: string;
+ 	is_redirect?: boolean;
+ 	error?: string;
++	wafDetected?: boolean;
++	wafType?: string;
++	bypassTechnique?: string;
++	originalPayload?: string;
+ }
+ 
+ export interface BatchResult {
+@@ -28,6 +33,8 @@ export interface BatchResult {
+  */
+ export function deduceFormat(outputPath: string): ReportFormat {
+ 	const ext = path.extname(outputPath).toLowerCase();
++	if (ext === '.sarif') return 'sarif';
++	if (ext === '.md' || ext === '.markdown') return 'markdown';
+ 	if (ext === '.json') return 'json';
+ 	if (ext === '.csv') return 'csv';
+ 	if (ext === '.html' || ext === '.htm') return 'html';
+@@ -876,6 +883,44 @@ export function writeReport(
+ 
+ 	if (format === 'json') {
+ 		outputContent = JSON.stringify(results, null, 2);
++	} else if (format === 'sarif') {
++		if (type === 'batch') {
++			throw new Error('SARIF report format is only supported for single target audits (check command), not batch audits.');
++		}
++		outputContent = generateSARIFReport(results, urlOrFile);
++	} else if (format === 'markdown' || format === 'md') {
++		if (type === 'check') {
++			outputContent = generateMarkdownReport(results, urlOrFile);
++		} else {
++			// Batch Markdown report
++			const batchResults = results as BatchResult[];
++			const totalTargets = batchResults.length;
++			const totalBypassed = batchResults.reduce((acc, r) => acc + (r.bypassed || 0), 0);
++			const totalBlocked = batchResults.reduce((acc, r) => acc + (r.blocked || 0), 0);
++			const totalTests = batchResults.reduce((acc, r) => acc + (r.total || 0), 0);
++			const overallRate = totalTests > 0 ? Math.round((totalBlocked / totalTests) * 100) : 100;
++
++			const mdLines = [
++				`# 🛡️ WAF Batch Audit Report`,
++				``,
++				`> **Scanned Targets:** \`${totalTargets}\` | **Total Tests:** \`${totalTests}\` | **Overall Protection:** \`${overallRate}%\``,
++				``,
++				`| Target URL | Status | Total Tests | Blocked | Bypassed | Bypass Rate |`,
++				`| :--- | :--- | :--- | :--- | :--- | :--- |`,
++			];
++
++			for (const r of batchResults) {
++				const statusBadge = !r.success ? '🔴 Failed' : r.bypassed > 0 ? '⚠️ Bypasses' : '🟢 Secure';
++				mdLines.push(
++					`| \`${r.url}\` | ${statusBadge} | \`${r.total || 0}\` | \`${r.blocked || 0}\` | \`${r.bypassed || 0}\` | \`${r.bypassRate || 0}%\` |`,
++				);
++			}
++
++			mdLines.push(``);
++			mdLines.push(`---`);
++			mdLines.push(`*Generated by [WAF-Checker](https://github.com/SecH0us3/waf-checker)*`);
++			outputContent = mdLines.join('\n');
++		}
+ 	} else if (format === 'csv') {
+ 		outputContent = type === 'check' 
+ 			? generateCheckCsv(results as CheckResult[])
+diff --git a/packages/cli/test/cli.spec.ts b/packages/cli/test/cli.spec.ts
+index ee8b14d..0026ba3 100644
+--- a/packages/cli/test/cli.spec.ts
++++ b/packages/cli/test/cli.spec.ts
+@@ -43,14 +43,11 @@ vi.mock('fs', async () => {
+ 	};
+ });
+ 
+-vi.mock('../src/report', () => {
++vi.mock('../src/report', async () => {
++	const actual = await vi.importActual<typeof import('../src/report')>('../src/report');
+ 	return {
++		...actual,
+ 		writeReport: vi.fn(),
+-		deduceFormat: vi.fn((path: string) => {
+-			if (path.endsWith('.json')) return 'json';
+-			if (path.endsWith('.csv')) return 'csv';
+-			return 'html';
+-		})
+ 	};
+ });
+ 
+@@ -359,6 +356,94 @@ describe('CLI Argument Processing', () => {
+ 			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array));
+ 		});
+ 
++		it('should write sarif report when .sarif extension is specified', async () => {
++			await expect(
++				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--output', 'report.sarif'])
++			).resolves.toBeDefined();
++
++			expect(writeReport).toHaveBeenCalledWith('report.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array));
++		});
++
++		it('should write multiple reports simultaneously when flags are specified', async () => {
++			await expect(
++				program.parseAsync([
++					'node', 'index.js', 'check', 'https://example.com',
++					'--sarif-output', 'results.sarif',
++					'--markdown-output', 'summary.md',
++					'--html-output', 'report.html',
++				])
++			).resolves.toBeDefined();
++
++			expect(writeReport).toHaveBeenCalledWith('results.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array));
++			expect(writeReport).toHaveBeenCalledWith('summary.md', 'markdown', 'check', 'https://example.com', expect.any(Array));
++			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array));
++		});
++
++		it('should pass quiet option when --quiet is set', async () => {
++			await expect(
++				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--quiet'])
++			).resolves.toBeDefined();
++
++			expect(core.handleApiCheckFiltered).toHaveBeenCalledWith(
++				expect.any(String),
++				expect.any(Number),
++				expect.any(Array),
++				undefined,
++				undefined,
++				expect.any(Boolean),
++				undefined,
++				expect.any(Boolean),
++				expect.any(Boolean),
++				expect.any(Boolean),
++				expect.any(Boolean),
++				expect.any(Boolean),
++				expect.any(Boolean),
++				undefined,
++				undefined,
++				expect.objectContaining({
++					quiet: true,
++				})
++			);
++		});
++
++		it('should exit with 1 when protection score is below --threshold', async () => {
++			// 1 blocked, 1 bypassed -> 50% protection
++			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
++				{ status: 403, method: 'GET', payload: 'test', responseTime: 50, category: 'SQLi' },
++				{ status: 200, method: 'GET', payload: 'bypass', responseTime: 80, category: 'XSS' },
++			]);
++
++			await expect(
++				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--threshold', '90'])
++			).rejects.toThrow('process.exit(1)');
++
++			expect(exitCode).toBe(1);
++			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CI/CD Threshold Failed: Protection score 50% is below required threshold of 90%'));
++		});
++
++		it('should pass when protection score is above or equal to --threshold', async () => {
++			// 2 blocked -> 100% protection
++			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
++				{ status: 403, method: 'GET', payload: 'test', responseTime: 50, category: 'SQLi' },
++				{ status: 403, method: 'GET', payload: 'test2', responseTime: 40, category: 'XSS' },
++			]);
++
++			await expect(
++				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--threshold', '90'])
++			).resolves.toBeDefined();
++
++			expect(exitCode).toBeNull();
++		});
++
++		it('should exit with 1 when invalid --threshold is provided', async () => {
++			await expect(
++				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--threshold', 'invalid'])
++			).rejects.toThrow('process.exit(1)');
++
++			expect(exitCode).toBe(1);
++			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Error: --threshold must be a valid number between 0 and 100'));
++		});
++
+ 		it('should exit with 1 on bypass when --fail-on-bypass is specified', async () => {
+ 			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
+ 				{ status: 200, method: 'GET', payload: 'bypass', responseTime: 80, category: 'SQL Injection' }
+@@ -444,6 +529,26 @@ describe('CLI Argument Processing', () => {
+ 			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CI/CD Check Failed'));
+ 		});
+ 
++		it('should exit with 1 on batch threshold failure', async () => {
++			// First target: 1 blocked, 0 bypassed (100%)
++			// Second target: 0 blocked, 1 bypassed (0%)
++			// Total: 1 blocked / 2 total = 50%
++			vi.mocked(core.handleApiCheckFiltered)
++				.mockResolvedValueOnce([
++					{ status: 403, method: 'GET', payload: 'test', responseTime: 120, category: 'SQL Injection' }
++				])
++				.mockResolvedValueOnce([
++					{ status: 200, method: 'GET', payload: 'bypass', responseTime: 80, category: 'SQL Injection' }
++				]);
++
++			await expect(
++				program.parseAsync(['node', 'index.js', 'batch', mockFile, '--threshold', '80'])
++			).rejects.toThrow('process.exit(1)');
++
++			expect(exitCode).toBe(1);
++			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CI/CD Threshold Failed: Overall batch protection score 50% is below required threshold of 80%'));
++		});
++
+ 		it('should exit with 0 if no targets bypassed and --fail-on-bypass is specified', async () => {
+ 			await expect(
+ 				program.parseAsync(['node', 'index.js', 'batch', mockFile, '--fail-on-bypass'])
+diff --git a/packages/core/src/check.ts b/packages/core/src/check.ts
+index 07a89ff..9e3f69a 100644
+--- a/packages/core/src/check.ts
++++ b/packages/core/src/check.ts
+@@ -22,7 +22,7 @@ export async function sendRequest(
+ 	useEnhancedPayloads: boolean = false,
+ 	detectedWAF?: string,
+ 	httpManipulation?: HTTPManipulationOptions,
+-	options?: { fetch?: typeof fetch; color?: boolean },
++	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean },
+ ) {
+ 	const fetchFn = options?.fetch || globalThis.fetch;
+ 	try {
+@@ -156,7 +156,9 @@ export async function sendRequest(
+ 		} else {
+ 			logMsg = `Request to ${redactUrl(url)} with method ${method} and payload ${payload ?? '(none)'} and headers ${JSON.stringify(redactHeaders(headersObj))} returned status ${resp.status} in ${responseTime}ms`;
+ 		}
+-		console.log(logMsg);
++		if (!options?.quiet) {
++			console.log(logMsg);
++		}
+ 
+ 		return {
+ 			status: resp.status,
+@@ -186,7 +188,7 @@ export async function handleApiCheckFiltered(
+ 	useEncodingVariations: boolean = false,
+ 	detectedWAF?: string,
+ 	httpManipulation?: HTTPManipulationOptions,
+-	options?: { fetch?: typeof fetch; color?: boolean },
++	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean },
+ ): Promise<any[]> {
+ 	const METHODS = methods && methods.length ? methods : ['GET'];
+ 	const results: any[] = [];
+@@ -230,9 +232,13 @@ export async function handleApiCheckFiltered(
+ 	if (autoDetectWAF) {
+ 		try {
+ 			wafDetectionResult = await WAFDetector.activeDetection(url.replace(/\{PAYLOAD\}/g, ''), options);
+-			console.log(`WAF Detection Result: ${JSON.stringify(wafDetectionResult)}`);
++			if (!options?.quiet) {
++				console.log(`WAF Detection Result: ${JSON.stringify(wafDetectionResult)}`);
++			}
+ 		} catch (e) {
+-			console.error('WAF detection failed:', e);
++			if (!options?.quiet) {
++				console.error('WAF detection failed:', e);
++			}
+ 		}
+ 	}
+ 
+diff --git a/packages/core/src/index.ts b/packages/core/src/index.ts
+index e623d0d..9a5cc40 100644
+--- a/packages/core/src/index.ts
++++ b/packages/core/src/index.ts
+@@ -6,3 +6,4 @@ export * from './waf-detection';
+ export * from './check';
+ export * from './utils/security';
+ export * from './utils/payload-utils';
++export * from './reports';
+diff --git a/packages/core/src/reports/html.ts b/packages/core/src/reports/html.ts
+new file mode 100644
+index 0000000..1ca7bd1
+--- /dev/null
++++ b/packages/core/src/reports/html.ts
+@@ -0,0 +1,186 @@
++import { AuditResultItem, calculateAuditStats } from './types';
++
++function escapeHtml(str?: string): string {
++	return String(str || '')
++		.replace(/&/g, '&amp;')
++		.replace(/</g, '&lt;')
++		.replace(/>/g, '&gt;')
++		.replace(/"/g, '&quot;')
++		.replace(/'/g, '&#039;');
++}
++
++export function generateHTMLReport(results: AuditResultItem[], targetUrl?: string): string {
++	const stats = calculateAuditStats(results, targetUrl);
++
++	const categoryMap = new Map<string, { total: number; blocked: number; bypassed: number; errors: number }>();
++	for (const r of results) {
++		const entry = categoryMap.get(r.category) || { total: 0, blocked: 0, bypassed: 0, errors: 0 };
++		entry.total++;
++		if (r.status === 403 || r.status === '403' || r.status === 'BLOCKED') {
++			entry.blocked++;
++		} else if (r.status === 200 || r.status === '200') {
++			entry.bypassed++;
++		} else {
++			entry.errors++;
++		}
++		categoryMap.set(r.category, entry);
++	}
++
++	const scoreColor = stats.protectionScore >= 90 ? '#10b981' : stats.protectionScore >= 70 ? '#f59e0b' : '#ef4444';
++
++	const categoryRows = Array.from(categoryMap.entries())
++		.map(([cat, data]) => {
++			const rate = data.total > 0 ? Math.round((data.blocked / data.total) * 100) : 100;
++			const color = rate >= 90 ? '#10b981' : rate >= 70 ? '#f59e0b' : '#ef4444';
++			return `<tr>
++				<td><strong>${escapeHtml(cat)}</strong></td>
++				<td>${data.total}</td>
++				<td style="color: #10b981; font-weight: 600;">${data.blocked}</td>
++				<td style="color: #ef4444; font-weight: 600;">${data.bypassed}</td>
++				<td><span class="badge" style="background: ${color}20; color: ${color};">${rate}%</span></td>
++			</tr>`;
++		})
++		.join('\n');
++
++	const resultRows = results
++		.map((r, i) => {
++			const isBypass = r.status === 200 || r.status === '200';
++			const isBlocked = r.status === 403 || r.status === '403' || r.status === 'BLOCKED';
++			const statusClass = isBypass ? 'status-bypass' : isBlocked ? 'status-blocked' : 'status-error';
++			const statusLabel = isBypass ? '⚠️ BYPASS (200)' : isBlocked ? '🛡️ BLOCKED (403)' : `❓ ${r.status}`;
++
++			return `<tr>
++				<td>#${i + 1}</td>
++				<td><span class="category-tag">${escapeHtml(r.category)}</span></td>
++				<td><span class="method-tag">${escapeHtml(r.method)}</span></td>
++				<td><span class="${statusClass}">${escapeHtml(statusLabel)}</span></td>
++				<td>${r.responseTime}ms</td>
++				<td>${escapeHtml(r.bypassTechnique || 'Standard')}</td>
++				<td><code>${escapeHtml(r.payload)}</code></td>
++			</tr>`;
++		})
++		.join('\n');
++
++	return `<!DOCTYPE html>
++<html lang="en">
++<head>
++	<meta charset="UTF-8">
++	<meta name="viewport" content="width=device-width, initial-scale=1.0">
++	<title>WAF Audit Report - ${escapeHtml(stats.targetUrl || 'Target')}</title>
++	<style>
++		:root {
++			--bg: #0f172a;
++			--surface: #1e293b;
++			--border: #334155;
++			--text: #f8fafc;
++			--text-muted: #94a3b8;
++			--primary: #3b82f6;
++			--success: #10b981;
++			--warning: #f59e0b;
++			--danger: #ef4444;
++		}
++		* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
++		body { background: var(--bg); color: var(--text); padding: 2rem 1rem; line-height: 1.5; }
++		.container { max-width: 1200px; margin: 0 auto; }
++		header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; }
++		h1 { font-size: 1.8rem; font-weight: 700; display: flex; align-items: center; gap: 0.5rem; }
++		.meta { color: var(--text-muted); font-size: 0.9rem; margin-top: 0.5rem; }
++		.score-circle { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100px; height: 100px; border-radius: 50%; border: 4px solid ${scoreColor}; background: var(--surface); text-align: center; }
++		.score-number { font-size: 1.8rem; font-weight: 800; color: ${scoreColor}; }
++		.score-label { font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted); }
++		.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
++		.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; }
++		.card-title { font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
++		.card-val { font-size: 1.8rem; font-weight: 700; margin-top: 0.25rem; }
++		.table-container { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; margin-bottom: 2rem; }
++		table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem; }
++		th { background: #182234; padding: 0.75rem 1rem; color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border); }
++		td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border); }
++		tr:last-child td { border-bottom: none; }
++		code { background: #0f172a; padding: 0.2rem 0.4rem; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; color: #e2e8f0; word-break: break-all; }
++		.badge { padding: 0.2rem 0.5rem; border-radius: 9999px; font-weight: 600; font-size: 0.8rem; }
++		.status-bypass { color: var(--danger); font-weight: 700; }
++		.status-blocked { color: var(--success); font-weight: 600; }
++		.status-error { color: var(--warning); }
++		.category-tag { background: #334155; padding: 0.15rem 0.5rem; border-radius: 4px; font-size: 0.8rem; }
++		.method-tag { background: #1e3a8a; color: #93c5fd; padding: 0.15rem 0.4rem; border-radius: 4px; font-weight: 600; font-size: 0.75rem; }
++		h2 { font-size: 1.3rem; margin-bottom: 1rem; }
++	</style>
++</head>
++<body>
++	<div class="container">
++		<header>
++			<div>
++				<h1>🛡️ WAF Checker Audit Report</h1>
++				<div class="meta">
++					Target: <strong>${escapeHtml(stats.targetUrl || 'Target')}</strong> | 
++					Detected WAF: <strong>${escapeHtml(stats.detectedWAF || 'Unknown')}</strong> | 
++					Date: <strong>${new Date().toUTCString()}</strong>
++				</div>
++			</div>
++			<div class="score-circle">
++				<div class="score-number">${stats.protectionScore}%</div>
++				<div class="score-label">Protection</div>
++			</div>
++		</header>
++
++		<div class="grid">
++			<div class="card">
++				<div class="card-title">Total Tests</div>
++				<div class="card-val">${stats.total}</div>
++			</div>
++			<div class="card">
++				<div class="card-title">Blocked Attacks</div>
++				<div class="card-val" style="color: var(--success);">${stats.blocked}</div>
++			</div>
++			<div class="card">
++				<div class="card-title">Bypassed Attacks</div>
++				<div class="card-val" style="color: var(--danger);">${stats.bypassed}</div>
++			</div>
++			<div class="card">
++				<div class="card-title">Errors / Unreachable</div>
++				<div class="card-val" style="color: var(--warning);">${stats.errors + stats.other}</div>
++			</div>
++		</div>
++
++		<h2>📊 Category Summary</h2>
++		<div class="table-container">
++			<table>
++				<thead>
++					<tr>
++						<th>Category</th>
++						<th>Total</th>
++						<th>Blocked</th>
++						<th>Bypassed</th>
++						<th>Protection Rate</th>
++					</tr>
++				</thead>
++				<tbody>
++					${categoryRows}
++				</tbody>
++			</table>
++		</div>
++
++		<h2>📝 Detailed Test Results</h2>
++		<div class="table-container">
++			<table>
++				<thead>
++					<tr>
++						<th>#</th>
++						<th>Category</th>
++						<th>Method</th>
++						<th>Status</th>
++						<th>Response Time</th>
++						<th>Technique</th>
++						<th>Payload</th>
++					</tr>
++				</thead>
++				<tbody>
++					${resultRows}
++				</tbody>
++			</table>
++		</div>
++	</div>
++</body>
++</html>`;
++}
+diff --git a/packages/core/src/reports/index.ts b/packages/core/src/reports/index.ts
+new file mode 100644
+index 0000000..e0679ea
+--- /dev/null
++++ b/packages/core/src/reports/index.ts
+@@ -0,0 +1,41 @@
++export * from './types';
++export * from './sarif';
++export * from './markdown';
++export * from './html';
++
++import { AuditResultItem, calculateAuditStats } from './types';
++import { generateSARIFReport } from './sarif';
++import { generateMarkdownReport } from './markdown';
++import { generateHTMLReport } from './html';
++
++export function generateJSONReport(results: AuditResultItem[], targetUrl?: string): string {
++	const stats = calculateAuditStats(results, targetUrl);
++	return JSON.stringify(
++		{
++			summary: stats,
++			results,
++		},
++		null,
++		2,
++	);
++}
++
++export type ReportFormat = 'sarif' | 'markdown' | 'html' | 'json';
++
++export function generateReport(
++	format: ReportFormat,
++	results: AuditResultItem[],
++	targetUrl?: string,
++): string {
++	switch (format) {
++		case 'sarif':
++			return generateSARIFReport(results, targetUrl);
++		case 'markdown':
++			return generateMarkdownReport(results, targetUrl);
++		case 'html':
++			return generateHTMLReport(results, targetUrl);
++		case 'json':
++		default:
++			return generateJSONReport(results, targetUrl);
++	}
++}
+diff --git a/packages/core/src/reports/markdown.ts b/packages/core/src/reports/markdown.ts
+new file mode 100644
+index 0000000..1cbac82
+--- /dev/null
++++ b/packages/core/src/reports/markdown.ts
+@@ -0,0 +1,98 @@
++import { AuditResultItem, calculateAuditStats } from './types';
++
++export function generateMarkdownReport(results: AuditResultItem[], targetUrl?: string): string {
++	const stats = calculateAuditStats(results, targetUrl);
++
++	// Calculate per-category stats
++	const categoryMap = new Map<string, { total: number; blocked: number; bypassed: number; errors: number }>();
++
++	for (const r of results) {
++		const entry = categoryMap.get(r.category) || { total: 0, blocked: 0, bypassed: 0, errors: 0 };
++		entry.total++;
++		if (r.status === 403 || r.status === '403' || r.status === 'BLOCKED') {
++			entry.blocked++;
++		} else if (r.status === 200 || r.status === '200') {
++			entry.bypassed++;
++		} else {
++			entry.errors++;
++		}
++		categoryMap.set(r.category, entry);
++	}
++
++	const bypassedItems = results.filter((r) => r.status === 200 || r.status === '200');
++
++	// Status badge
++	const scoreEmoji = stats.protectionScore >= 90 ? '🟢' : stats.protectionScore >= 70 ? '🟡' : '🔴';
++	const statusBadge =
++		stats.protectionScore === 100
++			? '🛡️ **Excellent: 100% Protection**'
++			: stats.protectionScore >= 90
++				? '🛡️ **Good Protection**'
++				: stats.protectionScore >= 70
++					? '⚠️ **Moderate Protection**'
++					: '🚨 **Poor Protection / High Risk**';
++
++	const lines: string[] = [
++		`# 🛡️ WAF Checker Audit Report`,
++		``,
++		`> **Target:** \`${stats.targetUrl || 'Target'}\` | **Date:** ${new Date().toUTCString()} | **Detected WAF:** \`${stats.detectedWAF}\``,
++		``,
++		`### ${scoreEmoji} Overall Score: ${stats.protectionScore}% (${statusBadge})`,
++		``,
++		`| Metric | Count | Percentage |`,
++		`| :--- | :--- | :--- |`,
++		`| 🎯 **Total Tests** | \`${stats.total}\` | \`100%\` |`,
++		`| 🛡️ **Blocked (Protected)** | \`${stats.blocked}\` | \`${stats.total > 0 ? Math.round((stats.blocked / stats.total) * 100) : 0}%\` |`,
++		`| ⚠️ **Bypassed (Vulnerable)** | \`${stats.bypassed}\` | \`${stats.total > 0 ? Math.round((stats.bypassed / stats.total) * 100) : 0}%\` |`,
++		`| ❓ **Errors / Other** | \`${stats.errors + stats.other}\` | \`${stats.total > 0 ? Math.round(((stats.errors + stats.other) / stats.total) * 100) : 0}%\` |`,
++		``,
++		`### 📊 Attack Category Breakdown`,
++		``,
++		`| Attack Category | Total | Blocked | Bypassed | Protection Rate |`,
++		`| :--- | :--- | :--- | :--- | :--- |`,
++	];
++
++	for (const [cat, data] of categoryMap.entries()) {
++		const rate = data.total > 0 ? Math.round((data.blocked / data.total) * 100) : 100;
++		const catEmoji = rate >= 90 ? '🟢' : rate >= 70 ? '🟡' : '🔴';
++		lines.push(`| **${cat}** | \`${data.total}\` | \`${data.blocked}\` | \`${data.bypassed}\` | ${catEmoji} \`${rate}%\` |`);
++	}
++
++	lines.push(``);
++
++	if (bypassedItems.length > 0) {
++		lines.push(`### ⚠️ Bypassed Payloads (${bypassedItems.length})`);
++		lines.push(``);
++		lines.push(`<details>`);
++		lines.push(`<summary><b>Click to inspect ${bypassedItems.length} bypassed attack vectors</b></summary>`);
++		lines.push(``);
++		lines.push(`| Category | Method | Status | Time | Bypass Technique | Payload |`);
++		lines.push(`| :--- | :--- | :--- | :--- | :--- | :--- |`);
++
++		for (const item of bypassedItems) {
++			const safePayload = item.payload
++				.replace(/&/g, '&amp;')
++				.replace(/</g, '&lt;')
++				.replace(/>/g, '&gt;')
++				.replace(/"/g, '&quot;')
++				.replace(/'/g, '&#39;')
++				.replace(/\|/g, '&#124;')
++				.replace(/\r?\n/g, ' ');
++			lines.push(
++				`| \`${item.category}\` | \`${item.method}\` | \`${item.status}\` | \`${item.responseTime}ms\` | \`${item.bypassTechnique || 'Standard'}\` | <code>${safePayload}</code> |`,
++			);
++		}
++
++		lines.push(``);
++		lines.push(`</details>`);
++	} else {
++		lines.push(`### ✅ No Bypasses Detected`);
++		lines.push(`All executed attack payloads were successfully blocked by the WAF.`);
++	}
++
++	lines.push(``);
++	lines.push(`---`);
++	lines.push(`*Generated by [WAF-Checker](https://github.com/SecH0us3/waf-checker)*`);
++
++	return lines.join('\n');
++}
+diff --git a/packages/core/src/reports/sarif.ts b/packages/core/src/reports/sarif.ts
+new file mode 100644
+index 0000000..1cea8ff
+--- /dev/null
++++ b/packages/core/src/reports/sarif.ts
+@@ -0,0 +1,96 @@
++import { AuditResultItem, calculateAuditStats } from './types';
++
++export function generateSARIFReport(results: AuditResultItem[], targetUrl?: string): string {
++	const stats = calculateAuditStats(results, targetUrl);
++	const uniqueCategories = [...new Set(results.map((r) => r.category))];
++
++	const rules = uniqueCategories.map((category) => {
++		const ruleId = `WAF-${category.toUpperCase().replace(/[^A-Z0-9]/g, '-')}`;
++		return {
++			id: ruleId,
++			name: `${category} Attack Bypass`,
++			shortDescription: {
++				text: `WAF failed to block ${category} attack payload`,
++			},
++			fullDescription: {
++				text: `A security test payload for category "${category}" was sent to the target, and the WAF did not block it (returned HTTP status 200).`,
++			},
++			defaultConfiguration: {
++				level: 'error',
++			},
++			properties: {
++				tags: ['security', 'waf', category.toLowerCase()],
++				precision: 'high',
++			},
++		};
++	});
++
++	const sarifResults = results
++		.filter((r) => r.status === 200 || r.status === '200')
++		.map((r) => {
++			const ruleId = `WAF-${r.category.toUpperCase().replace(/[^A-Z0-9]/g, '-')}`;
++			return {
++				ruleId,
++				ruleIndex: uniqueCategories.indexOf(r.category),
++				level: 'error',
++				message: {
++					text: `WAF Bypass detected: [${r.category}] attack payload succeeded using ${r.method} method (${r.responseTime}ms). Payload: "${r.payload}"`,
++				},
++				locations: [
++					{
++						physicalLocation: {
++							artifactLocation: {
++								uri: targetUrl || 'https://target.local',
++							},
++							region: {
++								startLine: 1,
++								startColumn: 1,
++							},
++						},
++						logicalLocations: [
++							{
++								name: `${r.method} ${r.category}`,
++								kind: 'endpoint',
++							},
++						],
++					},
++				],
++				properties: {
++					method: r.method,
++					category: r.category,
++					payload: r.payload,
++					originalPayload: r.originalPayload,
++					status: r.status,
++					responseTimeMs: r.responseTime,
++					bypassTechnique: r.bypassTechnique || 'Standard',
++					detectedWAF: r.wafType || stats.detectedWAF,
++				},
++			};
++		});
++
++	const sarifDoc = {
++		$schema: 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
++		version: '2.1.0',
++		runs: [
++			{
++				tool: {
++					driver: {
++						name: 'WAF-Checker',
++						version: '1.0.0',
++						informationUri: 'https://github.com/SecH0us3/waf-checker',
++						rules,
++					},
++				},
++				results: sarifResults,
++				invocations: [
++					{
++						executionSuccessful: true,
++						endTimeUtc: new Date().toISOString(),
++					},
++				],
++			},
++		],
++	};
++
++	return JSON.stringify(sarifDoc, null, 2);
++}
+diff --git a/packages/core/src/reports/types.ts b/packages/core/src/reports/types.ts
+new file mode 100644
+index 0000000..fe0d0c5
+--- /dev/null
++++ b/packages/core/src/reports/types.ts
+@@ -0,0 +1,63 @@
++export interface AuditResultItem {
++	category: string;
++	payload: string;
++	originalPayload?: string;
++	method: string;
++	status: number | string;
++	is_redirect?: boolean;
++	responseTime: number;
++	wafDetected?: boolean;
++	wafType?: string;
++	bypassTechnique?: string;
++}
++
++export interface AuditReportStats {
++	total: number;
++	blocked: number;
++	bypassed: number;
++	errors: number;
++	other: number;
++	protectionScore: number;
++	detectedWAF?: string;
++	durationMs?: number;
++	targetUrl?: string;
++	timestamp?: string;
++}
++
++export function calculateAuditStats(results: AuditResultItem[], targetUrl?: string): AuditReportStats {
++	let blocked = 0;
++	let bypassed = 0;
++	let errors = 0;
++	let other = 0;
++	let detectedWAF = 'Unknown';
++
++	for (const r of results) {
++		if (r.wafType && r.wafType !== 'Unknown') {
++			detectedWAF = r.wafType;
++		}
++		if (r.status === 403 || r.status === '403' || r.status === 'BLOCKED') {
++			blocked++;
++		} else if (r.status === 200 || r.status === '200') {
++			bypassed++;
++		} else if (r.status === 'ERR' || r.status === 500 || r.status === '500') {
++			errors++;
++		} else {
++			other++;
++		}
++	}
++
++	const total = results.length;
++	const protectionScore = total > 0 ? Math.round((blocked / total) * 100) : 100;
++
++	return {
++		total,
++		blocked,
++		bypassed,
++		errors,
++		other,
++		protectionScore,
++		detectedWAF,
++		targetUrl,
++		timestamp: new Date().toISOString(),
++	};
++}
+diff --git a/packages/core/test/reports.spec.ts b/packages/core/test/reports.spec.ts
+new file mode 100644
+index 0000000..31a4ef9
+--- /dev/null
++++ b/packages/core/test/reports.spec.ts
+@@ -0,0 +1,153 @@
++import { describe, it, expect } from 'vitest';
++import {
++	calculateAuditStats,
++	generateSARIFReport,
++	generateMarkdownReport,
++	generateHTMLReport,
++	generateJSONReport,
++	generateReport,
++	AuditResultItem,
++} from '../src/reports';
++
++const mockResults: AuditResultItem[] = [
++	{
++		category: 'SQLi',
++		payload: "' OR '1'='1",
++		method: 'GET',
++		status: 403,
++		responseTime: 45,
++		wafDetected: true,
++		wafType: 'Cloudflare',
++	},
++	{
++		category: 'XSS',
++		payload: '<script>alert(1)</script>',
++		method: 'POST',
++		status: 200, // Bypassed!
++		responseTime: 80,
++		wafDetected: true,
++		wafType: 'Cloudflare',
++		bypassTechnique: 'Standard',
++	},
++	{
++		category: 'RCE',
++		payload: '; cat /etc/passwd',
++		method: 'GET',
++		status: 'BLOCKED',
++		responseTime: 30,
++		wafDetected: true,
++		wafType: 'Cloudflare',
++	},
++	{
++		category: 'LFI',
++		payload: '../../../../etc/hosts',
++		method: 'GET',
++		status: 'ERR',
++		responseTime: 0,
++	},
++];
++
++describe('Reports Module', () => {
++	describe('calculateAuditStats', () => {
++		it('correctly aggregates results stats', () => {
++			const stats = calculateAuditStats(mockResults, 'https://example.com');
++			expect(stats.total).toBe(4);
++			expect(stats.blocked).toBe(2); // 403 + BLOCKED
++			expect(stats.bypassed).toBe(1); // 200
++			expect(stats.errors).toBe(1); // ERR
++			expect(stats.protectionScore).toBe(50); // 2 / 4 = 50%
++			expect(stats.detectedWAF).toBe('Cloudflare');
++			expect(stats.targetUrl).toBe('https://example.com');
++		});
++
++		it('handles empty results array', () => {
++			const stats = calculateAuditStats([]);
++			expect(stats.total).toBe(0);
++			expect(stats.blocked).toBe(0);
++			expect(stats.bypassed).toBe(0);
++			expect(stats.protectionScore).toBe(100);
++		});
++	});
++
++	describe('generateSARIFReport', () => {
++		it('generates valid SARIF 2.1.0 json', () => {
++			const sarifStr = generateSARIFReport(mockResults, 'https://example.com');
++			const sarif = JSON.parse(sarifStr);
++
++			expect(sarif.version).toBe('2.1.0');
++			expect(sarif.$schema).toContain('sarif-schema-2.1.0.json');
++			expect(sarif.runs).toHaveLength(1);
++
++			const run = sarif.runs[0];
++			expect(run.tool.driver.name).toBe('WAF-Checker');
++			expect(run.tool.driver.rules.length).toBeGreaterThan(0);
++
++			// Should only include bypassed items in results
++			expect(run.results).toHaveLength(1);
++			expect(run.results[0].ruleId).toBe('WAF-XSS');
++			expect(run.results[0].level).toBe('error');
++			expect(run.results[0].locations[0].physicalLocation.artifactLocation.uri).toBe('https://example.com');
++		});
++	});
++
++	describe('generateMarkdownReport', () => {
++		it('generates markdown report with summary and details', () => {
++			const md = generateMarkdownReport(mockResults, 'https://example.com');
++
++			expect(md).toContain('# 🛡️ WAF Checker Audit Report');
++			expect(md).toContain('Overall Score: 50%');
++			expect(md).toContain('https://example.com');
++			expect(md).toContain('SQLi');
++			expect(md).toContain('XSS');
++			expect(md).toContain('### ⚠️ Bypassed Payloads (1)');
++			expect(md).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
++		});
++
++		it('shows no bypasses message when all are blocked', () => {
++			const cleanResults: AuditResultItem[] = [
++				{
++					category: 'SQLi',
++					payload: 'test',
++					method: 'GET',
++					status: 403,
++					responseTime: 10,
++				},
++			];
++			const md = generateMarkdownReport(cleanResults, 'https://example.com');
++			expect(md).toContain('No Bypasses Detected');
++		});
++	});
++
++	describe('generateHTMLReport', () => {
++		it('generates HTML report with safe escaping', () => {
++			const html = generateHTMLReport(mockResults, 'https://example.com');
++
++			expect(html).toContain('<!DOCTYPE html>');
++			expect(html).toContain('50%');
++			expect(html).toContain('Cloudflare');
++			// Payloads must be HTML escaped
++			expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
++			expect(html).not.toContain('<script>alert(1)</script>');
++		});
++	});
++
++	describe('generateJSONReport', () => {
++		it('generates structured JSON', () => {
++			const jsonStr = generateJSONReport(mockResults, 'https://example.com');
++			const parsed = JSON.parse(jsonStr);
++
++			expect(parsed.summary.total).toBe(4);
++			expect(parsed.summary.protectionScore).toBe(50);
++			expect(parsed.results).toHaveLength(4);
++		});
++	});
++
++	describe('generateReport helper', () => {
++		it('routes correctly to different formats', () => {
++			expect(JSON.parse(generateReport('sarif', mockResults)).version).toBe('2.1.0');
++			expect(generateReport('markdown', mockResults)).toContain('# 🛡️ WAF Checker');
++			expect(generateReport('html', mockResults)).toContain('<!DOCTYPE html>');
++			expect(JSON.parse(generateReport('json', mockResults)).summary).toBeDefined();
++		});
++	});
++});

@@ -89,6 +89,16 @@ function formatTime(ms: number): string {
 	return `${ms}ms`;
 }
 
+// Helper to parse and validate threshold
+function parseThreshold(val: string): number {
+	const minThreshold = parseFloat(val);
+	if (isNaN(minThreshold) || minThreshold < 0 || minThreshold > 100) {
+		console.error(colors.red(`Error: --threshold must be a valid number between 0 and 100 (received: ${val})`));
+		process.exit(1);
+	}
+	return minThreshold;
+}
+
 // Command: detect
 program
 	.command('detect <url>')
@@ -282,11 +292,7 @@ checkCmd
 			}
 
 			if (options.threshold !== undefined) {
-				const minThreshold = parseFloat(options.threshold);
-				if (isNaN(minThreshold) || minThreshold < 0 || minThreshold > 100) {
-					console.error(colors.red(`Error: --threshold must be a valid number between 0 and 100 (received: ${options.threshold})`));
-					process.exit(1);
-				}
+				const minThreshold = parseThreshold(options.threshold);
 				if (protectionScore < minThreshold) {
 					console.error(colors.red(`CI/CD Threshold Failed: Protection score ${protectionScore}% is below required threshold of ${minThreshold}%.`));
 					process.exit(1);
@@ -481,11 +487,7 @@ batchCmd
 			}
 
 			if (options.threshold !== undefined) {
-				const minThreshold = parseFloat(options.threshold);
-				if (isNaN(minThreshold) || minThreshold < 0 || minThreshold > 100) {
-					console.error(colors.red(`Error: --threshold must be a valid number between 0 and 100 (received: ${options.threshold})`));
-					process.exit(1);
-				}
+				const minThreshold = parseThreshold(options.threshold);
 				const totalBatchTests = batchResults.reduce((acc, r) => acc + (r.total || 0), 0);
 				const totalBatchBlocked = batchResults.reduce((acc, r) => acc + (r.blocked || 0), 0);
 				const batchScore = totalBatchTests > 0 ? Math.round((totalBatchBlocked / totalBatchTests) * 100) : 0;

