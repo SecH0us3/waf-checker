@@ -22,7 +22,7 @@ export async function sendRequest(
 	useEnhancedPayloads: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: { fetch?: typeof fetch; color?: boolean },
+	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean },
 ) {
 	const fetchFn = options?.fetch || globalThis.fetch;
 	try {
@@ -156,7 +156,9 @@ export async function sendRequest(
 		} else {
 			logMsg = `Request to ${redactUrl(url)} with method ${method} and payload ${payload ?? '(none)'} and headers ${JSON.stringify(redactHeaders(headersObj))} returned status ${resp.status} in ${responseTime}ms`;
 		}
-		console.log(logMsg);
+		if (!options?.quiet) {
+			console.log(logMsg);
+		}
 
 		return {
 			status: resp.status,
@@ -186,7 +188,7 @@ export async function handleApiCheckFiltered(
 	useEncodingVariations: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: { fetch?: typeof fetch; color?: boolean },
+	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean },
 ): Promise<any[]> {
 	const METHODS = methods && methods.length ? methods : ['GET'];
 	const results: any[] = [];
@@ -230,9 +232,13 @@ export async function handleApiCheckFiltered(
 	if (autoDetectWAF) {
 		try {
 			wafDetectionResult = await WAFDetector.activeDetection(url.replace(/\{PAYLOAD\}/g, ''), options);
-			console.log(`WAF Detection Result: ${JSON.stringify(wafDetectionResult)}`);
+			if (!options?.quiet) {
+				console.log(`WAF Detection Result: ${JSON.stringify(wafDetectionResult)}`);
+			}
 		} catch (e) {
-			console.error('WAF detection failed:', e);
+			if (!options?.quiet) {
+				console.error('WAF detection failed:', e);
+			}
 		}
 	}
 

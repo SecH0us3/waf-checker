@@ -154,8 +154,14 @@ checkCmd
 	.option('--encoding-variations', 'Use encoding and obfuscation variations', false)
 	.option('--http-manipulation', 'Run HTTP manipulation tests (Verb Tampering, Parameter Pollution, etc.)', false)
 	.option('--json', 'Output results in JSON format')
-	.option('--format <format>', 'Output format for report: json, csv, html')
-	.option('--output <path>', 'File path to save the report to')
+	.option('-f, --format <format>', 'Output format for report: json, csv, html, sarif, markdown')
+	.option('-o, --output <path>', 'File path to save the report to')
+	.option('--sarif-output <path>', 'File path to save SARIF report to')
+	.option('--markdown-output <path>', 'File path to save Markdown report to')
+	.option('--html-output <path>', 'File path to save HTML report to')
+	.option('--threshold <percent>', 'Minimum protection score percentage required to pass (e.g. 95). Exits with code 1 if score is lower')
+	.option('-q, --quiet', 'Suppress per-request logging, displaying only final results')
+	.option('--silent', 'Alias for --quiet')
 	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
 	.addHelpText('after', detailedHelp)
 	.action(async (url: string, options: any) => {
@@ -167,6 +173,7 @@ checkCmd
 				process.exit(1);
 			}
 
+			const isQuiet = Boolean(options.quiet || options.silent);
 			const customFetch = getFetch(options.proxy);
 			const methods = parseCommaList(options.methods) || ['GET'];
 			const categories = parseCommaList(options.categories);
@@ -192,7 +199,7 @@ checkCmd
 					enableVerbTampering: true,
 					enableContentTypeConfusion: true,
 				} : undefined,
-				{ fetch: customFetch, color: useColor }
+				{ fetch: customFetch, color: useColor, quiet: isQuiet }
 			);
 
 			if (options.json) {
@@ -208,7 +215,9 @@ checkCmd
 			const redirect = results.filter((r: any) => r.is_redirect);
 			const errors = results.filter((r: any) => r.status === 'ERR');
 
-			console.log(`  🛡️ Blocked:   ${colors.green(`${blocked.length} (${results.length ? Math.round(blocked.length / results.length * 100) : 0}%)`)}`);
+			const protectionScore = results.length ? Math.round((blocked.length / results.length) * 100) : 100;
+
+			console.log(`  🛡️ Blocked:   ${colors.green(`${blocked.length} (${protectionScore}%)`)}`);
 			console.log(`  🔓 Bypassed:  ${bypassed.length > 0 ? colors.red(`${bypassed.length} (${results.length ? Math.round(bypassed.length / results.length * 100) : 0}%)`) : colors.green('0 (0%)')}`);
 			if (redirect.length > 0) console.log(`  🔄 Redirects: ${colors.yellow(String(redirect.length))}`);
 			if (errors.length > 0) console.log(`  ⚠️ Errors:    ${colors.red(String(errors.length))}`);
@@ -245,6 +254,45 @@ checkCmd
 				}
 			}
 
+			if (options.sarifOutput) {
+				try {
+					writeReport(options.sarifOutput, 'sarif', 'check', url, results);
+					console.log(colors.green(`SARIF report saved to ${options.sarifOutput}`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing SARIF report: ${err.message}`));
+				}
+			}
+
+			if (options.markdownOutput) {
+				try {
+					writeReport(options.markdownOutput, 'markdown', 'check', url, results);
+					console.log(colors.green(`Markdown report saved to ${options.markdownOutput}`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing Markdown report: ${err.message}`));
+				}
+			}
+
+			if (options.htmlOutput) {
+				try {
+					writeReport(options.htmlOutput, 'html', 'check', url, results);
+					console.log(colors.green(`HTML report saved to ${options.htmlOutput}`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing HTML report: ${err.message}`));
+				}
+			}
+
+			if (options.threshold !== undefined) {
+				const minThreshold = parseFloat(options.threshold);
+				if (isNaN(minThreshold) || minThreshold < 0 || minThreshold > 100) {
+					console.error(colors.red(`Error: --threshold must be a valid number between 0 and 100 (received: ${options.threshold})`));
+					process.exit(1);
+				}
+				if (protectionScore < minThreshold) {
+					console.error(colors.red(`CI/CD Threshold Failed: Protection score ${protectionScore}% is below required threshold of ${minThreshold}%.`));
+					process.exit(1);
+				}
+			}
+
 			if (options.failOnBypass && bypassed.length > 0) {
 				console.error(colors.red(`CI/CD Check Failed: ${bypassed.length} bypasses detected.`));
 				process.exit(1);
@@ -275,8 +323,13 @@ batchCmd
 	.option('--http-manipulation', 'Run HTTP manipulation tests', false)
 	.option('--concurrency <number>', 'Number of concurrent URLs to test', '3')
 	.option('--json', 'Output results in JSON format')
-	.option('--format <format>', 'Output format for report: json, csv, html')
-	.option('--output <path>', 'File path to save the report to')
+	.option('-f, --format <format>', 'Output format for report: json, csv, html, markdown')
+	.option('-o, --output <path>', 'File path to save the report to')
+	.option('--markdown-output <path>', 'File path to save Markdown report to')
+	.option('--html-output <path>', 'File path to save HTML report to')
+	.option('--threshold <percent>', 'Minimum average protection score percentage required across all targets')
+	.option('-q, --quiet', 'Suppress per-request logging')
+	.option('--silent', 'Alias for --quiet')
 	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
 	.addHelpText('after', detailedHelp)
 	.action(async (file: string, options: any) => {
@@ -286,6 +339,7 @@ batchCmd
 				process.exit(1);
 			}
 
+			const isQuiet = Boolean(options.quiet || options.silent);
 			const content = fs.readFileSync(file, 'utf8');
 			const urls = content.split(/\r?\n/).map((u) => u.trim()).filter((u) => u && !u.startsWith('#'));
 
@@ -310,7 +364,9 @@ batchCmd
 			const categories = parseCommaList(options.categories);
 			const headers = parseCustomHeaders(options.customHeaders);
 
-			console.log(`\nStarting batch audit for ${validUrls.length} targets (concurrency = ${concurrency})...\n`);
+			if (!isQuiet && !options.json) {
+				console.log(`\nStarting batch audit for ${validUrls.length} targets (concurrency = ${concurrency})...\n`);
+			}
 
 			const batchResults: any[] = [];
 			let completed = 0;
@@ -323,7 +379,7 @@ batchCmd
 					if (!url) break;
 
 					try {
-						if (!options.json) {
+						if (!options.json && !isQuiet) {
 							console.log(`[${++completed}/${totalValidUrls}] Scanning ${redactUrl(url)}...`);
 						}
 
@@ -347,7 +403,7 @@ batchCmd
 								enableVerbTampering: true,
 								enableContentTypeConfusion: true,
 							} : undefined,
-							{ fetch: customFetch, color: useColor }
+							{ fetch: customFetch, color: useColor, quiet: isQuiet }
 						);
 
 						const blocked = res.filter((r: any) => r.status === 403 || r.status === 'BLOCKED');
@@ -362,7 +418,7 @@ batchCmd
 							bypassRate: res.length ? Math.round(bypassed.length / res.length * 100) : 0
 						});
 					} catch (err: any) {
-						if (!options.json) {
+						if (!options.json && !isQuiet) {
 							console.error(`Error scanning ${redactUrl(url)}: ${err.message}`);
 						}
 						batchResults.push({
@@ -403,6 +459,39 @@ batchCmd
 					console.log(colors.green(`Batch report saved to ${options.output} (${format.toUpperCase()})`));
 				} catch (err: any) {
 					console.error(colors.red(`Error writing batch report: ${err.message}`));
+				}
+			}
+
+			if (options.markdownOutput) {
+				try {
+					writeReport(options.markdownOutput, 'markdown', 'batch', file, batchResults);
+					console.log(colors.green(`Batch Markdown report saved to ${options.markdownOutput}`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing Markdown report: ${err.message}`));
+				}
+			}
+
+			if (options.htmlOutput) {
+				try {
+					writeReport(options.htmlOutput, 'html', 'batch', file, batchResults);
+					console.log(colors.green(`Batch HTML report saved to ${options.htmlOutput}`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing HTML report: ${err.message}`));
+				}
+			}
+
+			if (options.threshold !== undefined) {
+				const minThreshold = parseFloat(options.threshold);
+				if (isNaN(minThreshold) || minThreshold < 0 || minThreshold > 100) {
+					console.error(colors.red(`Error: --threshold must be a valid number between 0 and 100 (received: ${options.threshold})`));
+					process.exit(1);
+				}
+				const totalBatchTests = batchResults.reduce((acc, r) => acc + (r.total || 0), 0);
+				const totalBatchBlocked = batchResults.reduce((acc, r) => acc + (r.blocked || 0), 0);
+				const batchScore = totalBatchTests > 0 ? Math.round((totalBatchBlocked / totalBatchTests) * 100) : 0;
+				if (batchScore < minThreshold) {
+					console.error(colors.red(`CI/CD Threshold Failed: Overall batch protection score ${batchScore}% is below required threshold of ${minThreshold}%.`));
+					process.exit(1);
 				}
 			}
 
