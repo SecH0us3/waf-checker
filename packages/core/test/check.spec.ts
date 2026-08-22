@@ -68,13 +68,92 @@ describe('check.ts', () => {
 	});
 
 	it('should handle Header payloads (User-Agent)', async () => {
-		const mockFetch = vi.fn().mockResolvedValue({ status: 200, headers: new Headers() });
-		const results = await handleApiCheckFiltered('http://example.com/api', 1, ['GET'], ['User-Agent'], undefined, false, undefined, false, false, false, false, false, false, undefined, undefined, { fetch: mockFetch as any, quiet: true });
-		expect(results).toBeInstanceOf(Array);
+		const mockFetch = vi.fn().mockResolvedValue({ 
+			status: 200, 
+			headers: new Headers(),
+			text: async () => 'test'
+		});
+		const results = await handleApiCheckFiltered(
+			'http://example.com/api',
+			0, // page
+			['GET'], // methods
+			['User-Agent'], // categories
+			undefined, // payloadTemplate
+			false, // followRedirect
+			'X-Test-Header: value\nAnother: 1', // customHeaders
+			false, // falsePositiveTest
+			false, // caseSensitiveTest
+			false, // useEnhancedPayloads
+			false, // useAdvancedPayloads
+			false, // autoDetectWAF
+			false, // useEncodingVariations
+			undefined, // detectedWAF
+			undefined, // httpManipulation
+			{ fetch: mockFetch as any, quiet: true } // options
+		);
 		
-		if (results.length > 0) {
-			const calledOptions = mockFetch.mock.calls[0][1];
-			expect(calledOptions.headers).toBeDefined();
-		}
+		expect(results.length).toBeGreaterThan(0);
+		const calledOptions = mockFetch.mock.calls[0][1];
+		expect(calledOptions.headers).toBeDefined();
+		// Should contain custom header
+		const headersObj = calledOptions.headers as any;
+		expect(headersObj).toBeDefined();
+	});
+
+	it('should handle API check with httpManipulation', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({ 
+			status: 200, 
+			headers: new Headers(),
+			text: async () => 'test'
+		});
+		const httpManipulation = { enableParameterPollution: true };
+		const results = await handleApiCheckFiltered(
+			'http://example.com/api',
+			0, // page
+			['GET'], // methods
+			['SQL Injection'], // categories
+			undefined, // payloadTemplate
+			false, // followRedirect
+			undefined, // customHeaders
+			false, // falsePositiveTest
+			false, // caseSensitiveTest
+			false, // useEnhancedPayloads
+			false, // useAdvancedPayloads
+			false, // autoDetectWAF
+			false, // useEncodingVariations
+			undefined, // detectedWAF
+			httpManipulation as any, // httpManipulation
+			{ fetch: mockFetch as any, quiet: true } // options
+		);
+		console.log('httpManipulation results', results.length);
+		expect(results.length).toBeGreaterThan(0);
+	});
+
+	it('should handle API check with FileCheck and caseSensitiveTest', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({ 
+			status: 200, 
+			headers: new Headers(),
+			text: async () => 'test'
+		});
+		const results = await handleApiCheckFiltered(
+			'http://example.com/api',
+			0, // page
+			['GET'], // methods
+			['Sensitive Files'], // categories
+			undefined, // payloadTemplate
+			false, // followRedirect
+			'X-Test-Header: value\nAnother: 1', // customHeaders
+			false, // falsePositiveTest
+			true, // caseSensitiveTest
+			false, // useEnhancedPayloads
+			false, // useAdvancedPayloads
+			false, // autoDetectWAF
+			false, // useEncodingVariations
+			undefined, // detectedWAF
+			undefined, // httpManipulation
+			{ fetch: mockFetch as any, quiet: true } // options
+		);
+		
+		expect(results.length).toBeGreaterThan(0);
 	});
 });
