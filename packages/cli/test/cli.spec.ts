@@ -43,14 +43,11 @@ vi.mock('fs', async () => {
 	};
 });
 
-vi.mock('../src/report', () => {
+vi.mock('../src/report', async () => {
+	const actual = await vi.importActual<typeof import('../src/report')>('../src/report');
 	return {
+		...actual,
 		writeReport: vi.fn(),
-		deduceFormat: vi.fn((path: string) => {
-			if (path.endsWith('.json')) return 'json';
-			if (path.endsWith('.csv')) return 'csv';
-			return 'html';
-		})
 	};
 });
 
@@ -359,6 +356,78 @@ describe('CLI Argument Processing', () => {
 			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array));
 		});
 
+		it('should write sarif report when .sarif extension is specified', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--output', 'report.sarif'])
+			).resolves.toBeDefined();
+
+			expect(writeReport).toHaveBeenCalledWith('report.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array));
+		});
+
+		it('should write markdown report when .md extension is specified', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--output', 'report.md'])
+			).resolves.toBeDefined();
+
+			expect(writeReport).toHaveBeenCalledWith('report.md', 'markdown', 'check', 'https://example.com', expect.any(Array));
+		});
+
+		it('should pass quiet option when --quiet is set', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--quiet'])
+			).resolves.toBeDefined();
+
+			expect(core.handleApiCheckFiltered).toHaveBeenCalledWith(
+				expect.any(String),
+				expect.any(Number),
+				expect.any(Array),
+				undefined,
+				undefined,
+				expect.any(Boolean),
+				undefined,
+				expect.any(Boolean),
+				expect.any(Boolean),
+				expect.any(Boolean),
+				expect.any(Boolean),
+				expect.any(Boolean),
+				expect.any(Boolean),
+				undefined,
+				undefined,
+				expect.objectContaining({
+					quiet: true,
+				})
+			);
+		});
+
+		it('should exit with 1 when protection score is below --threshold', async () => {
+			// 1 blocked, 1 bypassed -> 50% protection
+			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
+				{ status: 403, method: 'GET', payload: 'test', responseTime: 50, category: 'SQLi' },
+				{ status: 200, method: 'GET', payload: 'bypass', responseTime: 80, category: 'XSS' },
+			]);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--threshold', '90'])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CI/CD Threshold Failed: Protection score 50% is below required threshold of 90%'));
+		});
+
+		it('should pass when protection score is above or equal to --threshold', async () => {
+			// 2 blocked -> 100% protection
+			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
+				{ status: 403, method: 'GET', payload: 'test', responseTime: 50, category: 'SQLi' },
+				{ status: 403, method: 'GET', payload: 'test2', responseTime: 40, category: 'XSS' },
+			]);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--threshold', '90'])
+			).resolves.toBeDefined();
+
+			expect(exitCode).toBeNull();
+		});
+
 		it('should exit with 1 on bypass when --fail-on-bypass is specified', async () => {
 			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
 				{ status: 200, method: 'GET', payload: 'bypass', responseTime: 80, category: 'SQL Injection' }
@@ -442,6 +511,26 @@ describe('CLI Argument Processing', () => {
 
 			expect(exitCode).toBe(1);
 			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CI/CD Check Failed'));
+		});
+
+		it('should exit with 1 on batch threshold failure', async () => {
+			// First target: 1 blocked, 0 bypassed (100%)
+			// Second target: 0 blocked, 1 bypassed (0%)
+			// Total: 1 blocked / 2 total = 50%
+			vi.mocked(core.handleApiCheckFiltered)
+				.mockResolvedValueOnce([
+					{ status: 403, method: 'GET', payload: 'test', responseTime: 120, category: 'SQL Injection' }
+				])
+				.mockResolvedValueOnce([
+					{ status: 200, method: 'GET', payload: 'bypass', responseTime: 80, category: 'SQL Injection' }
+				]);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'batch', mockFile, '--threshold', '80'])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CI/CD Threshold Failed: Overall batch protection score 50% is below required threshold of 80%'));
 		});
 
 		it('should exit with 0 if no targets bypassed and --fail-on-bypass is specified', async () => {

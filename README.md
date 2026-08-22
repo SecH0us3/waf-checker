@@ -111,6 +111,78 @@ Run batch audits for a list of URLs defined in a file:
 node packages/cli/dist/index.js batch targets.txt --concurrency 3
 ```
 
+#### Generating Reports
+Save audit results in **SARIF**, **HTML**, **Markdown**, **CSV**, or **JSON** format:
+```bash
+# Generate SARIF report for GitHub Code Scanning
+node packages/cli/dist/index.js check https://example.com -o results.sarif
+
+# Generate interactive HTML report
+node packages/cli/dist/index.js check https://example.com -o report.html
+
+# Generate Markdown summary for CI
+node packages/cli/dist/index.js check https://example.com -o summary.md
+```
+
+#### CI/CD Integration & Protection Thresholds
+Fail CI/CD pipelines when protection rate is below required threshold or when bypasses are detected:
+```bash
+# Fail if WAF protection rate is below 95%
+node packages/cli/dist/index.js check https://example.com --threshold 95 -q
+
+# Fail immediately on any detected bypass
+node packages/cli/dist/index.js check https://example.com --fail-on-bypass -q
+```
+
+---
+
+## 🚀 GitHub Action (CI/CD)
+
+Integrate automated WAF security testing into your GitHub Actions workflow:
+
+```yaml
+name: WAF Security Audit
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 1' # Weekly audit
+
+jobs:
+  waf-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # Required for SARIF upload
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run WAF Checker
+        uses: SecH0us3/waf-checker@main
+        with:
+          target-url: 'https://staging.example.com'
+          threshold: '95'
+          enhanced: 'true'
+          advanced: 'true'
+          sarif-output: 'waf-results.sarif'
+          html-output: 'waf-report.html'
+
+      - name: Upload SARIF to GitHub Security Tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'waf-results.sarif'
+
+      - name: Upload HTML Report Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: waf-audit-report
+          path: waf-report.html
+```
+
 ### 3. Docker Version
 
 You can run the CLI using Docker, either by pulling the pre-built image from GitHub Container Registry or by building it locally.

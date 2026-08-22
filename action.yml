@@ -1,0 +1,158 @@
+name: 'WAF Security Audit'
+description: 'Automated Web Application Firewall (WAF) security testing and bypass detection'
+author: 'SecH0us3'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  target-url:
+    description: 'Target URL to test with attack payloads'
+    required: false
+  batch-file:
+    description: 'Path to a text file containing a list of target URLs for batch audit'
+    required: false
+  methods:
+    description: 'Comma-separated HTTP methods to test (e.g., "GET,POST,PUT,DELETE")'
+    required: false
+    default: 'GET'
+  categories:
+    description: 'Comma-separated payload categories (e.g., "SQL Injection,XSS,RCE")'
+    required: false
+  threshold:
+    description: 'Minimum required protection score percentage (0-100). Fails the action if score is lower'
+    required: false
+  fail-on-bypass:
+    description: 'Fail step if any attack bypass is detected (true/false)'
+    required: false
+    default: 'false'
+  enhanced:
+    description: 'Use enhanced payload set (true/false)'
+    required: false
+    default: 'false'
+  advanced:
+    description: 'Use advanced bypass payloads (true/false)'
+    required: false
+    default: 'false'
+  auto-detect:
+    description: 'Auto-detect WAF vendor first (true/false)'
+    required: false
+    default: 'false'
+  encoding:
+    description: 'Use encoding and obfuscation variations (true/false)'
+    required: false
+    default: 'false'
+  http-manipulation:
+    description: 'Run HTTP manipulation tests (true/false)'
+    required: false
+    default: 'false'
+  sarif-output:
+    description: 'Path to save SARIF report (e.g., "waf-results.sarif")'
+    required: false
+    default: 'waf-results.sarif'
+  html-output:
+    description: 'Path to save HTML report (e.g., "waf-report.html")'
+    required: false
+  summary-output:
+    description: 'Path to save Markdown summary report'
+    required: false
+    default: 'waf-summary.md'
+
+outputs:
+  sarif-file:
+    description: 'Path to the generated SARIF report file'
+    value: ${{ inputs.sarif-output }}
+  summary-file:
+    description: 'Path to the generated Markdown summary file'
+    value: ${{ inputs.summary-output }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install and Build WAF-Checker CLI
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        npm ci
+        npm run build --workspace=@waf-checker/core
+        npm run build --workspace=@waf-checker/cli
+
+    - name: Run WAF Audit
+      shell: bash
+      run: |
+        CLI_PATH="${{ github.action_path }}/packages/cli/dist/index.js"
+        CMD="node $CLI_PATH"
+        
+        if [ -n "${{ inputs.batch-file }}" ]; then
+          CMD="$CMD batch '${{ inputs.batch-file }}'"
+        elif [ -n "${{ inputs.target-url }}" ]; then
+          CMD="$CMD check '${{ inputs.target-url }}'"
+        else
+          echo "::error::Either 'target-url' or 'batch-file' input must be provided."
+          exit 1
+        fi
+
+        if [ -n "${{ inputs.methods }}" ]; then
+          CMD="$CMD --methods '${{ inputs.methods }}'"
+        fi
+
+        if [ -n "${{ inputs.categories }}" ]; then
+          CMD="$CMD --categories '${{ inputs.categories }}'"
+        fi
+
+        if [ "${{ inputs.enhanced }}" = "true" ]; then
+          CMD="$CMD --enhanced"
+        fi
+
+        if [ "${{ inputs.advanced }}" = "true" ]; then
+          CMD="$CMD --advanced"
+        fi
+
+        if [ "${{ inputs.auto-detect }}" = "true" ]; then
+          CMD="$CMD --auto-detect-waf"
+        fi
+
+        if [ "${{ inputs.encoding }}" = "true" ]; then
+          CMD="$CMD --encoding-variations"
+        fi
+
+        if [ "${{ inputs.http-manipulation }}" = "true" ]; then
+          CMD="$CMD --http-manipulation"
+        fi
+
+        if [ "${{ inputs.fail-on-bypass }}" = "true" ]; then
+          CMD="$CMD --fail-on-bypass"
+        fi
+
+        if [ -n "${{ inputs.threshold }}" ]; then
+          CMD="$CMD --threshold '${{ inputs.threshold }}'"
+        fi
+
+        AUDIT_EXIT_CODE=0
+
+        # Generate Markdown summary for GITHUB_STEP_SUMMARY
+        if [ -n "${{ inputs.summary-output }}" ]; then
+          eval "$CMD -q -o '${{ inputs.summary-output }}' -f markdown" || AUDIT_EXIT_CODE=$?
+          if [ -f "${{ inputs.summary-output }}" ] && [ -n "$GITHUB_STEP_SUMMARY" ]; then
+            cat "${{ inputs.summary-output }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
+        fi
+
+        # Generate SARIF Report
+        if [ -n "${{ inputs.sarif-output }}" ] && [ -n "${{ inputs.target-url }}" ]; then
+          eval "$CMD -q -o '${{ inputs.sarif-output }}' -f sarif" || true
+        fi
+
+        # Generate HTML Report if requested
+        if [ -n "${{ inputs.html-output }}" ]; then
+          eval "$CMD -q -o '${{ inputs.html-output }}' -f html" || true
+        fi
+
+        if [ "$AUDIT_EXIT_CODE" -ne 0 ]; then
+          exit $AUDIT_EXIT_CODE
+        fi

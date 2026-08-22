@@ -6,3 +6,4 @@ export * from './waf-detection';
 export * from './check';
 export * from './utils/security';
 export * from './utils/payload-utils';
+export * from './reports';
