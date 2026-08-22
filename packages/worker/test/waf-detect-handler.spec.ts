@@ -40,7 +40,7 @@ describe('handleWAFDetection handler', () => {
         expect(data.bypassOpportunities).toEqual(mockBypass);
         expect(data.timestamp).toBeDefined();
 
-        expect(activeDetectionSpy).toHaveBeenCalledWith('https://target.com');
+        expect(activeDetectionSpy).toHaveBeenCalledWith('https://target.com', { isWorker: true });
         expect(detectBypassSpy).toHaveBeenCalledWith('https://target.com');
     });
 
@@ -51,7 +51,7 @@ describe('handleWAFDetection handler', () => {
         const request = new Request('https://example.com/api/waf-detect?url=https://target.com/api/login?user={PAYLOAD}');
         await handleWAFDetection(request);
 
-        expect(activeDetectionSpy).toHaveBeenCalledWith('https://target.com/api/login?user=');
+        expect(activeDetectionSpy).toHaveBeenCalledWith('https://target.com/api/login?user=', { isWorker: true });
         expect(detectBypassSpy).toHaveBeenCalledWith('https://target.com/api/login?user=');
     });
 

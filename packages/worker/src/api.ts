@@ -94,6 +94,7 @@ export default {
 							enableContentTypeConfusion: true,
 						}
 					: undefined,
+				{ isWorker: true },
 			);
 			return new Response(JSON.stringify(results), { headers: { 'content-type': 'application/json; charset=UTF-8' } });
 		}

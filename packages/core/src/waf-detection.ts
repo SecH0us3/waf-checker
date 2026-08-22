@@ -10,6 +10,7 @@ export interface WAFDetectionResult {
 	confidence: number;
 	evidence: string[];
 	suggestedBypassTechniques: string[];
+	captchaDetected?: string;
 }
 
 import { WAFSignature, WAF_SIGNATURES } from './waf-signatures';
@@ -27,13 +28,24 @@ export class WAFDetector {
 	/**
 	 * Detect WAF from HTTP response
 	 */
-	static async detectFromResponse(response: Response, responseBody?: string, responseTime?: number): Promise<WAFDetectionResult> {
+	static async detectFromResponse(response: Response, responseBody?: string, responseTime?: number, isWorker?: boolean): Promise<WAFDetectionResult> {
 		const evidence: string[] = [];
 		let bestMatch = {
 			name: 'Unknown',
 			confidence: 0,
 			evidence: [] as string[],
 		};
+
+		let captchaDetected: string | undefined = undefined;
+		if (responseBody) {
+			if (responseBody.includes('challenges.cloudflare.com/turnstile')) {
+				captchaDetected = 'Cloudflare Turnstile';
+			} else if (responseBody.includes('google.com/recaptcha')) {
+				captchaDetected = 'Google reCAPTCHA';
+			} else if (responseBody.includes('hcaptcha.com')) {
+				captchaDetected = 'hCaptcha';
+			}
+		}
 
 		for (const signature of this.WAF_SIGNATURES) {
 			let confidence = 0;
@@ -43,6 +55,11 @@ export class WAFDetector {
 			for (const [headerName, pattern] of Object.entries(signature.headers)) {
 				const headerValue = response.headers.get(headerName);
 				if (headerValue) {
+					// Cloudflare Workers inject cf-* and server: cloudflare headers into fetch responses
+					if (isWorker && signature.name === 'Cloudflare' && (headerName === 'server' || headerName.startsWith('cf-'))) {
+						continue;
+					}
+
 					if (typeof pattern === 'string') {
 						if (headerValue.toLowerCase().includes(pattern.toLowerCase())) {
 							confidence += 30;
@@ -65,6 +82,19 @@ export class WAFDetector {
 				matchEvidence.push(`Status code: ${response.status}`);
 			}
 
+			// Check cookie patterns
+			if (signature.cookiePatterns) {
+				const cookies = response.headers.get('set-cookie');
+				if (cookies) {
+					for (const pattern of signature.cookiePatterns) {
+						if (pattern.test(cookies)) {
+							confidence += 25;
+							matchEvidence.push(`Cookie pattern match: ${pattern}`);
+						}
+					}
+				}
+			}
+
 			// Check response body patterns
 			if (responseBody && signature.bodyPatterns) {
 				for (const pattern of signature.bodyPatterns) {
@@ -75,27 +105,10 @@ export class WAFDetector {
 				}
 			}
 
-			// Check cookie patterns
-			if (signature.cookiePatterns) {
-				const cookies = response.headers.get('set-cookie');
-				if (cookies) {
-					for (const pattern of signature.cookiePatterns) {
-						if (pattern.test(cookies)) {
-							confidence += 20;
-							const displayCookie = redactHeaders({ 'set-cookie': cookies })['set-cookie'];
-							matchEvidence.push(`Cookie pattern match: ${pattern} (in ${displayCookie})`);
-						}
-					}
-				}
-			}
-
-			// Check response time patterns
-			if (responseTime && signature.responseTime) {
-				const { min, max } = signature.responseTime;
-				if ((min === undefined || responseTime >= min) && (max === undefined || responseTime <= max)) {
-					confidence += 10;
-					matchEvidence.push(`Response time: ${responseTime}ms`);
-				}
+			// Check response time patterns (WAFs often add latency)
+			if (responseTime && responseTime > 500) {
+				confidence += 5;
+				// Don't add to evidence as it's circumstantial
 			}
 
 			// Update best match
@@ -117,13 +130,14 @@ export class WAFDetector {
 			confidence: bestMatch.confidence,
 			evidence: bestMatch.evidence,
 			suggestedBypassTechniques,
+			captchaDetected
 		};
 	}
 
 	/**
 	 * Perform active WAF detection by sending probe requests
 	 */
-	static async activeDetection(url: string, options?: { fetch?: typeof fetch }): Promise<WAFDetectionResult> {
+	static async activeDetection(url: string, options?: { fetch?: typeof fetch; isWorker?: boolean }): Promise<WAFDetectionResult> {
 		if (!isValidTargetUrl(url)) {
 			throw new Error('Invalid URL or restricted IP');
 		}
@@ -157,8 +171,8 @@ export class WAFDetector {
 					responseBody = await response.text();
 				}
 
-				const detection = await this.detectFromResponse(response, responseBody, responseTime);
-				return detection.detected ? detection : null;
+				const detection = await this.detectFromResponse(response, responseBody, responseTime, options?.isWorker);
+				return detection.detected || detection.captchaDetected ? detection : null;
 			} catch (error) {
 				console.error('Active detection probe failed:', error);
 				return null;
@@ -167,9 +181,14 @@ export class WAFDetector {
 
 		const results = (await Promise.all(probePromises)).filter((r): r is WAFDetectionResult => r !== null);
 
-		// Return the detection result with highest confidence
+		// Return the detection result with highest confidence, or if a captcha was detected
 		if (results.length > 0) {
-			return results.reduce((best, current) => (current.confidence > best.confidence ? current : best));
+			return results.reduce((best, current) => {
+				if (current.confidence > best.confidence || (current.captchaDetected && !best.captchaDetected)) {
+					return current;
+				}
+				return best;
+			});
 		}
 
 		return {

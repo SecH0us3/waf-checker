@@ -623,6 +623,14 @@ function displayWAFDetectionResults(data) {
 	const resultsDiv = document.getElementById('results');
 	let html = '<div class="card mb-4"><div class="card-header"><h3>🛡️ WAF Detection Results</h3></div><div class="card-body">';
 
+	// Captcha results
+	if (data.detection && data.detection.captchaDetected) {
+		html += `<div class="alert alert-warning mb-3">
+			<h5><strong>CAPTCHA Detected: ${data.detection.captchaDetected}</strong></h5>
+			<p>WAF Checks might be blocked by this CAPTCHA.</p>
+		</div>`;
+	}
+
 	// Detection results
 	if (data.detection && data.detection.detected) {
 		html += `<div class="alert alert-success mb-3">
@@ -691,22 +699,31 @@ function showWAFPanel(data) {
 
 	let html = '';
 
-	if (data.detection && data.detection.detected) {
+	if (data.detection && (data.detection.detected || data.detection.captchaDetected)) {
 		html = `<div class="d-flex align-items-center justify-content-between">
-			<div>
-				<strong>${data.detection.wafType}</strong> detected
-				<span class="badge bg-success ms-2">${data.detection.confidence}% confidence</span>
-			</div>
+			<div>`;
+
+		if (data.detection.detected) {
+			html += `<strong>${data.detection.wafType}</strong> detected
+				<span class="badge bg-success ms-2">${data.detection.confidence}% confidence</span>`;
+			// Store detected WAF info for later use
+			window.detectedWAF = data.detection.wafType;
+		}
+
+		if (data.detection.captchaDetected) {
+			html += `<strong class="ms-2">CAPTCHA: ${data.detection.captchaDetected}</strong>`;
+		}
+
+		html += `</div>
 			<small class="text-muted">Auto-detection enabled</small>
 		</div>`;
 
-		// Store detected WAF info for later use
-		window.detectedWAF = data.detection.wafType;
-
 		// Auto-enable advanced payloads if WAF detected
-		const advancedCheckbox = document.getElementById('useAdvancedPayloadsCheckbox');
-		if (advancedCheckbox) {
-			advancedCheckbox.checked = true;
+		if (data.detection.detected) {
+			const advancedCheckbox = document.getElementById('useAdvancedPayloadsCheckbox');
+			if (advancedCheckbox) {
+				advancedCheckbox.checked = true;
+			}
 		}
 	} else {
 		html = '<div>No WAF detected with high confidence</div>';

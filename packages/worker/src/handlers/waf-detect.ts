@@ -21,7 +21,7 @@ export async function handleWAFDetection(request: Request): Promise<Response> {
 	try {
 		// Strip {PAYLOAD} from URL if present — WAF detection uses its own probe payloads
 		const resolvedUrl = targetUrl.replace(/\{PAYLOAD\}/g, '');
-		const detection = await WAFDetector.activeDetection(resolvedUrl);
+		const detection = await WAFDetector.activeDetection(resolvedUrl, { isWorker: true });
 		const bypassOpportunities = await WAFDetector.detectBypassOpportunities(resolvedUrl);
 
 		return new Response(

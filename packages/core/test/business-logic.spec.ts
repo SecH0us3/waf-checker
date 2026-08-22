@@ -132,15 +132,9 @@ describe('Business Logic Tests for Visual Controls', () => {
         });
 
         it('should detect ModSecurity based on body pattern', async () => {
-            const mockResponse = {
-                status: 406,
-                headers: new Map(),
-                ok: false
-            } as unknown as Response;
-            mockResponse.headers.get = (name: string) => null;
-
-            const body = 'mod_security: Access denied with code 406 (Phase 2). Pattern match...';
-            const result = await WAFDetector.detectFromResponse(mockResponse, body);
+            const mockResponse = new Response('', { status: 406 });
+            const body = 'request blocked by security policy: Access denied with code 406 (Phase 2).';
+            const result = await WAFDetector.detectFromResponse(mockResponse, body, 100);
             expect(result.detected).toBe(true);
             expect(result.wafType).toBe('ModSecurity');
         });
