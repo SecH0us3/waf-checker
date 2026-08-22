@@ -1,7 +1,7 @@
 import { AuditResultItem, calculateAuditStats } from './types';
 
-function escapeHtml(str: string): string {
-	return str
+function escapeHtml(str?: string): string {
+	return String(str || '')
 		.replace(/&/g, '&amp;')
 		.replace(/</g, '&lt;')
 		.replace(/>/g, '&gt;')

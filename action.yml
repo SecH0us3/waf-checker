@@ -84,65 +84,81 @@ runs:
 
     - name: Run WAF Audit
       shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_TARGET_URL: ${{ inputs.target-url }}
+        INPUT_BATCH_FILE: ${{ inputs.batch-file }}
+        INPUT_METHODS: ${{ inputs.methods }}
+        INPUT_CATEGORIES: ${{ inputs.categories }}
+        INPUT_ENHANCED: ${{ inputs.enhanced }}
+        INPUT_ADVANCED: ${{ inputs.advanced }}
+        INPUT_AUTO_DETECT: ${{ inputs.auto-detect }}
+        INPUT_ENCODING: ${{ inputs.encoding }}
+        INPUT_HTTP_MANIPULATION: ${{ inputs.http-manipulation }}
+        INPUT_FAIL_ON_BYPASS: ${{ inputs.fail-on-bypass }}
+        INPUT_THRESHOLD: ${{ inputs.threshold }}
+        INPUT_SUMMARY_OUTPUT: ${{ inputs.summary-output }}
+        INPUT_SARIF_OUTPUT: ${{ inputs.sarif-output }}
+        INPUT_HTML_OUTPUT: ${{ inputs.html-output }}
       run: |
-        CLI_PATH="${{ github.action_path }}/packages/cli/dist/index.js"
+        CLI_PATH="$ACTION_PATH/packages/cli/dist/index.js"
         
         ARGS=()
-        if [ -n "${{ inputs.batch-file }}" ]; then
-          ARGS+=("batch" "${{ inputs.batch-file }}")
-        elif [ -n "${{ inputs.target-url }}" ]; then
-          ARGS+=("check" "${{ inputs.target-url }}")
+        if [ -n "$INPUT_BATCH_FILE" ]; then
+          ARGS+=("batch" "$INPUT_BATCH_FILE")
+        elif [ -n "$INPUT_TARGET_URL" ]; then
+          ARGS+=("check" "$INPUT_TARGET_URL")
         else
           echo "::error::Either 'target-url' or 'batch-file' input must be provided."
           exit 1
         fi
 
-        if [ -n "${{ inputs.methods }}" ]; then
-          ARGS+=("--methods" "${{ inputs.methods }}")
+        if [ -n "$INPUT_METHODS" ]; then
+          ARGS+=("--methods" "$INPUT_METHODS")
         fi
 
-        if [ -n "${{ inputs.categories }}" ]; then
-          ARGS+=("--categories" "${{ inputs.categories }}")
+        if [ -n "$INPUT_CATEGORIES" ]; then
+          ARGS+=("--categories" "$INPUT_CATEGORIES")
         fi
 
-        if [ "${{ inputs.enhanced }}" = "true" ]; then
+        if [ "$INPUT_ENHANCED" = "true" ]; then
           ARGS+=("--enhanced")
         fi
 
-        if [ "${{ inputs.advanced }}" = "true" ]; then
+        if [ "$INPUT_ADVANCED" = "true" ]; then
           ARGS+=("--advanced")
         fi
 
-        if [ "${{ inputs.auto-detect }}" = "true" ]; then
+        if [ "$INPUT_AUTO_DETECT" = "true" ]; then
           ARGS+=("--auto-detect-waf")
         fi
 
-        if [ "${{ inputs.encoding }}" = "true" ]; then
+        if [ "$INPUT_ENCODING" = "true" ]; then
           ARGS+=("--encoding-variations")
         fi
 
-        if [ "${{ inputs.http-manipulation }}" = "true" ]; then
+        if [ "$INPUT_HTTP_MANIPULATION" = "true" ]; then
           ARGS+=("--http-manipulation")
         fi
 
-        if [ "${{ inputs.fail-on-bypass }}" = "true" ]; then
+        if [ "$INPUT_FAIL_ON_BYPASS" = "true" ]; then
           ARGS+=("--fail-on-bypass")
         fi
 
-        if [ -n "${{ inputs.threshold }}" ]; then
-          ARGS+=("--threshold" "${{ inputs.threshold }}")
+        if [ -n "$INPUT_THRESHOLD" ]; then
+          ARGS+=("--threshold" "$INPUT_THRESHOLD")
         fi
 
-        if [ -n "${{ inputs.summary-output }}" ]; then
-          ARGS+=("--markdown-output" "${{ inputs.summary-output }}")
+        if [ -n "$INPUT_SUMMARY_OUTPUT" ]; then
+          ARGS+=("--markdown-output" "$INPUT_SUMMARY_OUTPUT")
         fi
 
-        if [ -n "${{ inputs.sarif-output }}" ] && [ -n "${{ inputs.target-url }}" ]; then
-          ARGS+=("--sarif-output" "${{ inputs.sarif-output }}")
+        if [ -n "$INPUT_SARIF_OUTPUT" ] && [ -n "$INPUT_TARGET_URL" ]; then
+          ARGS+=("--sarif-output" "$INPUT_SARIF_OUTPUT")
         fi
 
-        if [ -n "${{ inputs.html-output }}" ]; then
-          ARGS+=("--html-output" "${{ inputs.html-output }}")
+        if [ -n "$INPUT_HTML_OUTPUT" ]; then
+          ARGS+=("--html-output" "$INPUT_HTML_OUTPUT")
         fi
 
         ARGS+=("-q")
@@ -150,8 +166,8 @@ runs:
         AUDIT_EXIT_CODE=0
         node "$CLI_PATH" "${ARGS[@]}" || AUDIT_EXIT_CODE=$?
 
-        if [ -f "${{ inputs.summary-output }}" ] && [ -n "$GITHUB_STEP_SUMMARY" ]; then
-          cat "${{ inputs.summary-output }}" >> "$GITHUB_STEP_SUMMARY"
+        if [ -f "$INPUT_SUMMARY_OUTPUT" ] && [ -n "$GITHUB_STEP_SUMMARY" ]; then
+          cat "$INPUT_SUMMARY_OUTPUT" >> "$GITHUB_STEP_SUMMARY"
         fi
 
         if [ "$AUDIT_EXIT_CODE" -ne 0 ]; then

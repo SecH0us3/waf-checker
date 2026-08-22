@@ -435,6 +435,15 @@ describe('CLI Argument Processing', () => {
 			expect(exitCode).toBeNull();
 		});
 
+		it('should exit with 1 when invalid --threshold is provided', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--threshold', 'invalid'])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Error: --threshold must be a valid number between 0 and 100'));
+		});
+
 		it('should exit with 1 on bypass when --fail-on-bypass is specified', async () => {
 			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
 				{ status: 200, method: 'GET', payload: 'bypass', responseTime: 80, category: 'SQL Injection' }

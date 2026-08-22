@@ -283,7 +283,11 @@ checkCmd
 
 			if (options.threshold !== undefined) {
 				const minThreshold = parseFloat(options.threshold);
-				if (!isNaN(minThreshold) && protectionScore < minThreshold) {
+				if (isNaN(minThreshold) || minThreshold < 0 || minThreshold > 100) {
+					console.error(colors.red(`Error: --threshold must be a valid number between 0 and 100 (received: ${options.threshold})`));
+					process.exit(1);
+				}
+				if (protectionScore < minThreshold) {
 					console.error(colors.red(`CI/CD Threshold Failed: Protection score ${protectionScore}% is below required threshold of ${minThreshold}%.`));
 					process.exit(1);
 				}
@@ -478,10 +482,14 @@ batchCmd
 
 			if (options.threshold !== undefined) {
 				const minThreshold = parseFloat(options.threshold);
+				if (isNaN(minThreshold) || minThreshold < 0 || minThreshold > 100) {
+					console.error(colors.red(`Error: --threshold must be a valid number between 0 and 100 (received: ${options.threshold})`));
+					process.exit(1);
+				}
 				const totalBatchTests = batchResults.reduce((acc, r) => acc + (r.total || 0), 0);
 				const totalBatchBlocked = batchResults.reduce((acc, r) => acc + (r.blocked || 0), 0);
-				const batchScore = totalBatchTests > 0 ? Math.round((totalBatchBlocked / totalBatchTests) * 100) : 100;
-				if (!isNaN(minThreshold) && batchScore < minThreshold) {
+				const batchScore = totalBatchTests > 0 ? Math.round((totalBatchBlocked / totalBatchTests) * 100) : 0;
+				if (batchScore < minThreshold) {
 					console.error(colors.red(`CI/CD Threshold Failed: Overall batch protection score ${batchScore}% is below required threshold of ${minThreshold}%.`));
 					process.exit(1);
 				}

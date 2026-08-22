@@ -232,9 +232,13 @@ export async function handleApiCheckFiltered(
 	if (autoDetectWAF) {
 		try {
 			wafDetectionResult = await WAFDetector.activeDetection(url.replace(/\{PAYLOAD\}/g, ''), options);
-			console.log(`WAF Detection Result: ${JSON.stringify(wafDetectionResult)}`);
+			if (!options?.quiet) {
+				console.log(`WAF Detection Result: ${JSON.stringify(wafDetectionResult)}`);
+			}
 		} catch (e) {
-			console.error('WAF detection failed:', e);
+			if (!options?.quiet) {
+				console.error('WAF detection failed:', e);
+			}
 		}
 	}
 

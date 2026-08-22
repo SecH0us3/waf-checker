@@ -884,6 +884,9 @@ export function writeReport(
 	if (format === 'json') {
 		outputContent = JSON.stringify(results, null, 2);
 	} else if (format === 'sarif') {
+		if (type === 'batch') {
+			throw new Error('SARIF report format is only supported for single target audits (check command), not batch audits.');
+		}
 		outputContent = generateSARIFReport(results, urlOrFile);
 	} else if (format === 'markdown' || format === 'md') {
 		if (type === 'check') {
