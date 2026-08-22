@@ -535,6 +535,22 @@ export function generateWAFSpecificPayloads(wafType: string, basePayload: string
 		case 'cloud armor':
 		case 'gcp':
 			return WAFBypasses.googleCloudArmorBypass(basePayload);
+		case 'signal sciences':
+		case 'signalsciences':
+			return WAFBypasses.signalSciencesBypass(basePayload);
+		case 'nginx':
+		case 'nginx app protect':
+		case 'naxsi':
+			return WAFBypasses.nginxAppProtectBypass(basePayload);
+		case 'haproxy':
+			return WAFBypasses.haproxyBypass(basePayload);
+		case 'ibm datapower':
+		case 'datapower':
+			return WAFBypasses.ibmDataPowerBypass(basePayload);
+		case 'reblaze':
+			return WAFBypasses.reblazeBypass(basePayload);
+		case 'dotdefender':
+			return WAFBypasses.dotDefenderBypass(basePayload);
 		default:
 			return PayloadEncoder.generateBypassVariations(basePayload);
 	}
