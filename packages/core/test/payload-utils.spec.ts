@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { processCustomHeaders, substitutePayload, randomUppercase } from '../src/utils/payload-utils';
+import { processCustomHeaders, substitutePayload, randomUppercase, redactUrl, redactHeaders } from '../src/utils/payload-utils';
 
 describe('payload-utils', () => {
 	describe('processCustomHeaders', () => {
@@ -135,6 +135,41 @@ describe('payload-utils', () => {
 			const spy = vi.spyOn(Math, 'random').mockReturnValue(0.6);
 			expect(randomUppercase('123!@#')).toBe('123!@#');
 			spy.mockRestore();
+		});
+	});
+
+	describe('redactUrl', () => {
+		it('should redact sensitive query parameters', () => {
+			expect(redactUrl('http://example.com/?token=abc&normal=123')).toBe('http://example.com/?token=%5BREDACTED%5D&normal=123');
+			expect(redactUrl('http://example.com/?key=123')).toBe('http://example.com/?key=%5BREDACTED%5D');
+		});
+		it('should redact basic auth password', () => {
+			expect(redactUrl('http://user:pass123@example.com/')).toBe('http://user:%5BREDACTED%5D@example.com/');
+		});
+		it('should handle URLs without sensitive params', () => {
+			expect(redactUrl('http://example.com/?id=1')).toBe('http://example.com/?id=1');
+		});
+		it('should return invalid URLs unchanged', () => {
+			expect(redactUrl('not-a-url')).toBe('not-a-url');
+		});
+	});
+
+	describe('redactHeaders', () => {
+		it('should redact sensitive headers', () => {
+			const headers = {
+				'Authorization': 'Bearer 123',
+				'Cookie': 'session=abc',
+				'X-Custom': 'val'
+			};
+			const redacted = redactHeaders(headers);
+			expect(redacted['Authorization']).toBe('[REDACTED]');
+			expect(redacted['Cookie']).toBe('[REDACTED]');
+			expect(redacted['X-Custom']).toBe('val');
+		});
+		it('should not mutate original headers', () => {
+			const headers = { 'Cookie': 'abc' };
+			redactHeaders(headers);
+			expect(headers['Cookie']).toBe('abc');
 		});
 	});
 });

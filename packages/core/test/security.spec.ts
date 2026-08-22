@@ -114,6 +114,63 @@ describe('isValidTargetUrl', () => {
         });
     });
 
+    describe('Additional IPv4 Internal Ranges', () => {
+        it('should reject CGNAT (100.64.0.0/10)', () => {
+            expect(isValidTargetUrl('http://100.64.0.1')).toBe(false);
+            expect(isValidTargetUrl('http://100.127.255.255')).toBe(false);
+        });
+        it('should reject IETF Protocol Assignments (192.0.0.0/24)', () => {
+            expect(isValidTargetUrl('http://192.0.0.1')).toBe(false);
+        });
+        it('should reject TEST-NET-1 (192.0.2.0/24)', () => {
+            expect(isValidTargetUrl('http://192.0.2.1')).toBe(false);
+        });
+        it('should reject Benchmarking (198.18.0.0/15)', () => {
+            expect(isValidTargetUrl('http://198.18.0.1')).toBe(false);
+            expect(isValidTargetUrl('http://198.19.255.255')).toBe(false);
+        });
+        it('should reject TEST-NET-2 (198.51.100.0/24)', () => {
+            expect(isValidTargetUrl('http://198.51.100.1')).toBe(false);
+        });
+        it('should reject TEST-NET-3 (203.0.113.0/24)', () => {
+            expect(isValidTargetUrl('http://203.0.113.1')).toBe(false);
+        });
+        it('should reject Multicast (224.0.0.0/4)', () => {
+            expect(isValidTargetUrl('http://224.0.0.1')).toBe(false);
+            expect(isValidTargetUrl('http://239.255.255.255')).toBe(false);
+        });
+        it('should reject Reserved (240.0.0.0/4)', () => {
+            expect(isValidTargetUrl('http://240.0.0.1')).toBe(false);
+            expect(isValidTargetUrl('http://255.255.255.255')).toBe(false);
+        });
+    });
+
+    describe('Additional IPv6 Internal Ranges', () => {
+        it('should reject hex-encoded IPv4-compatible IPv6 internal addresses', () => {
+            expect(isValidTargetUrl('http://[::7f00:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::0a00:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::a00:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::ac10:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::c0a8:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::a9fe:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::6440:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::c000:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::c000]')).toBe(false);
+            expect(isValidTargetUrl('http://[::c612:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::c633:6401]')).toBe(false);
+            expect(isValidTargetUrl('http://[::cb00:7101]')).toBe(false);
+        });
+        
+        it('should reject additional hex-encoded IPv4-mapped IPv6 internal addresses', () => {
+            expect(isValidTargetUrl('http://[::ffff:6440:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::ffff:c000:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::ffff:c000]')).toBe(false);
+            expect(isValidTargetUrl('http://[::ffff:c612:1]')).toBe(false);
+            expect(isValidTargetUrl('http://[::ffff:c633:6401]')).toBe(false);
+            expect(isValidTargetUrl('http://[::ffff:cb00:7101]')).toBe(false);
+        });
+    });
+
     describe('Invalid URL formats', () => {
         it('should reject malformed URLs', () => {
             expect(isValidTargetUrl('not-a-url')).toBe(false);
