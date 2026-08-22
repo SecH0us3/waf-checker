@@ -35,7 +35,7 @@ describe('check.ts', () => {
 			return Promise.resolve({ status: 200, headers: new Headers() });
 		});
 
-		const results = await handleApiCheckFiltered('http://example.com/api', 10, ['GET'], ['sqli'], undefined, false, undefined, false, false, false, false, false, false, undefined, undefined, { fetch: mockFetch as any, quiet: true });
+		const results = await handleApiCheckFiltered('http://example.com/api', 1, ['GET'], ['SQL Injection'], undefined, false, undefined, false, false, false, false, false, false, undefined, undefined, { fetch: mockFetch as any, quiet: true });
 		
 		expect(results).toBeInstanceOf(Array);
 		// It should run tests and return objects with status, payload, category
@@ -56,5 +56,25 @@ describe('check.ts', () => {
 		
 		expect(mockFetch).toHaveBeenCalled();
 		// Since it auto-detects, WAF Detection logic will trigger
+	});
+
+	it('should handle FileCheck payloads (Sensitive Files)', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({ status: 200, headers: new Headers() });
+		const results = await handleApiCheckFiltered('http://example.com/api', 1, ['GET'], ['Sensitive Files'], undefined, false, undefined, false, false, false, false, false, false, undefined, undefined, { fetch: mockFetch as any, quiet: true });
+		expect(results).toBeInstanceOf(Array);
+		expect(results.length).toBeGreaterThan(0);
+		// Check that the URL is formed properly (baseUrl + payload)
+		expect(mockFetch.mock.calls[0][0]).toContain('http://example.com');
+	});
+
+	it('should handle Header payloads (User-Agent)', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({ status: 200, headers: new Headers() });
+		const results = await handleApiCheckFiltered('http://example.com/api', 1, ['GET'], ['User-Agent'], undefined, false, undefined, false, false, false, false, false, false, undefined, undefined, { fetch: mockFetch as any, quiet: true });
+		expect(results).toBeInstanceOf(Array);
+		
+		if (results.length > 0) {
+			const calledOptions = mockFetch.mock.calls[0][1];
+			expect(calledOptions.headers).toBeDefined();
+		}
 	});
 });
