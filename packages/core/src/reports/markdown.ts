@@ -32,10 +32,12 @@ export function generateMarkdownReport(results: AuditResultItem[], targetUrl?: s
 					? '⚠️ **Moderate Protection**'
 					: '🚨 **Poor Protection / High Risk**';
 
+	const safeTargetUrl = (stats.targetUrl || 'Target').replace(/`/g, '&#96;');
+
 	const lines: string[] = [
 		`# 🛡️ WAF Checker Audit Report`,
 		``,
-		`> **Target:** \`${stats.targetUrl || 'Target'}\` | **Date:** ${new Date().toUTCString()} | **Detected WAF:** \`${stats.detectedWAF}\``,
+		`> **Target:** \`${safeTargetUrl}\` | **Date:** ${new Date().toUTCString()} | **Detected WAF:** \`${stats.detectedWAF}\``,
 		``,
 		`### ${scoreEmoji} Overall Score: ${stats.protectionScore}% (${statusBadge})`,
 		``,

@@ -911,8 +911,9 @@ export function writeReport(
 
 			for (const r of batchResults) {
 				const statusBadge = !r.success ? '🔴 Failed' : r.bypassed > 0 ? '⚠️ Bypasses' : '🟢 Secure';
+				const safeUrl = (r.url || '').replace(/\|/g, '&#124;').replace(/`/g, '&#96;');
 				mdLines.push(
-					`| \`${r.url}\` | ${statusBadge} | \`${r.total || 0}\` | \`${r.blocked || 0}\` | \`${r.bypassed || 0}\` | \`${r.bypassRate || 0}%\` |`,
+					`| \`${safeUrl}\` | ${statusBadge} | \`${r.total || 0}\` | \`${r.blocked || 0}\` | \`${r.bypassed || 0}\` | \`${r.bypassRate || 0}%\` |`,
 				);
 			}
 
