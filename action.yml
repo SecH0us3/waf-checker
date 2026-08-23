@@ -46,6 +46,9 @@ inputs:
     description: 'Run HTTP manipulation tests (true/false)'
     required: false
     default: 'false'
+  padding:
+    description: 'Enable WAF inspection buffer padding evasion (8kb, 16kb, 64kb, 128kb)'
+    required: false
   sarif-output:
     description: 'Path to save SARIF report (e.g., "waf-results.sarif")'
     required: false
@@ -95,6 +98,7 @@ runs:
         INPUT_AUTO_DETECT: ${{ inputs.auto-detect }}
         INPUT_ENCODING: ${{ inputs.encoding }}
         INPUT_HTTP_MANIPULATION: ${{ inputs.http-manipulation }}
+        INPUT_PADDING: ${{ inputs.padding }}
         INPUT_FAIL_ON_BYPASS: ${{ inputs.fail-on-bypass }}
         INPUT_THRESHOLD: ${{ inputs.threshold }}
         INPUT_SUMMARY_OUTPUT: ${{ inputs.summary-output }}
@@ -139,6 +143,10 @@ runs:
 
         if [ "$INPUT_HTTP_MANIPULATION" = "true" ]; then
           ARGS+=("--http-manipulation")
+        fi
+
+        if [ -n "$INPUT_PADDING" ]; then
+          ARGS+=("--padding" "$INPUT_PADDING")
         fi
 
         if [ "$INPUT_FAIL_ON_BYPASS" = "true" ]; then
