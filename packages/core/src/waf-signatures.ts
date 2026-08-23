@@ -56,7 +56,7 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 		headers: {
 			server: /ddos-guard/i,
 		},
-		cookiePatterns: [/__ddg1_/i, /__ddg2_/i, /__ddg5_/i],
+		cookiePatterns: [/__ddg1_/i, /__ddg2_/i, /__ddg5_/i, /__ddgid/i, /__ddgmark/i],
 		statusCodes: [403, 429],
 		bodyPatterns: [/ddos-guard/i, /ddg-captcha/i],
 	},
