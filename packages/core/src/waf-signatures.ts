@@ -274,9 +274,11 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 		name: 'FortiWeb',
 		headers: {
 			server: /Fortigate|FortiWeb/i,
+			'x-powered-by': /FortiWeb/i,
 		},
+		cookiePatterns: [/FORTIWAFSID=/i],
 		statusCodes: [403],
-		bodyPatterns: [/web filter violation/i, /fortigate/i],
+		bodyPatterns: [/web filter violation/i, /fortigate/i, /fortiweb/i],
 	},
 
 	// Wallarm
@@ -285,6 +287,8 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 		headers: {
 			server: /nginx-wallarm/i,
 			'x-wallarm-instance': /.*/,
+			'x-wallarm-inline': /.*/,
+			'x-wallarm-request-id': /.*/,
 		},
 		statusCodes: [403, 500],
 	},
@@ -295,7 +299,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 		headers: {
 			server: /Radware|AppWall/i,
 			'x-origin-requestid': /.*/,
+			'x-sl-compflag': /.*/,
 		},
+		cookiePatterns: [/rdwr_session/i],
 		statusCodes: [403],
 	},
 
@@ -327,7 +333,7 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 			server: /NetScaler/i,
 			'vi-id': /.*/,
 		},
-		cookiePatterns: [/ns_af=/i, /citrix_ns_id/i],
+		cookiePatterns: [/ns_af=/i, /citrix_ns_id/i, /NSC_/i],
 		statusCodes: [403],
 		bodyPatterns: [/The requested URL was rejected\. Please consult with your administrator/i, /NS-CACHE/i],
 	},

@@ -217,6 +217,32 @@ describe('WAFDetector', () => {
 		expect(result.wafType).toBe('Akamai');
 	});
 
+	it('should detect FortiWeb from FORTIWAFSID cookie', async () => {
+		const mockResponse = {
+			status: 403,
+			headers: {
+				get: (name: string) => (name.toLowerCase() === 'set-cookie' ? 'FORTIWAFSID=1234567890; Path=/' : null),
+			},
+		} as unknown as Response;
+
+		const result = await WAFDetector.detectFromResponse(mockResponse);
+		expect(result.detected).toBe(true);
+		expect(result.wafType).toBe('FortiWeb');
+	});
+
+	it('should detect Citrix NetScaler from NSC_ cookie pattern', async () => {
+		const mockResponse = {
+			status: 403,
+			headers: {
+				get: (name: string) => (name.toLowerCase() === 'set-cookie' ? 'NSC_ESNS=abcdef; Path=/' : null),
+			},
+		} as unknown as Response;
+
+		const result = await WAFDetector.detectFromResponse(mockResponse);
+		expect(result.detected).toBe(true);
+		expect(result.wafType).toBe('Citrix NetScaler');
+	});
+
 	it('should detect AWS WAF from headers', async () => {
 		const mockResponse = {
 			status: 403,
