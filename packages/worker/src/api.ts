@@ -70,6 +70,8 @@ export default {
 			const autoDetectWAF = urlObj.searchParams.get('autoDetectWAF') === '1';
 			const useEncodingVariations = urlObj.searchParams.get('useEncodingVariations') === '1';
 			const enableHTTPManipulation = urlObj.searchParams.get('httpManipulation') === '1';
+			const enablePadding = urlObj.searchParams.get('enablePadding') === '1' || Boolean(urlObj.searchParams.get('paddingSize'));
+			const paddingSize = urlObj.searchParams.get('paddingSize') || '16kb';
 			const detectedWAF = urlObj.searchParams.get('detectedWAF') || bodyDetectedWAF || undefined;
 
 			const results = await handleApiCheckFiltered(
@@ -87,11 +89,13 @@ export default {
 				autoDetectWAF,
 				useEncodingVariations,
 				detectedWAF,
-				enableHTTPManipulation
+				(enableHTTPManipulation || enablePadding)
 					? {
-							enableParameterPollution: true,
-							enableVerbTampering: true,
-							enableContentTypeConfusion: true,
+							enableParameterPollution: enableHTTPManipulation,
+							enableVerbTampering: enableHTTPManipulation,
+							enableContentTypeConfusion: enableHTTPManipulation,
+							enableInspectionLimitPadding: enablePadding,
+							paddingSize: paddingSize as any,
 						}
 					: undefined,
 				{ isWorker: true },

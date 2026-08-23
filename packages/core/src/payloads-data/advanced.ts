@@ -427,6 +427,40 @@ export const ADVANCED_PAYLOADS: Record<string, PayloadCategory> = {
 		falsePayloads: ['/path/to/file', 'Normal user login', 'Standard parameter'],
 	},
 
+	'Google Cloud Armor Evasion': {
+		type: 'ParamCheck',
+		payloads: [
+			'//api//v1//admin',
+			'/api/./v1/./admin',
+			'%2e%2e%2f%2e%2e%2fetc/passwd',
+			'{"query":"{__schema{types{name}}}"}',
+			'\\u0027 OR \\u00271\\u0027=\\u00271',
+		],
+		falsePayloads: ['/api/v1/users', '/static/css/app.css', 'Normal API Request'],
+	},
+
+	'Azure Front Door Evasion': {
+		type: 'ParamCheck',
+		payloads: [
+			"'/*#*/UNION/*#*/SELECT/*#*/1,2,3--",
+			'id=1&id=admin',
+			'%0d%0aX-Custom-Header: injected',
+			'\\u0027 OR 1=1--',
+		],
+		falsePayloads: ['id=123', 'query=test', 'Normal Azure Request'],
+	},
+
+	'Imperva Evasion': {
+		type: 'ParamCheck',
+		payloads: [
+			"'%09UNION%09SELECT%091,2,3--",
+			'&#x3C;script&#x3E;alert(1)&#x3C;/script&#x3E;',
+			'param=safe&param=malicious',
+			'\\u0027 UNION SELECT null,null--',
+		],
+		falsePayloads: ['Safe form input', 'Search term', 'Standard post body'],
+	},
+
 	'Prototype Pollution - Advanced Bypasses': {
 		type: 'ParamCheck',
 		payloads: [

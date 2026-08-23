@@ -119,28 +119,40 @@ function renderReport(results, falsePositiveMode = false) {
 }
 
 // --- PAYLOAD CATEGORIES LOGIC ---
+// Ordered by popularity: most common & well-known attacks on top, niche & rare attacks at the bottom
 const PAYLOAD_CATEGORIES = [
+	// Top Most Common & Critical Web Attacks (OWASP Top 10)
 	'SQL Injection',
 	'XSS',
-	'Path Traversal',
 	'Command Injection',
+	'Path Traversal',
 	'SSRF',
-	'NoSQL Injection',
 	'Local File Inclusion',
-	'LDAP Injection',
-	'HTTP Request Smuggling',
-	'Open Redirect',
 	'Sensitive Files',
-	'CRLF Injection',
-	'UTF8/Unicode Bypass',
-	'XXE',
+	'Open Redirect',
+
+	// Modern Application & API Attacks
 	'SSTI',
-	'HTTP Parameter Pollution',
-	'Web Cache Poisoning',
-	'IP Bypass',
-	'User-Agent',
-	'Prototype Pollution (URL/Param)',
+	'XXE',
+	'NoSQL Injection',
+	'GraphQL Injection',
+	'JWT Attack (Header)',
+	'JWT Attack (Param)',
 	'Prototype Pollution (JSON Body)',
+	'Prototype Pollution (URL/Param)',
+
+	// Protocol, Header & Injection Attacks
+	'LDAP Injection',
+	'CRLF Injection',
+	'HTTP Parameter Pollution',
+	'User-Agent',
+	'IP Bypass',
+
+	// Advanced Infrastructure / Evasion / Smuggling Attacks (Rare & Niche)
+	'HTTP Request Smuggling',
+	'Web Cache Poisoning',
+	'UTF8/Unicode Bypass',
+	'WAF Inspection Limit Bypass (Padding)',
 ];
 
 function renderCategoryCheckboxes() {
@@ -252,6 +264,14 @@ function updateDescriptionText() {
 	}
 }
 
+function togglePaddingSizeSelect() {
+	const enablePadding = document.getElementById('enablePadding');
+	const wrapper = document.getElementById('paddingSizeWrapper');
+	if (enablePadding && wrapper) {
+		wrapper.style.display = enablePadding.checked ? 'block' : 'none';
+	}
+}
+
 async function fetchResults() {
 	const btn = document.getElementById('checkBtn');
 	btn.disabled = true;
@@ -286,6 +306,9 @@ async function fetchResults() {
 	const useEncodingVariations = document.getElementById('useEncodingVariations')?.checked ? true : false;
 	// HTTP Manipulation
 	const httpManipulation = document.getElementById('httpManipulation')?.checked ? true : false;
+	// Buffer Padding Evasion
+	const enablePadding = document.getElementById('enablePadding')?.checked ? true : false;
+	const paddingSize = document.getElementById('paddingSizeSelect')?.value || '16kb';
 	// Collect selected categories
 	const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
 	const selectedCategories = Array.from(categoryCheckboxes)
@@ -303,6 +326,8 @@ async function fetchResults() {
 	localStorage.setItem('wafchecker_autoDetectWAF', autoDetectWAF ? '1' : '0');
 	localStorage.setItem('wafchecker_useEncodingVariations', useEncodingVariations ? '1' : '0');
 	localStorage.setItem('wafchecker_httpManipulation', httpManipulation ? '1' : '0');
+	localStorage.setItem('wafchecker_enablePadding', enablePadding ? '1' : '0');
+	localStorage.setItem('wafchecker_paddingSize', paddingSize);
 	// --- Получаем шаблон и заголовки ---\n
 	let payloadTemplate = '';
 	const templateEl = document.getElementById('payloadTemplate');
@@ -356,6 +381,8 @@ async function fetchResults() {
 				autoDetectWAF: autoDetectWAF ? '1' : '0',
 				useEncodingVariations: useEncodingVariations ? '1' : '0',
 				httpManipulation: httpManipulation ? '1' : '0',
+				enablePadding: enablePadding ? '1' : '0',
+				paddingSize: paddingSize,
 				detectedWAF: detectedWAFType || '',
 			});
 			const resp = await fetch(`/api/check?${params.toString()}`, {
@@ -510,6 +537,23 @@ function restoreStateFromLocalStorage() {
 		const el = document.getElementById('httpManipulation');
 		if (el) {
 			el.checked = httpManipulation === '1';
+		}
+	}
+
+	// Buffer Padding Evasion
+	const enablePadding = localStorage.getItem('wafchecker_enablePadding');
+	if (enablePadding !== null) {
+		const el = document.getElementById('enablePadding');
+		if (el) {
+			el.checked = enablePadding === '1';
+			togglePaddingSizeSelect();
+		}
+	}
+	const paddingSize = localStorage.getItem('wafchecker_paddingSize');
+	if (paddingSize !== null) {
+		const el = document.getElementById('paddingSizeSelect');
+		if (el) {
+			el.value = paddingSize;
 		}
 	}
 

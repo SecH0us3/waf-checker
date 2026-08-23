@@ -129,6 +129,42 @@ describe('check.ts', () => {
 		expect(results.length).toBeGreaterThan(0);
 	});
 
+	it('should apply inspection limit padding when enableInspectionLimitPadding is set', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({ 
+			status: 200, 
+			headers: new Headers(),
+			text: async () => 'test'
+		});
+		const httpManipulation = {
+			enableInspectionLimitPadding: true,
+			paddingSize: '8kb',
+		};
+		const results = await handleApiCheckFiltered(
+			'http://example.com/api',
+			0,
+			['GET'],
+			['SQL Injection'],
+			undefined,
+			false,
+			undefined,
+			false,
+			false,
+			false,
+			false,
+			false,
+			false,
+			undefined,
+			httpManipulation as any,
+			{ fetch: mockFetch as any, quiet: true }
+		);
+
+		expect(results.length).toBeGreaterThan(0);
+		expect(mockFetch).toHaveBeenCalled();
+		// Check that the request URL contains junk padding
+		const firstCallUrl = mockFetch.mock.calls[0][0];
+		expect(firstCallUrl).toContain('junk=');
+	});
+
 	it('should handle API check with FileCheck and caseSensitiveTest', async () => {
 		const mockFetch = vi.fn().mockResolvedValue({ 
 			status: 200, 
@@ -155,5 +191,47 @@ describe('check.ts', () => {
 		);
 		
 		expect(results.length).toBeGreaterThan(0);
+	});
+
+	it('should handle GraphQL Injection, JWT, and Padding categories individually', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({ 
+			status: 403, 
+			headers: new Headers(),
+			text: async () => 'blocked'
+		});
+
+		const testCategories = [
+			'GraphQL Injection',
+			'JWT Attack (Header)',
+			'JWT Attack (Param)',
+			'WAF Inspection Limit Bypass (Padding)',
+			'SSRF',
+			'SSTI'
+		];
+
+		for (const cat of testCategories) {
+			const results = await handleApiCheckFiltered(
+				'http://example.com/api',
+				0,
+				['GET'],
+				[cat],
+				undefined,
+				false,
+				undefined,
+				false,
+				false,
+				false,
+				false,
+				false,
+				false,
+				undefined,
+				undefined,
+				{ fetch: mockFetch as any, quiet: true }
+			);
+
+			expect(results).toBeInstanceOf(Array);
+			expect(results.length).toBeGreaterThan(0);
+			expect(results.every(r => r.category === cat)).toBe(true);
+		}
 	});
 });

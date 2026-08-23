@@ -65,6 +65,50 @@ describe('HTTPManipulator', () => {
 		expect(pollution.length).toBeGreaterThan(0);
 	});
 
+	it('should convert padding sizes to byte counts accurately', () => {
+		expect(HTTPManipulator.getPaddingBytes('8kb')).toBe(8192);
+		expect(HTTPManipulator.getPaddingBytes('16kb')).toBe(16384);
+		expect(HTTPManipulator.getPaddingBytes('64kb')).toBe(65536);
+		expect(HTTPManipulator.getPaddingBytes('128kb')).toBe(131072);
+		expect(HTTPManipulator.getPaddingBytes(4096)).toBe(4096);
+		// Default fallback
+		expect(HTTPManipulator.getPaddingBytes('invalid' as any)).toBe(16384);
+	});
+
+	it('should generate padding variations with correct structure and sizes', () => {
+		const variations = HTTPManipulator.generatePaddingVariations('attack', '<script>alert(1)</script>', '8kb');
+		expect(variations.queryPadding).toContain('junk=');
+		expect(variations.queryPadding).toContain('attack=%3Cscript%3Ealert(1)%3C%2Fscript%3E');
+		expect(variations.queryPadding.length).toBeGreaterThan(8192);
+
+		expect(variations.bodyPaddingUrlEncoded).toContain('junk=');
+		expect(variations.bodyPaddingUrlEncoded.length).toBeGreaterThan(8192);
+
+		const parsedJson = JSON.parse(variations.bodyPaddingJson);
+		expect(parsedJson.padding.length).toBe(8192);
+		expect(parsedJson.attack).toBe('<script>alert(1)</script>');
+	});
+
+	it('should generate inspection limit padding requests when enabled', () => {
+		const requests = HTTPManipulator.generateManipulatedRequests('http://example.com/api', 'GET', '1=1', {
+			enableInspectionLimitPadding: true,
+			paddingSize: '16kb',
+		});
+
+		expect(requests).toBeInstanceOf(Array);
+		const paddingReqs = requests.filter(r => r.technique === 'WAF Inspection Limit Padding');
+		expect(paddingReqs.length).toBe(3); // 1 GET query, 1 POST urlencoded, 1 POST json
+
+		const getReq = paddingReqs.find(r => r.method === 'GET');
+		expect(getReq?.url).toContain('junk=');
+		expect(getReq?.description).toContain('16kb');
+
+		const postJson = paddingReqs.find(r => r.headers['Content-Type'] === 'application/json');
+		expect(postJson?.body).toBeDefined();
+		const bodyParsed = JSON.parse(postJson?.body || '{}');
+		expect(bodyParsed.padding.length).toBe(16384);
+	});
+
 	it('should execute a manipulated request successfully', async () => {
 		const mockFetch = vi.fn().mockResolvedValue({
 			status: 200,

@@ -7,7 +7,7 @@ import {
 	ADVANCED_PAYLOADS,
 	generateEncodedPayloads,
 } from './advanced-payloads';
-import { HTTPManipulationOptions } from './http-manipulation';
+import { HTTPManipulationOptions, HTTPManipulator } from './http-manipulation';
 import { isValidTargetUrl } from './utils/security';
 import { substitutePayload, processCustomHeaders, randomUppercase, redactHeaders, redactUrl } from './utils/payload-utils';
 
@@ -47,7 +47,11 @@ export async function sendRequest(
 				finalUrl = url.replace(/\{PAYLOAD\}/g, encodeURIComponent(finalPayload));
 			} else if (method === 'GET' || method === 'DELETE') {
 				const separator = url.includes('?') ? '&' : '?';
-				finalUrl = url + `${separator}test=${encodeURIComponent(finalPayload)}`;
+				if (finalPayload.startsWith('junk=')) {
+					finalUrl = url + `${separator}${finalPayload}`;
+				} else {
+					finalUrl = url + `${separator}test=${encodeURIComponent(finalPayload)}`;
+				}
 			}
 		}
 
@@ -79,6 +83,13 @@ export async function sendRequest(
 					currentBody = JSON.stringify(jsonObj);
 					const newHeaders = new Headers(currentHeaders || {});
 					newHeaders.set('Content-Type', 'application/json');
+					currentHeaders = newHeaders;
+				} else if (finalPayload?.startsWith('junk=')) {
+					currentBody = finalPayload;
+					const newHeaders = new Headers(currentHeaders || {});
+					if (!newHeaders.has('Content-Type')) {
+						newHeaders.set('Content-Type', 'application/x-www-form-urlencoded');
+					}
 					currentHeaders = newHeaders;
 				} else {
 					currentBody = new URLSearchParams({ test: finalPayload ?? '' });
@@ -307,6 +318,10 @@ export async function handleApiCheckFiltered(
 								if (pollutedPayloads.length > 1) {
 									finalPayload = pollutedPayloads[1]; // Use first variation
 								}
+							} else if (httpManipulation?.enableInspectionLimitPadding) {
+								const paddingSize = httpManipulation.paddingSize || '16kb';
+								const variations = HTTPManipulator.generatePaddingVariations('test', currentPayload, paddingSize);
+								finalPayload = variations.queryPadding;
 							}
 
 							const detectedWAFType = detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined);

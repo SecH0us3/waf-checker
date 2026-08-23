@@ -151,7 +151,7 @@ checkCmd
 	.description('Run vulnerability payload audit against a target URL')
 	.option('-p, --proxy <url>', 'Proxy URL (e.g., http://127.0.0.1:8080)')
 	.option('-m, --methods <methods>', 'HTTP methods (comma-separated). Supported: GET, POST, PUT, DELETE, PATCH, TRACE, OPTIONS, HEAD, PROPFIND, REPORT, LOCK, UNLOCK, COPY, MOVE', 'GET')
-	.option('-c, --categories <categories>', 'Payload categories (comma-separated). Supported: SQL Injection, XSS, Path Traversal, Command Injection, SSRF, NoSQL Injection, Local File Inclusion, LDAP Injection, HTTP Request Smuggling, Open Redirect, Sensitive Files, CRLF Injection, UTF8/Unicode Bypass, XXE, SSTI, HTTP Parameter Pollution, Web Cache Poisoning, IP Bypass, User-Agent, Prototype Pollution (URL/Param), Prototype Pollution (JSON Body)')
+	.option('-c, --categories <categories>', 'Payload categories (comma-separated). Use --help for full list of supported categories')
 	.option('--detected-waf <vendor>', 'Force WAF signature and use WAF-specific bypasses. Supported: Cloudflare, AWS WAF, Imperva, F5 BIG-IP, ModSecurity, Akamai, Barracuda, Sucuri, Fastly, KeyCDN, StackPath, DenyAll, FortiWeb, Wallarm, Radware, Azure Front Door, Google Cloud Armor, Citrix NetScaler, Varnish, Palo Alto Networks, Sophos WAF')
 	.option('--payload-template <template>', 'JSON or text template (e.g., \'{"input": "{PAYLOAD}"}\')')
 	.option('--follow-redirects', 'Follow HTTP redirects', false)
@@ -163,6 +163,7 @@ checkCmd
 	.option('--auto-detect-waf', 'Detect WAF first and try WAF-specific bypasses', false)
 	.option('--encoding-variations', 'Use encoding and obfuscation variations', false)
 	.option('--http-manipulation', 'Run HTTP manipulation tests (Verb Tampering, Parameter Pollution, etc.)', false)
+	.option('--padding <size>', 'Enable WAF inspection buffer padding evasion (e.g. 8kb, 16kb, 64kb, 128kb)')
 	.option('--json', 'Output results in JSON format')
 	.option('-f, --format <format>', 'Output format for report: json, csv, html, sarif, markdown')
 	.option('-o, --output <path>', 'File path to save the report to')
@@ -175,19 +176,27 @@ checkCmd
 	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
 	.addHelpText('after', detailedHelp)
 	.action(async (url: string, options: any) => {
+		const isQuiet = options.quiet || options.silent;
 		try {
-			// Substitution check for validation
-			const testUrl = url.replace(/\{PAYLOAD\}/g, 'test-payload');
-			if (!isValidTargetUrl(testUrl)) {
-				console.error(`Error: Invalid target URL "${url}" or restricted IP.`);
+			if (!isValidTargetUrl(url)) {
+				console.error(colors.red(`Error: Invalid target URL "${url}" or restricted IP.`));
 				process.exit(1);
 			}
 
-			const isQuiet = Boolean(options.quiet || options.silent);
 			const customFetch = getFetch(options.proxy);
 			const methods = parseCommaList(options.methods) || ['GET'];
 			const categories = parseCommaList(options.categories);
 			const headers = parseCustomHeaders(options.customHeaders);
+
+			const enableHttp = Boolean(options.httpManipulation);
+			const enablePadding = Boolean(options.padding);
+			const httpManipulationOpts = (enableHttp || enablePadding) ? {
+				enableParameterPollution: enableHttp,
+				enableVerbTampering: enableHttp,
+				enableContentTypeConfusion: enableHttp,
+				enableInspectionLimitPadding: enablePadding,
+				paddingSize: options.padding || '16kb',
+			} : undefined;
 
 			const results = await handleApiCheckFiltered(
 				url,
@@ -204,11 +213,7 @@ checkCmd
 				options.autoDetectWaf,
 				options.encodingVariations,
 				options.detectedWaf,
-				options.httpManipulation ? {
-					enableParameterPollution: true,
-					enableVerbTampering: true,
-					enableContentTypeConfusion: true,
-				} : undefined,
+				httpManipulationOpts,
 				{ fetch: customFetch, color: useColor, quiet: isQuiet }
 			);
 
@@ -315,7 +320,7 @@ batchCmd
 	.description('Run batch audits for a list of URLs defined in a file')
 	.option('-p, --proxy <url>', 'Proxy URL (e.g., http://127.0.0.1:8080)')
 	.option('-m, --methods <methods>', 'HTTP methods (comma-separated). Supported: GET, POST, PUT, DELETE, PATCH, TRACE, OPTIONS, HEAD, PROPFIND, REPORT, LOCK, UNLOCK, COPY, MOVE', 'GET')
-	.option('-c, --categories <categories>', 'Payload categories (comma-separated). Supported: SQL Injection, XSS, Path Traversal, Command Injection, SSRF, NoSQL Injection, Local File Inclusion, LDAP Injection, HTTP Request Smuggling, Open Redirect, Sensitive Files, CRLF Injection, UTF8/Unicode Bypass, XXE, SSTI, HTTP Parameter Pollution, Web Cache Poisoning, IP Bypass, User-Agent, Prototype Pollution (URL/Param), Prototype Pollution (JSON Body)', 'SQL Injection,XSS')
+	.option('-c, --categories <categories>', 'Payload categories (comma-separated). Use --help for full list of supported categories', 'SQL Injection,XSS')
 	.option('--detected-waf <vendor>', 'Force WAF signature and use WAF-specific bypasses. Supported: Cloudflare, AWS WAF, Imperva, F5 BIG-IP, ModSecurity, Akamai, Barracuda, Sucuri, Fastly, KeyCDN, StackPath, DenyAll, FortiWeb, Wallarm, Radware, Azure Front Door, Google Cloud Armor, Citrix NetScaler, Varnish, Palo Alto Networks, Sophos WAF')
 	.option('--payload-template <template>', 'JSON or text template (e.g., \'{"input": "{PAYLOAD}"}\')')
 	.option('--follow-redirects', 'Follow HTTP redirects', false)
@@ -327,6 +332,7 @@ batchCmd
 	.option('--auto-detect-waf', 'Detect WAF first and try WAF-specific bypasses', false)
 	.option('--encoding-variations', 'Use encoding and obfuscation variations', false)
 	.option('--http-manipulation', 'Run HTTP manipulation tests', false)
+	.option('--padding <size>', 'Enable WAF inspection buffer padding evasion (e.g. 8kb, 16kb, 64kb, 128kb)')
 	.option('--concurrency <number>', 'Number of concurrent URLs to test', '3')
 	.option('--json', 'Output results in JSON format')
 	.option('-f, --format <format>', 'Output format for report: json, csv, html, markdown')
@@ -370,6 +376,16 @@ batchCmd
 			const categories = parseCommaList(options.categories);
 			const headers = parseCustomHeaders(options.customHeaders);
 
+			const enableHttp = Boolean(options.httpManipulation);
+			const enablePadding = Boolean(options.padding);
+			const httpManipulationOpts = (enableHttp || enablePadding) ? {
+				enableParameterPollution: enableHttp,
+				enableVerbTampering: enableHttp,
+				enableContentTypeConfusion: enableHttp,
+				enableInspectionLimitPadding: enablePadding,
+				paddingSize: options.padding || '16kb',
+			} : undefined;
+
 			if (!isQuiet && !options.json) {
 				console.log(`\nStarting batch audit for ${validUrls.length} targets (concurrency = ${concurrency})...\n`);
 			}
@@ -404,11 +420,7 @@ batchCmd
 							options.autoDetectWaf,
 							options.encodingVariations,
 							options.detectedWaf,
-							options.httpManipulation ? {
-								enableParameterPollution: true,
-								enableVerbTampering: true,
-								enableContentTypeConfusion: true,
-							} : undefined,
+							httpManipulationOpts,
 							{ fetch: customFetch, color: useColor, quiet: isQuiet }
 						);
 
