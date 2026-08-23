@@ -6,6 +6,7 @@ describe('WAFDetector', () => {
 		const wafs = WAFDetector.getSupportedWafs();
 		expect(wafs).toContain('Cloudflare');
 		expect(wafs).toContain('AWS WAF');
+		expect(wafs).toContain('DDoS-Guard');
 		expect(wafs).toContain('Signal Sciences');
 		expect(wafs).not.toContain('Generic WAF'); // Generic should be filtered out
 	});
@@ -25,6 +26,26 @@ describe('WAFDetector', () => {
 		const result = await WAFDetector.detectFromResponse(mockResponse);
 		expect(result.detected).toBe(true);
 		expect(result.wafType).toBe('Cloudflare');
+		expect(result.confidence).toBeGreaterThan(40);
+		expect(result.evidence.length).toBeGreaterThan(0);
+		expect(result.suggestedBypassTechniques.length).toBeGreaterThan(0);
+	});
+
+	it('should detect DDoS-Guard WAF from headers and cookies', async () => {
+		const mockResponse = {
+			status: 403,
+			headers: {
+				get: (name: string) => {
+					if (name.toLowerCase() === 'server') return 'ddos-guard';
+					if (name.toLowerCase() === 'set-cookie') return '__ddg1_=abc123; Path=/';
+					return null;
+				},
+			},
+		} as unknown as Response;
+
+		const result = await WAFDetector.detectFromResponse(mockResponse);
+		expect(result.detected).toBe(true);
+		expect(result.wafType).toBe('DDoS-Guard');
 		expect(result.confidence).toBeGreaterThan(40);
 		expect(result.evidence.length).toBeGreaterThan(0);
 		expect(result.suggestedBypassTechniques.length).toBeGreaterThan(0);

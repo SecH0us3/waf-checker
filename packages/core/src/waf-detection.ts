@@ -218,6 +218,13 @@ export class WAFDetector {
 				'Request method variations',
 				'Content-Type manipulation',
 			],
+			'DDoS-Guard': [
+				'HTTP parameter pollution',
+				'Double URL encoding',
+				'Request rate pacing',
+				'Header case manipulation',
+				'Alternative whitespace characters',
+			],
 			Imperva: ['Parameter pollution', 'HTTP verb tampering', 'Custom header injection', 'Encoding combinations'],
 			'F5 BIG-IP': ['Request smuggling techniques', 'HTTP/1.0 downgrade', 'Custom User-Agent strings'],
 			ModSecurity: ['Comment-based SQL obfuscation', 'Case sensitivity exploits', 'Regex pattern bypasses', 'Alternative operators'],
