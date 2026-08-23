@@ -117,10 +117,17 @@ export const BASE_PAYLOADS: Record<string, PayloadCategory> = {
 			'http://[::1]/',
 			'http://example.com@127.0.0.1/',
 			'http://169.254.169.254/latest/meta-data/', // AWS metadata
-			'http://[::ffff:127.0.0.1]', // IPv6 bypass
+			'http://metadata.google.internal/computeMetadata/v1/', // Google Cloud metadata
+			'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token', // GCP Token
+			'http://169.254.169.254/metadata/instance?api-version=2021-02-01', // Azure Metadata
+			'http://169.254.169.254/opc/v1/instance/', // Oracle Cloud Metadata
+			'http://100.100.100.200/latest/meta-data/', // Alibaba Cloud Metadata
+			'http://[::ffff:127.0.0.1]', // IPv6-mapped IPv4
 			'http://127.1', // Short notation
 			'http://0177.0.0.1', // Octal bypass
+			'http://0x7f000001', // Hex bypass
 			'http://2130706433', // Decimal bypass
+			'http://127.0.0.1.nip.io', // DNS rebinding helper
 			'd0vjq03vq99i18n2rq6gaw9riihcum3it.oast.live',
 		],
 		falsePayloads: [
@@ -375,8 +382,24 @@ export const BASE_PAYLOADS: Record<string, PayloadCategory> = {
 			'{{request}}', // Flask/Jinja2
 			'{{url_for}}', // Flask/Jinja2
 			"{{cycler.__init__.__globals__.os.popen('id').read()}}", // Jinja2 RCE
+			"T(java.lang.Runtime).getRuntime().exec('id')", // SpEL
+			'${T(java.lang.System).getenv()}', // SpEL
+			'<#assign ex="freemarker.template.utility.Execute"?new()>${ex("id")}', // FreeMarker
+			"${__import__('os').system('id')}", // Mako
+			'{php}phpinfo();{/php}', // Smarty
+			'{{#with "s" as |string|}}{{string.constructor.name}}{{/with}}', // Handlebars
+			"#{function(){return process.mainModule.require('child_process').execSync('id')}()}", // Pug/Jade
+			'{{_self.env.registerUndefinedFilterCallback("exec")}}{{_self.env.getFilter("id")}}', // Twig RCE
 		],
-		falsePayloads: ['{{name}}', '{name}'],
+		falsePayloads: [
+			'{{name}}',
+			'{name}',
+			'${username}',
+			'Welcome, #{user.firstName}!',
+			'Hello <%= user.name %>',
+			'Price: $7.00 * 7 items',
+			'Template rendering engine',
+		],
 	},
 	'HTTP Parameter Pollution': {
 		type: 'ParamCheck',
@@ -533,6 +556,71 @@ export const BASE_PAYLOADS: Record<string, PayloadCategory> = {
 			'{"proto": "normal"}',
 			'{"constructor": "developer"}',
 			'{"prototype": "value"}',
+		],
+	},
+	'GraphQL Injection': {
+		type: 'ParamCheck',
+		payloads: [
+			'{"query":"{__schema{types{name}}}"}',
+			'{"query":"{__schema{queryType{name,fields{name,args{name}}}}}"}',
+			'[{"query":"{__typename}"},{"query":"{__typename}"}]',
+			'{"query":"query { a: user(id: 1) { id } b: user(id: 1) { id } }"}',
+			'{"query":"query @deprecated { user(id: 1) { id } }"}',
+			'{"query":"query @skip(if: false) { user(id: 1) { id } }"}',
+			'{"query":"mutation { deleteUser(id: 1) { success } }"}',
+			'{__schema{types{name}}}',
+			'query { __typename }',
+			'mutation { __typename }',
+		],
+		falsePayloads: [
+			'{"query":"query GetProfile { user { id name email } }"}',
+			'{"query":"query ListProducts { products(limit: 10) { id title price } }"}',
+			'{"query":"query GetConfig { siteConfig { title theme } }"}',
+			'query GetUser { user { id name } }',
+			'query GetItems { items { id } }',
+		],
+	},
+	'JWT Attack (Header)': {
+		type: 'Header',
+		payloads: [
+			'Authorization: Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG1pbiIsImFkbWluIjp0cnVlLCJpYXQiOjE1MTYyMzkwMjJ9.',
+			'Authorization: Bearer eyJhbGciOiJOT05FIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG1pbiIsImFkbWluIjp0cnVlLCJpYXQiOjE1MTYyMzkwMjJ9.',
+			'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImpzdSI6Imh0dHA6Ly9hdHRhY2tlci5jb20vamtleXMuanNvbiJ9.eyJzdWIiOiJhZG1pbiIsImFkbWluIjp0cnVlfQ.AAAA',
+			'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImp3ayI6eyJrdHkiOiJSU0EiLCJraWQiOiJhdHRhY2tlciJ9fQ.eyJzdWIiOiJhZG1pbiJ9.AAAA',
+			'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Ii4uLy4uLy4uL2Rldi9udWxsIn0.eyJzdWIiOiJhZG1pbiJ9.AAAA',
+		],
+		falsePayloads: [
+			'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
+			'Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIiwicm9sZSI6InVzZXIifQ.validSignatureHere',
+			'Authorization: Basic dXNlcjpwYXNzd29yZA==',
+		],
+	},
+	'JWT Attack (Param)': {
+		type: 'ParamCheck',
+		payloads: [
+			'eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG1pbiIsImFkbWluIjp0cnVlfQ.',
+			'eyJhbGciOiJOT05FIiwidHlwIjoiSldUIn0.eyJzdWIiOiJhZG1pbiIsImFkbWluIjp0cnVlfQ.',
+			'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImpzdSI6Imh0dHA6Ly9hdHRhY2tlci5jb20ifQ.eyJzdWIiOiJhZG1pbiJ9.AAAA',
+			'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Ii4uLy4uL2Rldi9udWxsIn0.eyJzdWIiOiJhZG1pbiJ9.AAAA',
+		],
+		falsePayloads: [
+			'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c',
+			'token=regular_alphanumeric_session_token_12345',
+			'jwt=eyJhbGciOiJSUzI1NiJ9.eyJ1c2VyIjoidGVzdCJ9.sampleValidSignature',
+		],
+	},
+	'WAF Inspection Limit Bypass (Padding)': {
+		type: 'ParamCheck',
+		payloads: [
+			'a'.repeat(8192) + "&test=' OR '1'='1",
+			'a'.repeat(16384) + "&test=<script>alert('xss')</script>",
+			'a'.repeat(65536) + "&test=../../../../etc/passwd",
+			'a'.repeat(131072) + "&test=$(cat /etc/passwd)",
+		],
+		falsePayloads: [
+			'a'.repeat(8192) + '&test=normal_data',
+			'a'.repeat(16384) + '&test=safe_user_content',
+			'a'.repeat(65536) + '&test=harmless_document_payload',
 		],
 	},
 };

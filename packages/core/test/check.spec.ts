@@ -156,4 +156,46 @@ describe('check.ts', () => {
 		
 		expect(results.length).toBeGreaterThan(0);
 	});
+
+	it('should handle GraphQL Injection, JWT, and Padding categories individually', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({ 
+			status: 403, 
+			headers: new Headers(),
+			text: async () => 'blocked'
+		});
+
+		const testCategories = [
+			'GraphQL Injection',
+			'JWT Attack (Header)',
+			'JWT Attack (Param)',
+			'WAF Inspection Limit Bypass (Padding)',
+			'SSRF',
+			'SSTI'
+		];
+
+		for (const cat of testCategories) {
+			const results = await handleApiCheckFiltered(
+				'http://example.com/api',
+				0,
+				['GET'],
+				[cat],
+				undefined,
+				false,
+				undefined,
+				false,
+				false,
+				false,
+				false,
+				false,
+				false,
+				undefined,
+				undefined,
+				{ fetch: mockFetch as any, quiet: true }
+			);
+
+			expect(results).toBeInstanceOf(Array);
+			expect(results.length).toBeGreaterThan(0);
+			expect(results.every(r => r.category === cat)).toBe(true);
+		}
+	});
 });

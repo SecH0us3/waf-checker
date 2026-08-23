@@ -10,6 +10,8 @@ export interface HTTPManipulationOptions {
 	enableContentTypeConfusion?: boolean;
 	enableRequestSmuggling?: boolean;
 	enableHostHeaderInjection?: boolean;
+	enableInspectionLimitPadding?: boolean;
+	paddingSize?: '8kb' | '16kb' | '64kb' | '128kb' | number;
 }
 
 export interface ManipulatedRequest {
@@ -22,6 +24,39 @@ export interface ManipulatedRequest {
 }
 
 export class HTTPManipulator {
+	/**
+	 * Convert padding size specification to byte count
+	 */
+	static getPaddingBytes(size: '8kb' | '16kb' | '64kb' | '128kb' | number = '16kb'): number {
+		if (typeof size === 'number') return size;
+		switch (String(size).toLowerCase()) {
+			case '8kb': return 8192;
+			case '16kb': return 16384;
+			case '64kb': return 65536;
+			case '128kb': return 131072;
+			default: return 16384;
+		}
+	}
+
+	/**
+	 * Generate padding variations for WAF inspection buffer bypass
+	 */
+	static generatePaddingVariations(paramName: string, payload: string, size: '8kb' | '16kb' | '64kb' | '128kb' | number = '16kb'): {
+		queryPadding: string;
+		bodyPaddingUrlEncoded: string;
+		bodyPaddingJson: string;
+	} {
+		const byteCount = this.getPaddingBytes(size);
+		const junk = 'x'.repeat(byteCount);
+		return {
+			queryPadding: `junk=${junk}&${paramName}=${encodeURIComponent(payload)}`,
+			bodyPaddingUrlEncoded: `junk=${junk}&${paramName}=${encodeURIComponent(payload)}`,
+			bodyPaddingJson: JSON.stringify({
+				padding: junk,
+				[paramName]: payload,
+			}),
+		};
+	}
 	/**
 	 * Get uncommon HTTP methods for testing
 	 */
@@ -247,6 +282,47 @@ export class HTTPManipulator {
 					headers,
 					technique: 'Host Header Injection',
 					description: `Host header manipulation: ${headers.Host || headers.host}`,
+				});
+			});
+		}
+
+		// WAF Inspection Limit Padding (Buffer Overflow Evasion)
+		if (options.enableInspectionLimitPadding) {
+			const paddingSizes: ('8kb' | '16kb' | '64kb' | '128kb')[] = options.paddingSize && typeof options.paddingSize === 'string'
+				? [options.paddingSize as ('8kb' | '16kb' | '64kb' | '128kb')]
+				: ['8kb', '16kb', '64kb', '128kb'];
+
+			paddingSizes.forEach((size) => {
+				const variations = this.generatePaddingVariations('test', payload, size);
+
+				// GET with Query Padding
+				const separator = parsedUrl.search ? '&' : '?';
+				requests.push({
+					method: 'GET',
+					url: `${parsedUrl.origin}${parsedUrl.pathname}${parsedUrl.search}${separator}${variations.queryPadding}`,
+					headers: {},
+					technique: 'WAF Inspection Limit Padding',
+					description: `Inspection buffer overflow query padding (${size})`,
+				});
+
+				// POST with Form URL-Encoded Padding
+				requests.push({
+					method: 'POST',
+					url: originalUrl,
+					headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+					body: variations.bodyPaddingUrlEncoded,
+					technique: 'WAF Inspection Limit Padding',
+					description: `Inspection buffer overflow URL-encoded body padding (${size})`,
+				});
+
+				// POST with JSON Body Padding
+				requests.push({
+					method: 'POST',
+					url: originalUrl,
+					headers: { 'Content-Type': 'application/json' },
+					body: variations.bodyPaddingJson,
+					technique: 'WAF Inspection Limit Padding',
+					description: `Inspection buffer overflow JSON body padding (${size})`,
 				});
 			});
 		}

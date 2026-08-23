@@ -163,6 +163,7 @@ checkCmd
 	.option('--auto-detect-waf', 'Detect WAF first and try WAF-specific bypasses', false)
 	.option('--encoding-variations', 'Use encoding and obfuscation variations', false)
 	.option('--http-manipulation', 'Run HTTP manipulation tests (Verb Tampering, Parameter Pollution, etc.)', false)
+	.option('--padding <size>', 'Enable WAF inspection buffer padding evasion (e.g. 8kb, 16kb, 64kb, 128kb)')
 	.option('--json', 'Output results in JSON format')
 	.option('-f, --format <format>', 'Output format for report: json, csv, html, sarif, markdown')
 	.option('-o, --output <path>', 'File path to save the report to')
@@ -175,19 +176,25 @@ checkCmd
 	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
 	.addHelpText('after', detailedHelp)
 	.action(async (url: string, options: any) => {
+		const isQuiet = options.quiet || options.silent;
 		try {
-			// Substitution check for validation
-			const testUrl = url.replace(/\{PAYLOAD\}/g, 'test-payload');
-			if (!isValidTargetUrl(testUrl)) {
-				console.error(`Error: Invalid target URL "${url}" or restricted IP.`);
+			if (!isValidTargetUrl(url)) {
+				console.error(colors.red(`Error: Invalid target URL "${url}" or restricted IP.`));
 				process.exit(1);
 			}
 
-			const isQuiet = Boolean(options.quiet || options.silent);
 			const customFetch = getFetch(options.proxy);
 			const methods = parseCommaList(options.methods) || ['GET'];
 			const categories = parseCommaList(options.categories);
 			const headers = parseCustomHeaders(options.customHeaders);
+
+			const httpManipulationOpts = (options.httpManipulation || options.padding) ? {
+				enableParameterPollution: true,
+				enableVerbTampering: true,
+				enableContentTypeConfusion: true,
+				enableInspectionLimitPadding: Boolean(options.padding),
+				paddingSize: options.padding || '16kb',
+			} : undefined;
 
 			const results = await handleApiCheckFiltered(
 				url,
@@ -204,11 +211,7 @@ checkCmd
 				options.autoDetectWaf,
 				options.encodingVariations,
 				options.detectedWaf,
-				options.httpManipulation ? {
-					enableParameterPollution: true,
-					enableVerbTampering: true,
-					enableContentTypeConfusion: true,
-				} : undefined,
+				httpManipulationOpts,
 				{ fetch: customFetch, color: useColor, quiet: isQuiet }
 			);
 
@@ -327,6 +330,7 @@ batchCmd
 	.option('--auto-detect-waf', 'Detect WAF first and try WAF-specific bypasses', false)
 	.option('--encoding-variations', 'Use encoding and obfuscation variations', false)
 	.option('--http-manipulation', 'Run HTTP manipulation tests', false)
+	.option('--padding <size>', 'Enable WAF inspection buffer padding evasion (e.g. 8kb, 16kb, 64kb, 128kb)')
 	.option('--concurrency <number>', 'Number of concurrent URLs to test', '3')
 	.option('--json', 'Output results in JSON format')
 	.option('-f, --format <format>', 'Output format for report: json, csv, html, markdown')
@@ -370,6 +374,14 @@ batchCmd
 			const categories = parseCommaList(options.categories);
 			const headers = parseCustomHeaders(options.customHeaders);
 
+			const httpManipulationOpts = (options.httpManipulation || options.padding) ? {
+				enableParameterPollution: true,
+				enableVerbTampering: true,
+				enableContentTypeConfusion: true,
+				enableInspectionLimitPadding: Boolean(options.padding),
+				paddingSize: options.padding || '16kb',
+			} : undefined;
+
 			if (!isQuiet && !options.json) {
 				console.log(`\nStarting batch audit for ${validUrls.length} targets (concurrency = ${concurrency})...\n`);
 			}
@@ -404,11 +416,7 @@ batchCmd
 							options.autoDetectWaf,
 							options.encodingVariations,
 							options.detectedWaf,
-							options.httpManipulation ? {
-								enableParameterPollution: true,
-								enableVerbTampering: true,
-								enableContentTypeConfusion: true,
-							} : undefined,
+							httpManipulationOpts,
 							{ fetch: customFetch, color: useColor, quiet: isQuiet }
 						);
 

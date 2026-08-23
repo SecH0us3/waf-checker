@@ -128,6 +128,9 @@ const PAYLOAD_CATEGORIES = [
 	'NoSQL Injection',
 	'Local File Inclusion',
 	'LDAP Injection',
+	'GraphQL Injection',
+	'JWT Attack (Header)',
+	'JWT Attack (Param)',
 	'HTTP Request Smuggling',
 	'Open Redirect',
 	'Sensitive Files',
@@ -141,6 +144,7 @@ const PAYLOAD_CATEGORIES = [
 	'User-Agent',
 	'Prototype Pollution (URL/Param)',
 	'Prototype Pollution (JSON Body)',
+	'WAF Inspection Limit Bypass (Padding)',
 ];
 
 function renderCategoryCheckboxes() {
@@ -252,6 +256,14 @@ function updateDescriptionText() {
 	}
 }
 
+function togglePaddingSizeSelect() {
+	const enablePadding = document.getElementById('enablePadding');
+	const wrapper = document.getElementById('paddingSizeWrapper');
+	if (enablePadding && wrapper) {
+		wrapper.style.display = enablePadding.checked ? 'block' : 'none';
+	}
+}
+
 async function fetchResults() {
 	const btn = document.getElementById('checkBtn');
 	btn.disabled = true;
@@ -286,6 +298,9 @@ async function fetchResults() {
 	const useEncodingVariations = document.getElementById('useEncodingVariations')?.checked ? true : false;
 	// HTTP Manipulation
 	const httpManipulation = document.getElementById('httpManipulation')?.checked ? true : false;
+	// Buffer Padding Evasion
+	const enablePadding = document.getElementById('enablePadding')?.checked ? true : false;
+	const paddingSize = document.getElementById('paddingSizeSelect')?.value || '16kb';
 	// Collect selected categories
 	const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
 	const selectedCategories = Array.from(categoryCheckboxes)
@@ -303,6 +318,8 @@ async function fetchResults() {
 	localStorage.setItem('wafchecker_autoDetectWAF', autoDetectWAF ? '1' : '0');
 	localStorage.setItem('wafchecker_useEncodingVariations', useEncodingVariations ? '1' : '0');
 	localStorage.setItem('wafchecker_httpManipulation', httpManipulation ? '1' : '0');
+	localStorage.setItem('wafchecker_enablePadding', enablePadding ? '1' : '0');
+	localStorage.setItem('wafchecker_paddingSize', paddingSize);
 	// --- Получаем шаблон и заголовки ---\n
 	let payloadTemplate = '';
 	const templateEl = document.getElementById('payloadTemplate');
@@ -356,6 +373,8 @@ async function fetchResults() {
 				autoDetectWAF: autoDetectWAF ? '1' : '0',
 				useEncodingVariations: useEncodingVariations ? '1' : '0',
 				httpManipulation: httpManipulation ? '1' : '0',
+				enablePadding: enablePadding ? '1' : '0',
+				paddingSize: paddingSize,
 				detectedWAF: detectedWAFType || '',
 			});
 			const resp = await fetch(`/api/check?${params.toString()}`, {
@@ -510,6 +529,23 @@ function restoreStateFromLocalStorage() {
 		const el = document.getElementById('httpManipulation');
 		if (el) {
 			el.checked = httpManipulation === '1';
+		}
+	}
+
+	// Buffer Padding Evasion
+	const enablePadding = localStorage.getItem('wafchecker_enablePadding');
+	if (enablePadding !== null) {
+		const el = document.getElementById('enablePadding');
+		if (el) {
+			el.checked = enablePadding === '1';
+			togglePaddingSizeSelect();
+		}
+	}
+	const paddingSize = localStorage.getItem('wafchecker_paddingSize');
+	if (paddingSize !== null) {
+		const el = document.getElementById('paddingSizeSelect');
+		if (el) {
+			el.value = paddingSize;
 		}
 	}
 

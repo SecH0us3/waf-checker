@@ -189,6 +189,42 @@ describe('CLI Argument Processing', () => {
 					enableParameterPollution: true,
 					enableVerbTampering: true,
 					enableContentTypeConfusion: true,
+					enableInspectionLimitPadding: false,
+					paddingSize: '16kb',
+				},
+				expect.any(Object)
+			);
+		});
+
+		it('should parse --padding option correctly', async () => {
+			await expect(
+				program.parseAsync([
+					'node', 'index.js', 'check', 'https://example.com',
+					'--padding', '64kb'
+				])
+			).resolves.toBeDefined();
+
+			expect(core.handleApiCheckFiltered).toHaveBeenCalledWith(
+				'https://example.com',
+				0,
+				['GET'],
+				undefined,
+				undefined,
+				false,
+				undefined,
+				false,
+				false,
+				false,
+				false,
+				false,
+				false,
+				undefined,
+				{
+					enableParameterPollution: true,
+					enableVerbTampering: true,
+					enableContentTypeConfusion: true,
+					enableInspectionLimitPadding: true,
+					paddingSize: '64kb',
 				},
 				expect.any(Object)
 			);

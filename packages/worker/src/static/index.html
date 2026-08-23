@@ -265,6 +265,19 @@
 							<input class="form-check-input" type="checkbox" id="httpManipulation" />
 							<label class="form-check-label" for="httpManipulation">HTTP Manipulation</label>
 						</div>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" id="enablePadding" onchange="togglePaddingSizeSelect()" />
+							<label class="form-check-label" for="enablePadding">Buffer Padding Evasion</label>
+						</div>
+						<div class="mt-2 w-100" id="paddingSizeWrapper" style="display: none;">
+							<label for="paddingSizeSelect" class="form-label small text-muted mb-1">Padding Size:</label>
+							<select id="paddingSizeSelect" class="form-select form-select-sm">
+								<option value="8kb">8 KB</option>
+								<option value="16kb" selected>16 KB (AWS WAF body limit)</option>
+								<option value="64kb">64 KB</option>
+								<option value="128kb">128 KB (Cloudflare body limit)</option>
+							</select>
+						</div>
 					</div>
 				</div>
 
