@@ -50,6 +50,17 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 		bodyPatterns: [/AWS WAF/i],
 	},
 
+	// DDoS-Guard
+	{
+		name: 'DDoS-Guard',
+		headers: {
+			server: /ddos-guard/i,
+		},
+		cookiePatterns: [/__ddg1_/i, /__ddg2_/i, /__ddg5_/i],
+		statusCodes: [403, 429],
+		bodyPatterns: [/ddos-guard/i, /ddg-captcha/i],
+	},
+
 	// Imperva/Incapsula
 	{
 		name: 'Imperva',
