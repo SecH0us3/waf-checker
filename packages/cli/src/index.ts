@@ -46,7 +46,7 @@ const program = new Command();
 program
 	.name('waf-checker')
 	.description('WAF Security Testing Tool (CLI version)')
-	.version('1.0.0')
+	.version('1.1.0')
 	.showHelpAfterError()
 	.option('--no-color', 'Disable colored output')
 	.addHelpText('after', detailedHelp);
