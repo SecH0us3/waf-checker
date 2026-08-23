@@ -119,31 +119,39 @@ function renderReport(results, falsePositiveMode = false) {
 }
 
 // --- PAYLOAD CATEGORIES LOGIC ---
+// Ordered by popularity: most common & well-known attacks on top, niche & rare attacks at the bottom
 const PAYLOAD_CATEGORIES = [
+	// Top Most Common & Critical Web Attacks (OWASP Top 10)
 	'SQL Injection',
 	'XSS',
-	'Path Traversal',
 	'Command Injection',
+	'Path Traversal',
 	'SSRF',
-	'NoSQL Injection',
 	'Local File Inclusion',
-	'LDAP Injection',
+	'Sensitive Files',
+	'Open Redirect',
+
+	// Modern Application & API Attacks
+	'SSTI',
+	'XXE',
+	'NoSQL Injection',
 	'GraphQL Injection',
 	'JWT Attack (Header)',
 	'JWT Attack (Param)',
-	'HTTP Request Smuggling',
-	'Open Redirect',
-	'Sensitive Files',
-	'CRLF Injection',
-	'UTF8/Unicode Bypass',
-	'XXE',
-	'SSTI',
-	'HTTP Parameter Pollution',
-	'Web Cache Poisoning',
-	'IP Bypass',
-	'User-Agent',
-	'Prototype Pollution (URL/Param)',
 	'Prototype Pollution (JSON Body)',
+	'Prototype Pollution (URL/Param)',
+
+	// Protocol, Header & Injection Attacks
+	'LDAP Injection',
+	'CRLF Injection',
+	'HTTP Parameter Pollution',
+	'User-Agent',
+	'IP Bypass',
+
+	// Advanced Infrastructure / Evasion / Smuggling Attacks (Rare & Niche)
+	'HTTP Request Smuggling',
+	'Web Cache Poisoning',
+	'UTF8/Unicode Bypass',
 	'WAF Inspection Limit Bypass (Padding)',
 ];
 
