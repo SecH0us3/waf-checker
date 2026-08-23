@@ -220,9 +220,9 @@ describe('CLI Argument Processing', () => {
 				false,
 				undefined,
 				{
-					enableParameterPollution: true,
-					enableVerbTampering: true,
-					enableContentTypeConfusion: true,
+					enableParameterPollution: false,
+					enableVerbTampering: false,
+					enableContentTypeConfusion: false,
 					enableInspectionLimitPadding: true,
 					paddingSize: '64kb',
 				},

@@ -91,9 +91,9 @@ export default {
 				detectedWAF,
 				(enableHTTPManipulation || enablePadding)
 					? {
-							enableParameterPollution: true,
-							enableVerbTampering: true,
-							enableContentTypeConfusion: true,
+							enableParameterPollution: enableHTTPManipulation,
+							enableVerbTampering: enableHTTPManipulation,
+							enableContentTypeConfusion: enableHTTPManipulation,
 							enableInspectionLimitPadding: enablePadding,
 							paddingSize: paddingSize as any,
 						}

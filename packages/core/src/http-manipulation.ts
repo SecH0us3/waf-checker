@@ -288,8 +288,8 @@ export class HTTPManipulator {
 
 		// WAF Inspection Limit Padding (Buffer Overflow Evasion)
 		if (options.enableInspectionLimitPadding) {
-			const paddingSizes: ('8kb' | '16kb' | '64kb' | '128kb')[] = options.paddingSize && typeof options.paddingSize === 'string'
-				? [options.paddingSize as ('8kb' | '16kb' | '64kb' | '128kb')]
+			const paddingSizes: ('8kb' | '16kb' | '64kb' | '128kb' | number)[] = options.paddingSize !== undefined
+				? [options.paddingSize]
 				: ['8kb', '16kb', '64kb', '128kb'];
 
 			paddingSizes.forEach((size) => {
