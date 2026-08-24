@@ -585,6 +585,30 @@ describe('CLI Argument Processing', () => {
 			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('CI/CD Threshold Failed: Overall batch protection score 50% is below required threshold of 80%'));
 		});
 
+		it('should write batch multiple reports when specific flags are set', async () => {
+			await expect(
+				program.parseAsync([
+					'node', 'index.js', 'batch', mockFile,
+					'--markdown-output', 'batch-summary.md',
+					'--html-output', 'batch-report.html',
+				])
+			).resolves.toBeDefined();
+
+			expect(writeReport).toHaveBeenCalledWith('batch-summary.md', 'markdown', 'batch', mockFile, expect.any(Array));
+			expect(writeReport).toHaveBeenCalledWith('batch-report.html', 'html', 'batch', mockFile, expect.any(Array));
+		});
+
+		it('should fail when targets file does not exist', async () => {
+			vi.mocked(fs.existsSync).mockReturnValueOnce(false);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'batch', 'non-existent-file.txt'])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('does not exist'));
+		});
+
 		it('should exit with 0 if no targets bypassed and --fail-on-bypass is specified', async () => {
 			await expect(
 				program.parseAsync(['node', 'index.js', 'batch', mockFile, '--fail-on-bypass'])
