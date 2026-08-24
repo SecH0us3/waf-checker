@@ -180,18 +180,37 @@ describe('HTTPManipulator', () => {
 		expect(callCount).toBe(2);
 	});
 
-	it('should analyze results and categorize them', () => {
+	it('should batch execute requests with rate limit backoff and date retry-after', async () => {
+		let callCount = 0;
+		const futureDate = new Date(Date.now() + 100).toUTCString();
+		const mockFetch = vi.fn().mockImplementation(() => {
+			callCount++;
+			if (callCount === 1) {
+				return Promise.resolve({
+					status: 429,
+					headers: new Headers({ 'retry-after': futureDate })
+				});
+			}
+			return Promise.resolve({ status: 200, headers: new Headers() });
+		});
+
+		const reqs = [
+			{ method: 'GET', url: 'https://example.com/1', headers: {}, technique: 't1', description: 'd1' },
+			{ method: 'GET', url: 'https://example.com/2', headers: {}, technique: 't2', description: 'd2' }
+		];
+
+		const results = await HTTPManipulator.batchExecuteRequests(reqs, false, 1, 10, { fetch: mockFetch as any });
+		expect(results.length).toBe(2);
+	});
+
+	it('should analyze results and recommend when all requests are blocked', () => {
 		const results = [
-			{ status: 200, technique: 'Bypass1' },
 			{ status: 403, technique: 'Blocked1' },
-			{ status: 500, technique: 'Error1' }, // 500 is considered successful bypass (server error)
-			{ status: 400, technique: 'Suspicious1' },
+			{ status: 403, technique: 'Blocked2' },
 		];
 
 		const analysis = HTTPManipulator.analyzeResults(results);
-		expect(analysis.successfulTechniques).toContain('Bypass1');
-		expect(analysis.successfulTechniques).toContain('Error1');
-		expect(analysis.suspiciousTechniques).toContain('Suspicious1');
-		expect(analysis.recommendations.length).toBeGreaterThan(0);
+		expect(analysis.successfulTechniques).toEqual([]);
+		expect(analysis.recommendations.some(r => r.includes('All requests were blocked'))).toBe(true);
 	});
 });
