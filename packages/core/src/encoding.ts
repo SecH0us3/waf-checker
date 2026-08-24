@@ -91,6 +91,13 @@ export class PayloadEncoder {
 	}
 
 	/**
+	 * Random or mixed case variations
+	 */
+	static randomCase(payload: string): string {
+		return this.mixedCaseEncode(payload);
+	}
+
+	/**
 	 * Hex encode characters
 	 * Example: ' -> 0x27
 	 */
@@ -344,7 +351,7 @@ export class WAFBypasses {
 		bypasses.push(payload.replace(/script/gi, 'scr/**/ipt'));
 
 		// Case sensitivity exploits
-		bypasses.push(this.randomCase(payload));
+		bypasses.push(PayloadEncoder.randomCase(payload));
 
 		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
 		// Note: Bypasses with comments/escapes are for WAF signature testing, not backend execution.
@@ -441,7 +448,7 @@ export class WAFBypasses {
 		// PAN-OS path obfuscation and encoding variations
 		bypasses.push(payload.replace(/\//g, '//'));
 		bypasses.push(payload.replace(/\//g, '/./'));
-		bypasses.push(this.randomCase(payload));
+		bypasses.push(PayloadEncoder.randomCase(payload));
 
 		// Use tab as space alternative
 		bypasses.push(payload.replace(/\s/g, '%09'));
@@ -456,7 +463,7 @@ export class WAFBypasses {
 		const bypasses = [payload];
 
 		// Sophos WAF case-sensitivity and parameter pollution
-		bypasses.push(this.randomCase(payload));
+		bypasses.push(PayloadEncoder.randomCase(payload));
 		bypasses.push(PayloadEncoder.doubleUrlEncode(payload));
 
 		// Add null byte (sometimes bypasses filters)
@@ -549,7 +556,7 @@ export class WAFBypasses {
 		// HTTP request smuggling or header manipulation is common.
 		bypasses.push(PayloadEncoder.doubleUrlEncode(payload));
 		// Case variations
-		bypasses.push(this.randomCase(payload));
+		bypasses.push(PayloadEncoder.randomCase(payload));
 		return [...new Set(bypasses)];
 	}
 
