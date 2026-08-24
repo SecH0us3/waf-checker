@@ -2,22 +2,22 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/SecH0us3/waf-checker?color=blue&label=release)](https://github.com/SecH0us3/waf-checker/releases)
 [![GitHub Action](https://img.shields.io/badge/action-v1-blue?logo=githubactions&logoColor=white)](https://github.com/SecH0us3/waf-checker/releases)
-[![Coverage: Core](https://img.shields.io/badge/coverage%3A%20core-92.1%25-brightgreen)](packages/core)
+[![Coverage: Core](https://img.shields.io/badge/coverage%3A%20core-92.5%25-brightgreen)](packages/core)
 [![Coverage: CLI](https://img.shields.io/badge/coverage%3A%20cli-93.2%25-brightgreen)](packages/cli)
-[![Tests](https://img.shields.io/badge/tests-268%20passed-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-287%20passed-brightgreen)]()
 
 This project helps you check how well your Web Application Firewall (WAF) protects your product against common web attacks. It can be run as a Cloudflare Worker (with a built-in interactive Web UI) or as a standalone Node.js CLI tool.
 
 ## 🧪 Test Coverage & Status
 
-All packages are thoroughly tested with automated unit and integration suites (100% SSRF safety compliance, protocol evasion techniques, and report formatters):
+All packages are thoroughly tested with automated unit, integration, property-based (fast-check fuzzing), and network resilience suites (100% SSRF safety compliance, protocol evasion techniques, and report formatters):
 
 | Package | Line Coverage | Statements | Functions | Test Suite |
 | :--- | :---: | :---: | :---: | :---: |
-| [**`@waf-checker/core`**](packages/core) | `92.1%` 🟢 | `91.7%` | `96.1%` | 🟢 191 passing |
+| [**`@waf-checker/core`**](packages/core) | `92.5%` 🟢 | `92.1%` | `96.1%` | 🟢 210 passing |
 | [**`@waf-checker/cli`**](packages/cli) | `93.2%` 🟢 | `92.4%` | `96.7%` | 🟢 47 passing |
 | [**`@waf-checker/worker`**](packages/worker) | `Passing` 🟢 | — | — | 🟢 30 passing |
-| **Total Monorepo Suite** | **`92.6%`** | **`92.0%`** | **`96.4%`** | **🟢 268 tests passing** |
+| **Total Monorepo Suite** | **`92.8%`** | **`92.3%`** | **`96.4%`** | **🟢 287 tests passing** |
 
 ## Features
 
