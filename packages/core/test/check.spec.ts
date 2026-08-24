@@ -323,4 +323,116 @@ describe('check.ts', () => {
 		const callBody = mockFetch.mock.calls[0][1].body;
 		expect(callBody).toBe(JSON.stringify({ query: 'inject-here' }));
 	});
+
+	it('should handle Header checks with caseSensitiveTest, customHeaders, and pagination', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({ 
+			status: 403, 
+			headers: new Headers(),
+			text: async () => 'blocked'
+		});
+
+		// Test Header check with case-sensitive variations and custom headers
+		const results = await handleApiCheckFiltered(
+			'http://example.com/api',
+			0,
+			['GET'],
+			['User-Agent'],
+			undefined,
+			false,
+			'X-Custom-Token: abc123',
+			false,
+			true, // caseSensitiveTest
+			false,
+			false,
+			false,
+			false,
+			undefined,
+			undefined,
+			{ fetch: mockFetch as any, quiet: true }
+		);
+
+		expect(results.length).toBeGreaterThan(0);
+		expect(results[0].category).toBe('User-Agent');
+
+		// Test Header check with page out of bounds
+		const emptyResults = await handleApiCheckFiltered(
+			'http://example.com/api',
+			100, // page out of range
+			['GET'],
+			['User-Agent'],
+			undefined,
+			false,
+			undefined,
+			false,
+			false,
+			false,
+			false,
+			false,
+			false,
+			undefined,
+			undefined,
+			{ fetch: mockFetch as any, quiet: true }
+		);
+		expect(emptyResults).toEqual([]);
+	});
+
+	it('should handle FileCheck with pagination out of bounds', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({ 
+			status: 403, 
+			headers: new Headers(),
+			text: async () => 'blocked'
+		});
+
+		const emptyResults = await handleApiCheckFiltered(
+			'http://example.com/api',
+			100, // page out of range
+			['GET'],
+			['Sensitive Files'],
+			undefined,
+			false,
+			undefined,
+			false,
+			false,
+			false,
+			false,
+			false,
+			false,
+			undefined,
+			undefined,
+			{ fetch: mockFetch as any, quiet: true }
+		);
+		expect(emptyResults).toEqual([]);
+	});
+
+	it('should handle useAdvancedPayloads, useEncodingVariations, and autoDetectWAF flags', async () => {
+		const mockFetch = vi.fn().mockImplementation((url) => {
+			return Promise.resolve({
+				status: 403,
+				headers: new Headers({ server: 'cloudflare' }),
+				text: async () => 'cloudflare block'
+			});
+		});
+
+		const results = await handleApiCheckFiltered(
+			'http://example.com/api',
+			0,
+			['GET'],
+			['SQL Injection'],
+			undefined,
+			false,
+			undefined,
+			false,
+			false,
+			true, // useEnhancedPayloads
+			true, // useAdvancedPayloads
+			true, // autoDetectWAF
+			true, // useEncodingVariations
+			undefined,
+			undefined,
+			{ fetch: mockFetch as any, quiet: true }
+		);
+
+		expect(results.length).toBeGreaterThan(0);
+		expect(results.some(r => r.wafDetected)).toBe(true);
+	});
 });

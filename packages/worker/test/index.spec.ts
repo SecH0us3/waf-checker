@@ -33,10 +33,44 @@ describe('WAF Checker API', () => {
 		expect(response.status).toBe(404);
 	});
 
-	it('returns 400 for /api/batch/start without body', async () => {
-		const response = await SELF.fetch('https://example.com/api/batch/start', {
+	it('returns 400 for SSRF restricted target in /api/check', async () => {
+		const response = await SELF.fetch('https://example.com/api/check?url=http://169.254.169.254/latest');
+		expect(response.status).toBe(400);
+		const data = await response.json();
+		expect(data.error).toBe('Invalid URL or restricted IP');
+	});
+
+	it('returns 400 for SSRF restricted target in /api/waf-detect', async () => {
+		const response = await SELF.fetch('https://example.com/api/waf-detect?url=http://127.0.0.1:8080');
+		expect(response.status).toBe(400);
+		const data = await response.json();
+		expect(data.error).toBe('Invalid URL or restricted IP');
+	});
+
+	it('handles /api/check with query params and POST body', async () => {
+		const response = await SELF.fetch('https://example.com/api/check?url=https://example.com&methods=GET&categories=User-Agent', {
 			method: 'POST',
-			body: JSON.stringify({}),
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				customHeaders: 'X-Test: 1',
+				detectedWAF: 'Cloudflare'
+			})
+		});
+		expect(response.status).toBe(200);
+		const data = await response.json();
+		expect(Array.isArray(data)).toBe(true);
+	});
+
+	it('returns 400 for /api/batch/status without jobId', async () => {
+		const response = await SELF.fetch('https://example.com/api/batch/status');
+		expect(response.status).toBe(400);
+	});
+
+	it('returns 400 for /api/batch/stop without jobId', async () => {
+		const response = await SELF.fetch('https://example.com/api/batch/stop', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({})
 		});
 		expect(response.status).toBe(400);
 	});
