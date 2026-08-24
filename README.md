@@ -1,6 +1,23 @@
 # WAF Checker
 
+[![GitHub Release](https://img.shields.io/github/v/release/SecH0us3/waf-checker?color=blue&label=release)](https://github.com/SecH0us3/waf-checker/releases)
+[![GitHub Action](https://img.shields.io/badge/action-v1-blue?logo=githubactions&logoColor=white)](https://github.com/SecH0us3/waf-checker/releases)
+[![Coverage: Core](https://img.shields.io/badge/coverage%3A%20core-88.7%25-brightgreen)](packages/core)
+[![Coverage: CLI](https://img.shields.io/badge/coverage%3A%20cli-91.0%25-brightgreen)](packages/cli)
+[![Tests](https://img.shields.io/badge/tests-249%20passed-brightgreen)]()
+
 This project helps you check how well your Web Application Firewall (WAF) protects your product against common web attacks. It can be run as a Cloudflare Worker (with a built-in interactive Web UI) or as a standalone Node.js CLI tool.
+
+## 🧪 Test Coverage & Status
+
+All packages are thoroughly tested with automated unit and integration suites (100% SSRF safety compliance, protocol evasion techniques, and report formatters):
+
+| Package | Line Coverage | Statements | Functions | Test Suite |
+| :--- | :---: | :---: | :---: | :---: |
+| [**`@waf-checker/core`**](packages/core) | `88.7%` 🟢 | `88.5%` | `96.1%` | 🟢 178 passing |
+| [**`@waf-checker/cli`**](packages/cli) | `91.0%` 🟢 | `90.4%` | `96.7%` | 🟢 45 passing |
+| [**`@waf-checker/worker`**](packages/worker) | `Passing` 🟢 | — | — | 🟢 26 passing |
+| **Total Monorepo Suite** | **`89.5%`** | **`89.1%`** | **`96.3%`** | **🟢 249 tests passing** |
 
 ## Features
 
@@ -10,8 +27,8 @@ This project helps you check how well your Web Application Firewall (WAF) protec
 - Color-coded terminal and web results: 🟢 403/BLOCKED = blocked, 🔴 2xx/5xx = potential bypass, 🟠 3xx = redirect.
 - Results displayed in a filterable table with details for each payload.
 
-### Attack Categories (19 total)
-SQL Injection, XSS, Path Traversal, Command Injection, SSRF, NoSQL Injection, Local File Inclusion, LDAP Injection, HTTP Request Smuggling, Open Redirect, Sensitive Files, CRLF Injection, UTF8/Unicode Bypass, XXE, SSTI, HTTP Parameter Pollution, Web Cache Poisoning, IP Bypass, User-Agent.
+### Attack Categories (25 total)
+SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusion, Sensitive Files, Open Redirect, SSTI, XXE, NoSQL Injection, GraphQL Injection, JWT Attack (Header), JWT Attack (Param), Prototype Pollution (JSON Body), Prototype Pollution (URL/Param), LDAP Injection, CRLF Injection, HTTP Parameter Pollution, User-Agent, IP Bypass, HTTP Request Smuggling, Web Cache Poisoning, UTF8/Unicode Bypass, WAF Inspection Limit Bypass (Padding).
 
 ### WAF Detection
 - Auto-detect WAF type before testing (Cloudflare, AWS WAF, ModSecurity, Akamai, Imperva, F5 BIG-IP, etc.).

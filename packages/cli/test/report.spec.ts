@@ -56,6 +56,76 @@ describe('Report Module', () => {
 			expect(fs.writeFileSync).toHaveBeenCalledWith('report.json', expect.stringContaining('"status": 403'), 'utf8');
 		});
 
+		it('should write SARIF check reports', () => {
+			vi.mocked(fs.writeFileSync).mockClear();
+			writeReport('report.sarif', 'sarif', 'check', 'https://example.com', checkResults);
+			expect(fs.writeFileSync).toHaveBeenCalledWith('report.sarif', expect.stringContaining('"version": "2.1.0"'), 'utf8');
+		});
+
+		it('should throw error when requesting SARIF for batch report', () => {
+			expect(() => {
+				writeReport('batch.sarif', 'sarif', 'batch', 'targets.txt', batchResults);
+			}).toThrow('SARIF report format is only supported for single target audits');
+		});
+
+		it('should write Markdown check reports with stats and bypassed table', () => {
+			vi.mocked(fs.writeFileSync).mockClear();
+			writeReport('report.md', 'markdown', 'check', 'https://example.com', [
+				...checkResults,
+				{ status: 500, method: 'GET', payload: 'err-test', responseTime: 50, category: 'SQL Injection' },
+				{ status: 301, method: 'GET', payload: 'redir-test', responseTime: 50, category: 'Open Redirect' },
+			]);
+			expect(fs.writeFileSync).toHaveBeenCalledWith('report.md', expect.stringContaining('# 🛡️ WAF Checker Audit Report'), 'utf8');
+			expect(fs.writeFileSync).toHaveBeenCalledWith('report.md', expect.stringContaining('Attack Category Breakdown'), 'utf8');
+			expect(fs.writeFileSync).toHaveBeenCalledWith('report.md', expect.stringContaining('Bypassed Payloads'), 'utf8');
+		});
+
+		it('should write Markdown check reports when no bypasses detected and score is 100%', () => {
+			vi.mocked(fs.writeFileSync).mockClear();
+			const secureResults = [
+				{ status: 403, method: 'GET', payload: 'test-sql', responseTime: 100, category: 'SQL Injection', wafType: 'Cloudflare' },
+			];
+			writeReport('report.md', 'md', 'check', 'https://example.com', secureResults);
+			expect(fs.writeFileSync).toHaveBeenCalledWith('report.md', expect.stringContaining('Excellent: 100% Protection'), 'utf8');
+			expect(fs.writeFileSync).toHaveBeenCalledWith('report.md', expect.stringContaining('No Bypasses Detected'), 'utf8');
+			expect(fs.writeFileSync).toHaveBeenCalledWith('report.md', expect.stringContaining('Detected WAF:** `Cloudflare`'), 'utf8');
+		});
+
+		it('should write Markdown check reports with moderate and poor scores', () => {
+			vi.mocked(fs.writeFileSync).mockClear();
+			const poorResults = [
+				{ status: 200, method: 'GET', payload: 'test<script>&\'"|', responseTime: 100, category: 'XSS' },
+				{ status: 200, method: 'GET', payload: 'test2', responseTime: 100, category: 'XSS' },
+				{ status: 200, method: 'GET', payload: 'test3', responseTime: 100, category: 'XSS' },
+				{ status: 403, method: 'GET', payload: 'test4', responseTime: 100, category: 'XSS' },
+			];
+			writeReport('report.md', 'markdown', 'check', undefined, poorResults);
+			expect(fs.writeFileSync).toHaveBeenCalledWith('report.md', expect.stringContaining('Poor Protection / High Risk'), 'utf8');
+			expect(fs.writeFileSync).toHaveBeenCalledWith('report.md', expect.stringContaining('&lt;script&gt;&amp;&#39;&quot;&#124;'), 'utf8');
+
+			const moderateResults = [
+				{ status: 403, method: 'GET', payload: 'test1', responseTime: 100, category: 'XSS' },
+				{ status: 403, method: 'GET', payload: 'test2', responseTime: 100, category: 'XSS' },
+				{ status: 403, method: 'GET', payload: 'test3', responseTime: 100, category: 'XSS' },
+				{ status: 200, method: 'GET', payload: 'test4', responseTime: 100, category: 'XSS' },
+			];
+			writeReport('report.md', 'markdown', 'check', 'https://target.com', moderateResults);
+			expect(fs.writeFileSync).toHaveBeenCalledWith('report.md', expect.stringContaining('Moderate Protection'), 'utf8');
+		});
+
+		it('should write Markdown batch reports', () => {
+			vi.mocked(fs.writeFileSync).mockClear();
+			writeReport('batch.md', 'markdown', 'batch', 'targets.txt', [
+				...batchResults,
+				{ url: 'https://secure.com', success: true, total: 5, blocked: 5, bypassed: 0, bypassRate: 0 }
+			]);
+			expect(fs.writeFileSync).toHaveBeenCalledWith('batch.md', expect.stringContaining('# 🛡️ WAF Batch Audit Report'), 'utf8');
+			expect(fs.writeFileSync).toHaveBeenCalledWith('batch.md', expect.stringContaining('Scanned Targets:** `3`'), 'utf8');
+			expect(fs.writeFileSync).toHaveBeenCalledWith('batch.md', expect.stringContaining('🔴 Failed'), 'utf8');
+			expect(fs.writeFileSync).toHaveBeenCalledWith('batch.md', expect.stringContaining('⚠️ Bypasses'), 'utf8');
+			expect(fs.writeFileSync).toHaveBeenCalledWith('batch.md', expect.stringContaining('🟢 Secure'), 'utf8');
+		});
+
 		it('should write CSV check reports with headers', () => {
 			vi.mocked(fs.writeFileSync).mockClear();
 			writeReport('report.csv', 'csv', 'check', 'https://example.com', checkResults);
