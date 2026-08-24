@@ -234,4 +234,93 @@ describe('check.ts', () => {
 			expect(results.every(r => r.category === cat)).toBe(true);
 		}
 	});
+
+	it('should terminate early when offset exceeds pagination limit', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({ 
+			status: 200, 
+			headers: new Headers(),
+			text: async () => 'test'
+		});
+		const results = await handleApiCheckFiltered(
+			'http://example.com/api',
+			999, // page far beyond total payloads
+			['GET'],
+			['SQL Injection'],
+			undefined,
+			false,
+			undefined,
+			false,
+			false,
+			false,
+			false,
+			false,
+			false,
+			undefined,
+			undefined,
+			{ fetch: mockFetch as any, quiet: true }
+		);
+
+		expect(results).toEqual([]);
+	});
+
+	it('should follow redirects and terminate on loop or 200 status', async () => {
+		let redirectCount = 0;
+		const mockFetch = vi.fn().mockImplementation(() => {
+			redirectCount++;
+			if (redirectCount < 3) {
+				return Promise.resolve({
+					status: 302,
+					headers: new Headers({ location: 'http://example.com/api/redirect' }),
+					text: async () => 'redirecting'
+				});
+			}
+			return Promise.resolve({
+				status: 200,
+				headers: new Headers(),
+				text: async () => 'final ok'
+			});
+		});
+
+		const res = await sendRequest(
+			'http://example.com/api',
+			'GET',
+			'test-payload',
+			undefined,
+			undefined,
+			true, // followRedirect
+			false,
+			undefined,
+			undefined,
+			{ fetch: mockFetch as any, quiet: true }
+		);
+
+		expect(res.status).toBe(200);
+		expect(redirectCount).toBe(3);
+	});
+
+	it('should handle payload templates for JSON POST requests', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({
+			status: 200,
+			headers: new Headers(),
+			text: async () => 'ok'
+		});
+
+		const res = await sendRequest(
+			'http://example.com/api',
+			'POST',
+			'inject-here',
+			undefined,
+			'{"query": "{PAYLOAD}"}',
+			false,
+			false,
+			undefined,
+			undefined,
+			{ fetch: mockFetch as any, quiet: true }
+		);
+
+		expect(res.status).toBe(200);
+		expect(mockFetch).toHaveBeenCalled();
+		const callBody = mockFetch.mock.calls[0][1].body;
+		expect(callBody).toBe(JSON.stringify({ query: 'inject-here' }));
+	});
 });

@@ -1,75 +1,115 @@
 import { describe, it, expect } from 'vitest';
-import { generateWAFSpecificPayloads, generateHTTPManipulationPayloads } from '../src/advanced-payloads';
+import { generateWAFSpecificPayloads, generateHTTPManipulationPayloads, generateEncodedPayloads } from '../src/advanced-payloads';
 
 describe('advanced-payloads', () => {
+	describe('generateEncodedPayloads', () => {
+		it('should generate encoded categories with deduplication and falsePayloads preserved', () => {
+			const originalPayloads = {
+				'SQL Injection': {
+					type: 'ParamCheck' as const,
+					payloads: ["' OR 1=1--", "' OR 1=1--"],
+					falsePayloads: ["John O'Connor"]
+				},
+				'User-Agent': {
+					type: 'Header' as const,
+					payloads: ["Mozilla/5.0"],
+				}
+			};
+
+			const encoded = generateEncodedPayloads(originalPayloads);
+			expect(encoded['SQL Injection - Encoded']).toBeDefined();
+			expect(encoded['SQL Injection - Encoded'].type).toBe('ParamCheck');
+			expect(encoded['SQL Injection - Encoded'].payloads.length).toBeGreaterThan(0);
+			expect(encoded['SQL Injection - Encoded'].falsePayloads).toEqual(["John O'Connor"]);
+			expect(encoded['User-Agent - Encoded'].falsePayloads).toEqual([]);
+		});
+	});
+
 	describe('generateWAFSpecificPayloads', () => {
 		it('should route Cloudflare', () => {
-			const res = generateWAFSpecificPayloads('test', 'cloudflare');
+			const res = generateWAFSpecificPayloads('cloudflare', 'test');
 			expect(res.length).toBeGreaterThan(0);
 		});
-		it('should route AWS', () => {
-			const res = generateWAFSpecificPayloads('test', 'aws');
-			expect(res.length).toBeGreaterThan(0);
+		it('should route AWS aliases', () => {
+			expect(generateWAFSpecificPayloads('aws', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('awswaf', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('aws waf', 'test').length).toBeGreaterThan(0);
 		});
 		it('should route ModSecurity', () => {
-			const res = generateWAFSpecificPayloads('test', 'modsecurity');
+			const res = generateWAFSpecificPayloads('modsecurity', 'test');
 			expect(res.length).toBeGreaterThan(0);
 		});
 		it('should route Akamai', () => {
-			const res = generateWAFSpecificPayloads('test', 'akamai');
+			const res = generateWAFSpecificPayloads('akamai', 'test');
 			expect(res.length).toBeGreaterThan(0);
 		});
-		it('should route Azure', () => {
-			const res = generateWAFSpecificPayloads('test', 'azure');
-			expect(res.length).toBeGreaterThan(0);
+		it('should route Azure aliases', () => {
+			expect(generateWAFSpecificPayloads('azure', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('azure front door', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('azure waf', 'test').length).toBeGreaterThan(0);
 		});
-		it('should route Imperva', () => {
-			const res = generateWAFSpecificPayloads('test', 'imperva');
-			expect(res.length).toBeGreaterThan(0);
+		it('should route Imperva and Incapsula', () => {
+			expect(generateWAFSpecificPayloads('imperva', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('incapsula', 'test').length).toBeGreaterThan(0);
 		});
-		it('should route F5', () => {
-			const res = generateWAFSpecificPayloads('test', 'f5');
-			expect(res.length).toBeGreaterThan(0);
+		it('should route F5 aliases', () => {
+			expect(generateWAFSpecificPayloads('f5', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('f5 big-ip', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('f5 big ip', 'test').length).toBeGreaterThan(0);
 		});
-		it('should route Google Cloud Armor', () => {
-			const res = generateWAFSpecificPayloads('test', 'google');
-			expect(res.length).toBeGreaterThan(0);
+		it('should route Google Cloud Armor aliases', () => {
+			expect(generateWAFSpecificPayloads('google', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('google cloud armor', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('cloud armor', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('gcp', 'test').length).toBeGreaterThan(0);
 		});
-		it('should route Palo Alto', () => {
-			const res = generateWAFSpecificPayloads('test', 'palo alto');
-			expect(res.length).toBeGreaterThan(0);
+		it('should route Palo Alto aliases', () => {
+			expect(generateWAFSpecificPayloads('palo alto', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('palo alto networks', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('pan-os', 'test').length).toBeGreaterThan(0);
 		});
-		it('should route Sophos', () => {
-			const res = generateWAFSpecificPayloads('test', 'sophos');
-			expect(res.length).toBeGreaterThan(0);
+		it('should route Sophos aliases', () => {
+			expect(generateWAFSpecificPayloads('sophos', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('sophos waf', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('sophos utm', 'test').length).toBeGreaterThan(0);
 		});
-		it('should route Signal Sciences', () => {
-			const res = generateWAFSpecificPayloads('test', 'signal sciences');
-			expect(res.length).toBeGreaterThan(0);
+		it('should route Signal Sciences aliases', () => {
+			expect(generateWAFSpecificPayloads('signal sciences', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('signalsciences', 'test').length).toBeGreaterThan(0);
 		});
-		it('should route Nginx App Protect', () => {
-			const res = generateWAFSpecificPayloads('test', 'nginx');
-			expect(res.length).toBeGreaterThan(0);
+		it('should route Nginx App Protect and NAXSI aliases', () => {
+			expect(generateWAFSpecificPayloads('nginx', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('nginx app protect', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('naxsi', 'test').length).toBeGreaterThan(0);
 		});
 		it('should route HAProxy', () => {
-			const res = generateWAFSpecificPayloads('test', 'haproxy');
+			const res = generateWAFSpecificPayloads('haproxy', 'test');
 			expect(res.length).toBeGreaterThan(0);
 		});
-		it('should route IBM DataPower', () => {
-			const res = generateWAFSpecificPayloads('test', 'ibm datapower');
-			expect(res.length).toBeGreaterThan(0);
+		it('should route IBM DataPower aliases', () => {
+			expect(generateWAFSpecificPayloads('ibm datapower', 'test').length).toBeGreaterThan(0);
+			expect(generateWAFSpecificPayloads('datapower', 'test').length).toBeGreaterThan(0);
 		});
 		it('should route Reblaze', () => {
-			const res = generateWAFSpecificPayloads('test', 'reblaze');
+			const res = generateWAFSpecificPayloads('reblaze', 'test');
 			expect(res.length).toBeGreaterThan(0);
 		});
 		it('should route dotDefender', () => {
-			const res = generateWAFSpecificPayloads('test', 'dotdefender');
+			const res = generateWAFSpecificPayloads('dotdefender', 'test');
+			expect(res.length).toBeGreaterThan(0);
+		});
+		it('should fallback to encoder for unknown WAF vendor', () => {
+			const res = generateWAFSpecificPayloads('unknown-custom-waf', 'test');
 			expect(res.length).toBeGreaterThan(0);
 		});
 	});
 
 	describe('generateHTTPManipulationPayloads', () => {
+		it('should handle verb technique', () => {
+			const res = generateHTTPManipulationPayloads('test', 'verb');
+			expect(res).toEqual(['test']);
+		});
+
 		it('should generate pollution payloads', () => {
 			const res = generateHTTPManipulationPayloads('test', 'pollution');
 			expect(res.some(r => r.includes('param=test&param=test'))).toBe(true);

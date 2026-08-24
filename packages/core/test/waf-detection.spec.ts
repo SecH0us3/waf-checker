@@ -317,6 +317,50 @@ describe('WAFDetector', () => {
 		expect(result.parameterPollution).toBe(true);
 	});
 	
+	it('should handle network errors in detectBypassOpportunities gracefully', async () => {
+		const mockFetch = vi.fn().mockRejectedValue(new Error('Network connection timeout'));
+		const result = await WAFDetector.detectBypassOpportunities('http://example.com/api', { fetch: mockFetch as any });
+		expect(result.httpMethodsBypass).toBe(false);
+		expect(result.headerBypass).toBe(false);
+	});
+
+	it('should detect WAF using activeDetection with captcha precedence and highest confidence', async () => {
+		const mockFetch = vi.fn().mockImplementation((url) => {
+			if (url.includes('test=')) {
+				return Promise.resolve({
+					status: 403,
+					headers: {
+						get: (name: string) => (name.toLowerCase() === 'server' ? 'cloudflare' : null),
+					},
+					text: () => Promise.resolve('cf-chl-bypass error'),
+				});
+			}
+			return Promise.resolve({
+				status: 200,
+				headers: {
+					get: () => null,
+				},
+				text: () => Promise.resolve('normal page'),
+			});
+		});
+
+		const result = await WAFDetector.activeDetection('http://example.com/api', { fetch: mockFetch as any });
+		expect(result.detected).toBe(true);
+		expect(result.wafType).toBe('Cloudflare');
+	});
+
+	it('should return Unknown if activeDetection finds no WAF signatures', async () => {
+		const mockFetch = vi.fn().mockResolvedValue({
+			status: 200,
+			headers: { get: () => null },
+			text: () => Promise.resolve('ok clean page'),
+		});
+
+		const result = await WAFDetector.activeDetection('http://example.com/api', { fetch: mockFetch as any });
+		expect(result.detected).toBe(false);
+		expect(result.wafType).toBe('Unknown');
+	});
+
 	it('should throw an error during bypass detection for invalid URLs', async () => {
 		await expect(WAFDetector.detectBypassOpportunities('http://169.254.169.254')).rejects.toThrow('Invalid URL or restricted IP');
 	});
