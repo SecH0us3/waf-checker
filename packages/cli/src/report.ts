@@ -117,7 +117,7 @@ export function writeReport(
 	let outputContent = '';
 
 	if (format === 'json') {
-		if (type === 'check' && reverseEngineering) {
+		if (type === 'check') {
 			outputContent = JSON.stringify({ results, reverseEngineering }, null, 2);
 		} else {
 			outputContent = JSON.stringify(results, null, 2);
@@ -126,7 +126,7 @@ export function writeReport(
 		if (type === 'batch') {
 			throw new Error('SARIF report format is only supported for single target audits (check command), not batch audits.');
 		}
-		outputContent = generateSARIFReport(results, urlOrFile);
+		outputContent = generateSARIFReport(results, urlOrFile, reverseEngineering);
 	} else if (format === 'markdown' || format === 'md') {
 		if (type === 'check') {
 			outputContent = generateMarkdownReport(results as CheckResult[], urlOrFile, reverseEngineering);

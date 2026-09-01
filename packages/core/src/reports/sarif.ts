@@ -1,6 +1,7 @@
 import { AuditResultItem, calculateAuditStats } from './types';
+import { ReverseEngineeringReport } from '../reverse-engineering/types';
 
-export function generateSARIFReport(results: AuditResultItem[], targetUrl?: string): string {
+export function generateSARIFReport(results: AuditResultItem[], targetUrl?: string, reverseEngineering?: ReverseEngineeringReport): string {
 	const stats = calculateAuditStats(results, targetUrl);
 	const uniqueCategories = [...new Set(results.map((r) => r.category))];
 
@@ -68,7 +69,7 @@ export function generateSARIFReport(results: AuditResultItem[], targetUrl?: stri
 			};
 		});
 
-	const sarifDoc = {
+	const sarifDoc: any = {
 		$schema: 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
 		version: '2.1.0',
 		runs: [
@@ -91,6 +92,10 @@ export function generateSARIFReport(results: AuditResultItem[], targetUrl?: stri
 			},
 		],
 	};
+
+	if (reverseEngineering) {
+		sarifDoc.runs[0].properties = { reverseEngineering };
+	}
 
 	return JSON.stringify(sarifDoc, null, 2);
 }

@@ -22,7 +22,7 @@ export async function sendRequest(
 	useEnhancedPayloads: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean },
+	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; rawPayload?: boolean },
 ) {
 	const fetchFn = options?.fetch || globalThis.fetch;
 	try {
@@ -44,10 +44,10 @@ export async function sendRequest(
 		let finalUrl = url;
 		if (finalPayload !== undefined) {
 			if (url.includes('{PAYLOAD}')) {
-				finalUrl = url.replace(/\{PAYLOAD\}/g, encodeURIComponent(finalPayload));
+				finalUrl = url.replace(/\{PAYLOAD\}/g, options?.rawPayload ? finalPayload : encodeURIComponent(finalPayload));
 			} else if (method === 'GET' || method === 'DELETE') {
 				const separator = url.includes('?') ? '&' : '?';
-				if (finalPayload.startsWith('junk=')) {
+				if (finalPayload.startsWith('junk=') || options?.rawPayload) {
 					finalUrl = url + `${separator}${finalPayload}`;
 				} else {
 					finalUrl = url + `${separator}test=${encodeURIComponent(finalPayload)}`;
@@ -84,7 +84,7 @@ export async function sendRequest(
 					const newHeaders = new Headers(currentHeaders || {});
 					newHeaders.set('Content-Type', 'application/json');
 					currentHeaders = newHeaders;
-				} else if (finalPayload?.startsWith('junk=')) {
+				} else if (finalPayload?.startsWith('junk=') || options?.rawPayload) {
 					currentBody = finalPayload;
 					const newHeaders = new Headers(currentHeaders || {});
 					if (!newHeaders.has('Content-Type')) {
