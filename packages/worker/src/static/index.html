@@ -97,6 +97,9 @@
 					<button type="button" id="detectWafBtn" class="btn btn-outline-info btn-sm" onclick="detectWAF()">
 						🛡️ Detect WAF
 					</button>
+					<button type="button" id="reverseEngineerBtn" class="btn btn-outline-primary btn-sm" onclick="runReverseEngineering()">
+						🕵️ CRS & Reverse
+					</button>
 					<button type="button" id="httpManipulationBtn" class="btn btn-outline-warning btn-sm"
 						onclick="testHTTPManipulation()">
 						🔄 HTTP Tests
@@ -125,6 +128,15 @@
 						<button type="button" class="btn btn-sm btn-outline-secondary"
 							onclick="hideWAFPanel()">Hide</button>
 					</div>
+				</div>
+
+				<!-- Reverse Engineering Results Panel (Initially Hidden) -->
+				<div id="reverseEngineeringPanel" class="alert alert-primary mb-3" style="display: none; background-color: var(--bs-body-bg); border-color: var(--bs-primary-border-subtle); color: var(--bs-body-color);">
+					<div class="d-flex justify-content-between align-items-center mb-3">
+						<h5 class="fw-bold mb-0 text-primary">🕵️ WAF Reverse Engineering & CRS Matrix</h5>
+						<button type="button" class="btn-close" onclick="document.getElementById('reverseEngineeringPanel').style.display='none'"></button>
+					</div>
+					<div id="reverseEngineeringResults"></div>
 				</div>
 
 				<div class="text-muted small mb-2 description-waf-check text-center"></div>
