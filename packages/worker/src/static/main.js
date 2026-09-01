@@ -452,6 +452,140 @@ async function fetchResults() {
 	}
 }
 
+async function runReverseEngineering() {
+    const btn = document.getElementById('reverseEngineerBtn');
+    if (!btn) return;
+    btn.disabled = true;
+    const oldText = btn.innerHTML;
+    btn.innerHTML = 'Wait...';
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) cancelBtn.style.display = 'flex';
+    
+    const url = document.getElementById('url').value;
+    if (!url) {
+        alert("Please enter a URL first.");
+        btn.disabled = false;
+        btn.innerHTML = oldText;
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        return;
+    }
+
+    try {
+        currentAbortController = new AbortController();
+        const response = await fetch('/api/reverse-engineer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url }),
+            signal: currentAbortController.signal
+        });
+
+        if (!response.ok) {
+            const err = await response.text();
+            throw new Error(err);
+        }
+
+        const report = await response.json();
+        renderReverseEngineering(report);
+        
+    } catch (e) {
+        if (e.name === 'AbortError') {
+            alert('Reverse engineering cancelled.');
+        } else {
+            console.error('Reverse engineering error:', e);
+            alert('Error: ' + e.message);
+        }
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = oldText;
+        if (cancelBtn) cancelBtn.style.display = 'none';
+        currentAbortController = null;
+    }
+}
+
+function renderReverseEngineering(report) {
+    const panel = document.getElementById('reverseEngineeringPanel');
+    const container = document.getElementById('reverseEngineeringResults');
+    if (!panel || !container) return;
+    
+    let html = `<div class="row mb-3">`;
+    // Body Limit
+    html += `<div class="col-md-4 mb-2">
+        <div class="card bg-subtle border-primary h-100">
+            <div class="card-body py-2 px-3">
+                <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.7rem">Body Inspection Limit</small>
+                <div class="fw-bold fs-5">${escapeHtml(String(report.bodyInspectionLimit || 'Unknown'))}</div>
+                <small class="text-muted">Detected Threshold</small>
+            </div>
+        </div>
+    </div>`;
+    // Scoring Mode
+    html += `<div class="col-md-4 mb-2">
+        <div class="card bg-subtle border-primary h-100">
+            <div class="card-body py-2 px-3">
+                <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.7rem">Scoring Mode</small>
+                <div class="fw-bold fs-5" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(report.anomalyScoringMode.mode)}">${escapeHtml(report.anomalyScoringMode.mode.replace('_', ' '))}</div>
+                <small class="text-muted">Threshold: ${escapeHtml(String(report.anomalyScoringMode.detectedThreshold || 'N/A'))}</small>
+            </div>
+        </div>
+    </div>`;
+    // Rate Limiting
+    const rLimitStr = report.rateLimiting.triggered ? `Blocked at ${report.rateLimiting.triggeredAtReqPerSec} req/s` : 'Not Triggered';
+    html += `<div class="col-md-4 mb-2">
+        <div class="card bg-subtle border-primary h-100">
+            <div class="card-body py-2 px-3">
+                <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.7rem">Rate Limiting</small>
+                <div class="fw-bold fs-5">${escapeHtml(rLimitStr)}</div>
+                <small class="text-muted">Retry-After: ${report.rateLimiting.retryAfter ? escapeHtml(String(report.rateLimiting.retryAfter)) + 's' : 'N/A'}</small>
+            </div>
+        </div>
+    </div>`;
+    html += `</div>`;
+    
+    // Summary
+    const activeRules = report.crs.filter(r => r.status === 'active').length;
+    const bypassRules = report.crs.filter(r => r.status === 'bypassed').length;
+    const totalRules = report.crs.length;
+    const protectionRate = totalRules ? Math.round((activeRules / totalRules) * 100) : 0;
+    
+    html += `<div class="mb-3">
+        <strong>CRS Active Rules:</strong> ${activeRules} / ${totalRules} (${protectionRate}% Protection)
+    </div>`;
+    
+    // Table
+    html += `<div class="table-responsive"><table class="table table-sm table-bordered table-striped" style="font-size: 0.85rem;">
+        <thead class="table-dark">
+            <tr>
+                <th>Rule ID</th>
+                <th>Category</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Response Time</th>
+            </tr>
+        </thead>
+        <tbody>`;
+        
+    for (const item of report.crs) {
+        let badgeClass = 'bg-secondary';
+        if (item.status === 'active') badgeClass = 'bg-success';
+        if (item.status === 'bypassed') badgeClass = 'bg-danger';
+        
+        html += `<tr>
+            <td><code>${escapeHtml(item.ruleId)}</code> (PL${escapeHtml(String(item.paranoiaLevel))})</td>
+            <td>${escapeHtml(item.category)}</td>
+            <td>${escapeHtml(item.name)}</td>
+            <td><span class="badge ${badgeClass}">${escapeHtml(item.status.toUpperCase())}</span></td>
+            <td>${escapeHtml(String(item.responseTime))}ms</td>
+        </tr>`;
+    }
+    
+    html += `</tbody></table></div>`;
+    
+    container.innerHTML = html;
+    panel.style.display = 'block';
+    
+    window.latestReverseReport = report;
+}
+
 function restoreStateFromLocalStorage() {
 	// URL
 	const url = localStorage.getItem('wafchecker_url');
