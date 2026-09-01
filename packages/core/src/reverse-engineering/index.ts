@@ -31,11 +31,15 @@ export async function runReverseEngineeringAudit(
 	// 1. Audit OWASP Core Rule Set (CRS) rules
 	const crsItems: CRSAuditItem[] = [];
 
-	// Probe rules with concurrency limit to be respectful
-	const chunkSize = 5;
-	for (let i = 0; i < OWASP_CRS_RULES.length; i += chunkSize) {
-		const chunk = OWASP_CRS_RULES.slice(i, i + chunkSize);
-		const chunkPromises = chunk.map(async (rule) => {
+	// Probe rules with rolling concurrency to maximize throughput and be respectful
+	const concurrencyLimit = 5;
+	let ruleIndex = 0;
+
+	const worker = async () => {
+		while (ruleIndex < OWASP_CRS_RULES.length) {
+			const currentIndex = ruleIndex++;
+			const rule = OWASP_CRS_RULES[currentIndex];
+			
 			const startTime = Date.now();
 			let headersObj: Record<string, string> | undefined = undefined;
 			let payload: string | undefined = undefined;
@@ -60,7 +64,7 @@ export async function runReverseEngineeringAudit(
 				false,
 				undefined,
 				undefined,
-				{ fetch: options?.fetch, quiet: true },
+				{ fetch: options?.fetch, quiet: true, rawPayload: true },
 			);
 
 			const responseTime = Date.now() - startTime;
@@ -90,12 +94,12 @@ export async function runReverseEngineeringAudit(
 				evidence: `Status ${statusCode} returned in ${responseTime}ms`,
 			};
 
-			return item;
-		});
+			crsItems[currentIndex] = item;
+		}
+	};
 
-		const chunkResults = await Promise.all(chunkPromises);
-		crsItems.push(...chunkResults);
-	}
+	const workers = Array.from({ length: Math.min(concurrencyLimit, OWASP_CRS_RULES.length) }, () => worker());
+	await Promise.all(workers);
 
 	// 2. Parallel probing for Body Limits, Anomaly Scoring, and Rate Limits
 	const [bodyLimit, anomalyScore, rateLimit] = await Promise.all([

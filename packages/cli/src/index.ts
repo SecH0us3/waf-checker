@@ -228,11 +228,7 @@ checkCmd
 			}
 
 			if (options.json) {
-				if (reverseReport) {
-					console.log(JSON.stringify({ results, reverseEngineering: reverseReport }, null, 2));
-				} else {
-					console.log(JSON.stringify(results, null, 2));
-				}
+				console.log(JSON.stringify({ results, reverseEngineering: reverseReport }, null, 2));
 				return;
 			}
 

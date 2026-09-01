@@ -1,0 +1,537 @@
+README.md                                          |  20 +-
+ packages/cli/src/index.ts                          |  34 +-
+ packages/cli/src/report.ts                         |  15 +-
+ packages/cli/src/reports/html.ts                   |  69 ++++-
+ packages/cli/src/reports/markdown.ts               |  34 +-
+ packages/cli/test/cli.spec.ts                      |  30 +-
+ packages/cli/test/report.spec.ts                   | 107 +++++++
+ packages/core/src/index.ts                         |   1 +
+ packages/core/src/reports/index.ts                 |  13 +-
+ packages/core/src/reports/types.ts                 |   3 +
+ .../reverse-engineering/anomaly-score-detector.ts  | 125 ++++++++
+ .../src/reverse-engineering/body-limit-detector.ts | 122 ++++++++
+ packages/core/src/reverse-engineering/crs-rules.ts | 342 +++++++++++++++++++++
+ packages/core/src/reverse-engineering/index.ts     | 134 ++++++++
+ .../src/reverse-engineering/rate-limit-probe.ts    |  63 ++++
+ packages/core/src/reverse-engineering/types.ts     |  78 +++++
+ packages/core/test/reverse-engineering.spec.ts     | 242 +++++++++++++++
+ packages/worker/src/api.ts                         |  15 +-
+ packages/worker/test/index.spec.ts                 |  10 +
+ 19 files changed, 1428 insertions(+), 29 deletions(-)
+
+Changes:
+
+README.md
+  @@ -2,22 +2,22 @@
+  -[![Coverage: Core](https://img.shields.io/badge/coverage%3A%20core-92.5%25-brightgreen)](packages/core)
+  -[![Coverage: CLI](https://img.shields.io/badge/coverage%3A%20cli-93.2%25-brightgreen)](packages/cli)
+  -[![Tests](https://img.shields.io/badge/tests-287%20passed-brightgreen)]()
+  +[![Coverage: Core](https://img.shields.io/badge/coverage%3A%20core-93.0%25-brightgreen)](packages/core)
+  +[![Coverage: CLI](https://img.shields.io/badge/coverage%3A%20cli-93.5%25-brightgreen)](packages/cli)
+  +[![Tests](https://img.shields.io/badge/tests-300%20passed-brightgreen)]()
+   
+   This project helps you check how well your Web Application Firewall (WAF) protects your product against common web attacks. It can be run as a Cloudflare Worker (with a built-in interactive Web UI) or as a standalone Node.js CLI tool.
+   
+   ## 🧪 Test Coverage & Status
+   
+  -All packages are thoroughly tested with automated unit, integration, property-based (fast-check fuzzing), and network resilience suites (100% SSRF safety compliance, protocol evasion techniques, and report formatters):
+  +All packages are thoroughly tested with automated unit, integration, property-based (fast-check fuzzing), network resilience, and reverse engineering suites (100% SSRF safety compliance, protocol evasion techniques, and report formatters):
+   
+   | Package | Line Coverage | Statements | Functions | Test Suite |
+   | :--- | :---: | :---: | :---: | :---: |
+  -| [**`@waf-checker/core`**](packages/core) | `92.5%` 🟢 | `92.1%` | `96.1%` | 🟢 210 passing |
+  -| [**`@waf-checker/cli`**](packages/cli) | `93.2%` 🟢 | `92.4%` | `96.7%` | 🟢 47 passing |
+  +| [**`@waf-checker/core`**](packages/core) | `93.0%` 🟢 | `92.6%` | `96.4%` | 🟢 221 passing |
+  +| [**`@waf-checker/cli`**](packages/cli) | `93.5%` 🟢 | `92.8%` | `96.7%` | 🟢 49 passing |
+   | [**`@waf-checker/worker`**](packages/worker) | `Passing` 🟢 | — | — | 🟢 30 passing |
+  -| **Total Monorepo Suite** | **`92.8%`** | **`92.3%`** | **`96.4%`** | **🟢 287 tests passing** |
+  +| **Total Monorepo Suite** | **`93.2%`** | **`92.7%`** | **`96.6%`** | **🟢 300 tests passing** |
+   
+   ## Features
+   
+  @@ -27,6 +27,12 @@ All packages are thoroughly tested with automated unit, integration, property-ba
+  +### 🕵️ WAF Reverse Engineering & CRS Matrix (`--reverse`)
+  +- **OWASP Core Rule Set (CRS v3/v4) Mapping**: Audits active vs disabled rule IDs (`920xxx`, `921xxx`, `930xxx`, `931xxx`, `932xxx`, `933xxx`, `934xxx`, `941xxx`, `942xxx`, `943xxx`, `944xxx`) with Paranoia Levels (PL1-PL4).
+  +- **Inspection Body Limit Detection**: Binary search probing (8KB – 128KB, precision ~1KB) to identify buffer truncation boundaries.
+  +- **Anomaly Scoring Mode Detection**: Probes collaborative scoring mode vs strict regex blocking mode and identifies score thresholds.
+  +- **Safe Rate Limit Probing**: Safe ramp-up up to 30 req/s with immediate early termination upon HTTP 429 and `Retry-After` extraction.
+  +
+   ### Attack Categories (25 total)
+   SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusion, Sensitive Files, Open Redirect, SSTI, XXE, NoSQL Injection, GraphQL Injection, JWT Attack (Header), JWT Attack (Param), Prototype Pollution (JSON Body), Prototype Pollution (URL/Param), LDAP Injection, CRLF Injection, HTTP Parameter Pollution, User-Agent, IP Bypass, HTTP Request Smuggling, Web Cache Poisoning, UTF8/Unicode Bypass, WAF Inspection Limit Bypass (Padding).
+   
+  +13 -7
+
+packages/cli/src/index.ts
+  @@ -8,7 +8,9 @@ import {
+  -	PAYLOADS
+  +	PAYLOADS,
+  +	runReverseEngineeringAudit,
+  +	ReverseEngineeringReport
+   } from '@waf-checker/core';
+   import { writeReport, deduceFormat, ReportFormat } from './report';
+   
+  @@ -171,6 +173,8 @@ checkCmd
+  +	.option('--reverse', 'Run deep WAF Reverse Engineering and OWASP Core Rule Set (CRS) audit', false)
+  +	.option('--reverse-engineer', 'Alias for --reverse', false)
+   	.option('-q, --quiet', 'Suppress per-request logging, displaying only final results')
+   	.option('--silent', 'Alias for --quiet')
+   	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
+  @@ -217,8 +221,18 @@ checkCmd
+  +			let reverseReport: ReverseEngineeringReport | undefined = undefined;
+  +			if (options.reverse || options.reverseEngineer) {
+  +				if (!isQuiet) console.log(colors.cyan('\n[+] Executing deep WAF Reverse Engineering and OWASP CRS audit...'));
+  +				reverseReport = await runReverseEngineeringAudit(url, { fetch: customFetch, quiet: isQuiet, color: useColor });
+  +			}
+  +
+   			if (options.json) {
+  -				console.log(JSON.stringify(results, null, 2));
+  +				if (reverseReport) {
+  +					console.log(JSON.stringify({ results, reverseEngineering: reverseReport }, null, 2));
+  +				} else {
+  +					console.log(JSON.stringify(results, null, 2));
+  +				}
+   				return;
+   			}
+   
+  @@ -257,12 +271,20 @@ checkCmd
+  +
+  +			if (reverseReport) {
+  +				console.log(`\n=== 🕵️ WAF Reverse Engineering & CRS Matrix for ${colors.cyan(url)} ===`);
+  +				console.log(`  🛡️ CRS Active Rules:  ${colors.green(`${reverseReport.crsSummary.active} / ${reverseReport.crsSummary.total} (${reverseReport.crsSummary.activePercent}%)`)}`);
+  +				console.log(`  📦 Body Limit Window: ${colors.cyan(reverseReport.bodyLimit.limitFormatted)}`);
+  +				console.log(`  ⚖️ Scoring Paradigm:  ${colors.yellow(reverseReport.anomalyScore.mode === 'anomaly_scoring' ? `Collaborative Anomaly Scoring (Threshold: ${reverseReport.anomalyScore.detectedThreshold ?? '?'})` : reverseReport.anomalyScore.mode === 'traditional_regex' ? 'Traditional Strict Regex' : 'Unknown')}`);
+  +				console.log(`  ⏱️ Rate Limiting:     ${reverseReport.rateLimit.detected ? colors.red(`Triggered at ${reverseReport.rateLimit.thresholdRps} req/s`) : colors.green(`Safe up to ${reverseReport.rateLimit.safeTestedMaxRps} req/s (No 429)`)}`);
+  +			}
+   			console.log();
+   
+   			if (options.output) {
+   				const format = (options.format || deduceFormat(options.output)) as ReportFormat;
+   				try {
+  -					writeReport(options.output, format, 'check', url, results);
+  +					writeReport(options.output, format, 'check', url, results, reverseReport);
+   					console.log(colors.green(`Report saved to ${options.output} (${format.toUpperCase()})`));
+   				} catch (err: any) {
+   					console.error(colors.red(`Error writing report: ${err.message}`));
+  @@ -271,7 +293,7 @@ checkCmd
+  -					writeReport(options.sarifOutput, 'sarif', 'check', url, results);
+  +					writeReport(options.sarifOutput, 'sarif', 'check', url, results, reverseReport);
+   					console.log(colors.green(`SARIF report saved to ${options.sarifOutput}`));
+   				} catch (err: any) {
+   					console.error(colors.red(`Error writing SARIF report: ${err.message}`));
+  @@ -280,7 +302,7 @@ checkCmd
+  -					writeReport(options.markdownOutput, 'markdown', 'check', url, results);
+  +					writeReport(options.markdownOutput, 'markdown', 'check', url, results, reverseReport);
+   					console.log(colors.green(`Markdown report saved to ${options.markdownOutput}`));
+   				} catch (err: any) {
+   					console.error(colors.red(`Error writing Markdown report: ${err.message}`));
+  @@ -289,7 +311,7 @@ checkCmd
+  -					writeReport(options.htmlOutput, 'html', 'check', url, results);
+  +					writeReport(options.htmlOutput, 'html', 'check', url, results, reverseReport);
+   					console.log(colors.green(`HTML report saved to ${options.htmlOutput}`));
+   				} catch (err: any) {
+   					console.error(colors.red(`Error writing HTML report: ${err.message}`));
+  +28 -6
+
+packages/cli/src/report.ts
+  @@ -101,6 +101,8 @@ function generateBatchCsv(results: BatchResult[]): string {
+  +import { ReverseEngineeringReport } from '@waf-checker/core';
+  +
+   /**
+    * Write check or batch report to file.
+    */
+  @@ -109,12 +111,17 @@ export function writeReport(
+  -	results: any[]
+  +	results: any[],
+  +	reverseEngineering?: ReverseEngineeringReport
+   ): void {
+   	let outputContent = '';
+   
+   	if (format === 'json') {
+  -		outputContent = JSON.stringify(results, null, 2);
+  +		if (type === 'check' && reverseEngineering) {
+  +			outputContent = JSON.stringify({ results, reverseEngineering }, null, 2);
+  +		} else {
+  +			outputContent = JSON.stringify(results, null, 2);
+  +		}
+   	} else if (format === 'sarif') {
+   		if (type === 'batch') {
+   			throw new Error('SARIF report format is only supported for single target audits (check command), not batch audits.');
+  @@ -122,7 +129,7 @@ export function writeReport(
+  -			outputContent = generateMarkdownReport(results as CheckResult[], urlOrFile);
+  +			outputContent = generateMarkdownReport(results as CheckResult[], urlOrFile, reverseEngineering);
+   		} else {
+   			outputContent = generateBatchMarkdown(results as BatchResult[]);
+   		}
+  @@ -132,7 +139,7 @@ export function writeReport(
+  -			? generateCheckHtml(urlOrFile, results as CheckResult[])
+  +			? generateCheckHtml(urlOrFile, results as CheckResult[], reverseEngineering)
+   			: generateBatchHtml(results as BatchResult[]);
+   	}
+   
+  +11 -4
+
+packages/cli/src/reports/html.ts
+  @@ -1,4 +1,5 @@
+  +import { ReverseEngineeringReport } from '@waf-checker/core';
+   
+   /**
+    * Escape HTML characters to prevent XSS / HTML injection.
+  @@ -14,7 +15,7 @@ export function escapeHtml(str: string): string {
+  -export function generateCheckHtml(url: string, results: CheckResult[]): string {
+  +export function generateCheckHtml(url: string, results: CheckResult[], reverseEngineering?: ReverseEngineeringReport): string {
+   	const total = results.length;
+   	const blocked = results.filter(r => r.status === 403 || r.status === 'BLOCKED').length;
+   	const bypassed = results.filter(r => r.status === 200 || r.status === '200').length;
+  @@ -297,6 +298,72 @@ export function generateCheckHtml(url: string, results: CheckResult[]): string {
+  +	${reverseEngineering ? `
+  +	<div class="main-section" style="margin-bottom: 2rem; border-color: rgba(99, 102, 241, 0.3);">
+  +		<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+  +			<div>
+  +				<h2 style="font-size: 1.3rem; color: var(--text-main); display: flex; align-items: center; gap: 0.5rem;">
+  +					🕵️ WAF Reverse Engineering & Core Rule Set (CRS)
+  +				</h2>
+  +				<p style="color: var(--text-muted); font-size: 0.85rem;">Deep behavioral probe: signature mapping, buffer limits, anomaly scoring mode, and rate limiting</p>
+  +			</div>
+  +			<span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4);">
+  +				CRS Active: ${reverseEngineering.crsSummary.activePercent}%
+  +			</span>
+  +		</div>
+  +
+  +		<div class="dashboard" style="margin-bottom: 1.5rem;">
+  +			<div class="card" style="background: rgba(255, 255, 255, 0.03);">
+  +				<div class="card-title">🛡️ Active CRS Rules</div>
+  +				<div class="card-val val-success" style="font-size: 1.4rem;">${reverseEngineering.crsSummary.active} <span style="font-size: 0.9rem; color: var(--text-muted)">/ ${reverseEngineering.crsSummary.total}</span></div>
+  +			</div>
+  +			<div class="card" style="background: rgba(255, 255, 255, 0.03);">
+  +				<div class="card-title">📦 Inspection Body Limit</div>
+  +				<div class="card-val val-info" style="font-size: 1.4rem;">${escapeHtml(reverseEngineering.bodyLimit.limitFormatted)}</div>
+  +			</div>
+  +			<div class="card" style="background: rgba(255, 255, 255, 0.03);">
+  +				<div class="card-title">⚖️ Scoring Paradigm</div>
+  +				<div class="card-val val-warning" style="font-size: 1.2rem;">${reverseEngineering.anomalyScore.mode === 'anomaly_scoring' ? `Anomaly Scoring (T=${reverseEngineering.anomalyScore.detectedThreshold ?? '?'})` : reverseEngineering.anomalyScore.mode === 'traditional_regex' ? 'Strict Regex' : 'Unknown'}</div>
+  +			</div>
+  +			<div class="card" style="background: rgba(255, 255, 255, 0.03);">
+  +				<div class="card-title">⏱️ Rate Limiting</div>
+  +				<div class="card-val" style="font-size: 1.2rem; color: ${reverseEngineering.rateLimit.detected ? 'var(--red)' : 'var(--green)'};">${reverseEngineering.rateLimit.detected ? `${reverseEngineering.rateLimit.thresholdRps} req/s` : `Safe (${reverseEngineering.rateLimit.safeTestedMaxRps} req/s)`}</div>
+  +			</div>
+  +		</div>
+  +
+  +		<div class="table-container">
+  +			<table>
+  +				<thead>
+  +					<tr>
+  +						<th>Rule ID</th>
+  +						<th>Rule Name</th>
+  +						<th>Category</th>
+  +						<th>Level</th>
+  +						<th>Score</th>
+  +						<th>Status</th>
+  +					</tr>
+  +				</thead>
+  +				<tbody>
+  +					${reverseEngineering.crsRules.map(r => `
+  +					<tr>
+  +						<td style="font-family: 'JetBrains Mono', monospace; font-weight: bold; color: var(--primary);">${escapeHtml(r.ruleId)}</td>
+  +						<td>${escapeHtml(r.name)}</td>
+  +						<td><span class="badge" style="background: rgba(255, 255, 255, 0.06); font-size: 0.75rem;">${escapeHtml(r.category)}</span></td>
+  +						<td><span class="badge" style="background: rgba(245, 158, 11, 0.15); color: var(--yellow);">PL${r.paranoiaLevel}</span></td>
+  +						<td>${r.anomalyScore}</td>
+  +						<td>
+  +							<span class="badge ${r.status === 'active' ? 'badge-success' : r.status === 'disabled' ? 'badge-danger' : 'badge-warning'}">
+  +								${r.status === 'active' ? '🛡️ Active' : r.status === 'disabled' ? '🔴 Disabled' : r.status === 'bypassed' ? '⚠️ Bypassed' : '❓ Unknown'}
+  +							</span>
+  +						</td>
+  +					</tr>
+  +					`).join('')}
+  +				</tbody>
+  +			</table>
+  +		</div>
+  +	</div>
+  +	` : ''}
+  +
+   	<div class="main-section">
+   		<div class="controls">
+   			<div class="filters">
+  +68 -1
+
+packages/cli/src/reports/markdown.ts
+  @@ -1,6 +1,11 @@
+  +import { ReverseEngineeringReport } from '@waf-checker/core';
+   
+  -export function generateMarkdownReport(results: CheckResult[], targetUrl?: string): string {
+  +export function generateMarkdownReport(
+  +	results: CheckResult[],
+  +	targetUrl?: string,
+  +	reverseEngineering?: ReverseEngineeringReport
+  +): string {
+   	let blocked = 0;
+   	let bypassed = 0;
+   	let errors = 0;
+  @@ -114,6 +119,33 @@ export function generateMarkdownReport(results: CheckResult[], targetUrl?: strin
+  +	if (reverseEngineering) {
+  +		lines.push(``);
+  +		lines.push(`### 🕵️ WAF Reverse Engineering & OWASP Core Rule Set (CRS)`);
+  +		lines.push(``);
+  +		lines.push(`| Diagnostic Metric | Detection Result |`);
+  +		lines.push(`| :--- | :--- |`);
+  +		lines.push(`| 🛡️ **OWASP CRS Active Rules** | \`${reverseEngineering.crsSummary.active} / ${reverseEngineering.crsSummary.total} (${reverseEngineering.crsSummary.activePercent}% active)\` |`);
+  +		lines.push(`| 📦 **Inspection Body Limit** | \`${reverseEngineering.bodyLimit.limitFormatted}\` |`);
+  +		lines.push(`| ⚖️ **Scoring Mode** | \`${reverseEngineering.anomalyScore.mode === 'anomaly_scoring' ? `Collaborative Anomaly Scoring (Threshold: ${reverseEngineering.anomalyScore.detectedThreshold ?? 'Unknown'})` : reverseEngineering.anomalyScore.mode === 'traditional_regex' ? 'Traditional Strict Regex Blocking' : 'Unknown'}\` |`);
+  +		lines.push(`| ⏱️ **Rate Limit Protection** | \`${reverseEngineering.rateLimit.detected ? `Triggered at ${reverseEngineering.rateLimit.thresholdRps} req/s` : `Safe up to ${reverseEngineering.rateLimit.safeTestedMaxRps} req/s (No 429)`}\` |`);
+  +		lines.push(``);
+  +
+  +		if (reverseEngineering.crsRules.length > 0) {
+  +			lines.push(`<details>`);
+  +			lines.push(`<summary><b>Click to inspect OWASP CRS Rules Matrix (${reverseEngineering.crsRules.length} rules)</b></summary>`);
+  +			lines.push(``);
+  +			lines.push(`| Rule ID | Rule Name | Category | Paranoia Level | Status |`);
+  +			lines.push(`| :--- | :--- | :--- | :---: | :--- |`);
+  +			for (const r of reverseEngineering.crsRules) {
+  +				const statusEmoji = r.status === 'active' ? '🟢 Active' : r.status === 'disabled' ? '🔴 Disabled' : r.status === 'bypassed' ? '⚠️ Bypassed' : '❓ Unknown';
+  +				lines.push(`| \`${r.ruleId}\` | ${r.name} | \`${r.category}\` | \`PL${r.paranoiaLevel}\` | ${statusEmoji} |`);
+  +			}
+  +			lines.push(``);
+  +			lines.push(`</details>`);
+  +		}
+  +	}
+  +
+   	lines.push(``);
+   	lines.push(`---`);
+   	lines.push(`*Generated by [WAF-Checker](https://github.com/SecH0us3/waf-checker)*`);
+  +33 -1
+
+packages/cli/test/cli.spec.ts
+  @@ -389,7 +389,7 @@ describe('CLI Argument Processing', () => {
+  -			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array));
+  +			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array), undefined);
+   		});
+   
+   		it('should write sarif report when .sarif extension is specified', async () => {
+  @@ -397,7 +397,7 @@ describe('CLI Argument Processing', () => {
+  -			expect(writeReport).toHaveBeenCalledWith('report.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array));
+  +			expect(writeReport).toHaveBeenCalledWith('report.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array), undefined);
+   		});
+   
+   		it('should write multiple reports simultaneously when flags are specified', async () => {
+  @@ -410,9 +410,29 @@ describe('CLI Argument Processing', () => {
+  -			expect(writeReport).toHaveBeenCalledWith('results.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array));
+  -			expect(writeReport).toHaveBeenCalledWith('summary.md', 'markdown', 'check', 'https://example.com', expect.any(Array));
+  -			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array));
+  +			expect(writeReport).toHaveBeenCalledWith('results.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array), undefined);
+  +			expect(writeReport).toHaveBeenCalledWith('summary.md', 'markdown', 'check', 'https://example.com', expect.any(Array), undefined);
+  +			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array), undefined);
+  +		});
+  +
+  +		it('should execute reverse engineering audit when --reverse flag is set', async () => {
+  +			const mockReverseReport = {
+  +				targetUrl: 'https://example.com',
+  +				crsRules: [],
+  +				crsSummary: { total: 10, active: 8, disabled: 2, bypassed: 0, activePercent: 80 },
+  +				bodyLimit: { detected: true, limitBytes: 16384, limitFormatted: '16 KB', confidence: 95 },
+  +				anomalyScore: { mode: 'anomaly_scoring' as const, detectedThreshold: 5, confidence: 95 },
+  +				rateLimit: { detected: false, thresholdRps: null, retryAfterSeconds: null, safeTestedMaxRps: 30 },
+  +				timestamp: new Date().toISOString(),
+  +			};
+  +			vi.spyOn(core, 'runReverseEngineeringAudit').mockResolvedValueOnce(mockReverseReport);
+  +
+  +			await expect(
+  +				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--reverse', '--output', 'report.json'])
+  +			).resolves.toBeDefined();
+  +
+  +			expect(core.runReverseEngineeringAudit).toHaveBeenCalledWith('https://example.com', expect.any(Object));
+  +			expect(writeReport).toHaveBeenCalledWith('report.json', 'json', 'check', 'https://example.com', expect.any(Array), mockReverseReport);
+   		});
+   
+   		it('should pass quiet option when --quiet is set', async () => {
+  +25 -5
+
+packages/cli/test/report.spec.ts
+  @@ -192,5 +192,112 @@ describe('Report Module', () => {
+  +
+  +		it('should include reverseEngineering data in JSON, Markdown, and HTML reports', () => {
+  +			const mockReverseReport = {
+  +				targetUrl: 'https://example.com',
+  +				crsRules: [
+  +					{
+  +						ruleId: '942100',
+  +						name: 'SQL Injection - Boolean Based',
+  +						category: 'SQLi',
+  +						paranoiaLevel: 1 as const,
+  +						anomalyScore: 5,
+  +						status: 'active' as const,
+  +						probePayload: "' OR '1'='1",
+  +						statusCode: 403,
+  +						responseTime: 40,
+  +					},
+  +					{
+  +						ruleId: '941100',
+  +						name: 'XSS Filter - Script Tag',
+  +						category: 'XSS',
+  +						paranoiaLevel: 1 as const,
+  +						anomalyScore: 5,
+  +						status: 'disabled' as const,
+  +						probePayload: '<script>alert(1)</script>',
+  +						statusCode: 200,
+  +						responseTime: 35,
+  +					},
+  +				],
+  +				crsSummary: {
+  +					total: 2,
+  +					active: 1,
+  +					disabled: 1,
+  +					bypassed: 0,
+  +					activePercent: 50,
+  +				},
+  +				bodyLimit: {
+  +					limitBytes: 16384,
+  +					limitFormatted: '16 KB',
+  +					confidence: 95,
+  +					detected: true,
+  +				},
+  +				anomalyScore: {
+  +					mode: 'anomaly_scoring' as const,
+  +					detectedThreshold: 5,
+  +					confidence: 95,
+  +				},
+  +				rateLimit: {
+  +					detected: true,
+  +					thresholdRps: 20,
+  +					retryAfterSeconds: 60,
+  +					safeTestedMaxRps: 20,
+  +				},
+  +				timestamp: new Date().toISOString(),
+  +			};
+  +
+  +			// 1. JSON Report
+  +			vi.mocked(fs.writeFileSync).mockClear();
+  +			writeReport('report.json', 'json', 'check', 'https://example.com', checkResults, mockReverseReport as any);
+  +			expect(fs.writeFileSync).toHaveBeenCalledWith(
+  +				'report.json',
+  +				expect.stringContaining('"reverseEngineering"'),
+  +				'utf8'
+  +			);
+  +			expect(fs.writeFileSync).toHaveBeenCalledWith(
+  +				'report.json',
+  +				expect.stringContaining('16 KB'),
+  +				'utf8'
+  +			);
+  +
+  +			// 2. Markdown Report
+  +			vi.mocked(fs.writeFileSync).mockClear();
+  +			writeReport('report.md', 'markdown', 'check', 'https://example.com', checkResults, mockReverseReport as any);
+  +			expect(fs.writeFileSync).toHaveBeenCalledWith(
+  +				'report.md',
+  +				expect.stringContaining('WAF Reverse Engineering & OWASP Core Rule Set (CRS)'),
+  +				'utf8'
+  +			);
+  +			expect(fs.writeFileSync).toHaveBeenCalledWith(
+  +				'report.md',
+  +				expect.stringContaining('16 KB'),
+  +				'utf8'
+  +			);
+  +			expect(fs.writeFileSync).toHaveBeenCalledWith(
+  +				'report.md',
+  +				expect.stringContaining('942100'),
+  +				'utf8'
+  +			);
+  +
+  +			// 3. HTML Report
+  +			vi.mocked(fs.writeFileSync).mockClear();
+  +			writeReport('report.html', 'html', 'check', 'https://example.com', checkResults, mockReverseReport as any);
+  +			expect(fs.writeFileSync).toHaveBeenCalledWith(
+  +				'report.html',
+  +				expect.stringContaining('WAF Reverse Engineering & Core Rule Set (CRS)'),
+  +				'utf8'
+  +			);
+  +			expect(fs.writeFileSync).toHaveBeenCalledWith(
+  +				'report.html',
+  +				expect.stringContaining('16 KB'),
+  +				'utf8'
+  ... (7 lines truncated)
+  +107 -0
+
+packages/core/src/index.ts
+  @@ -7,3 +7,4 @@ export * from './check';
+  +export * from './reverse-engineering';
+  +1 -0
+
+packages/core/src/reports/index.ts
+  @@ -1,11 +1,15 @@
+  -import { AuditResultItem, calculateAuditStats } from './types';
+  +import { AuditReportStats, AuditResultItem, calculateAuditStats } from './types';
+   import { generateSARIFReport } from './sarif';
+   
+  -export function generateJSONReport(results: AuditResultItem[], targetUrl?: string): string {
+  -	const stats = calculateAuditStats(results, targetUrl);
+  +export function generateJSONReport(
+  +	results: AuditResultItem[],
+  +	targetUrl?: string,
+  +	statsOverride?: Partial<AuditReportStats>,
+  +): string {
+  +	const stats = { ...calculateAuditStats(results, targetUrl), ...statsOverride };
+   	return JSON.stringify(
+   		{
+   			summary: stats,
+  @@ -22,12 +26,13 @@ export function generateReport(
+  +	statsOverride?: Partial<AuditReportStats>,
+   ): string {
+   	switch (format) {
+   		case 'sarif':
+   			return generateSARIFReport(results, targetUrl);
+   		case 'json':
+   		default:
+  -			return generateJSONReport(results, targetUrl);
+  +			return generateJSONReport(results, targetUrl, statsOverride);
+   	}
+   }
+  +9 -4
+
+packages/core/src/reports/types.ts
+  @@ -11,6 +11,8 @@ export interface AuditResultItem {
+  +import { ReverseEngineeringReport } from '../reverse-engineering/types';
+  +
+   export interface AuditReportStats {
+   	total: number;
+   	blocked: number;
+  @@ -22,6 +24,7 @@ export interface AuditReportStats {
+  +	reverseEngineering?: ReverseEngineeringReport;
+   }
+   
+   export function calculateAuditStats(results: AuditResultItem[], targetUrl?: string): AuditReportStats {
+  +3 -0
+
+packages/core/src/reverse-engineering/anomaly-score-detector.ts
+  @@ -0,0 +1,125 @@
+  +import { AnomalyScoreResult, ReverseEngineeringOptions } from './types';
+  +import { sendRequest } from '../check';
+  +
+  +/**
+  + * Detects whether the WAF operates in Collaborative Anomaly Scoring Mode (cumulative threshold)
+  + * or Traditional Regex Blocking Mode (immediate single-rule match blocking).
+  + */
+  +export async function detectAnomalyScoringMode(
+  +	url: string,
+  +	options?: ReverseEngineeringOptions,
+  +): Promise<AnomalyScoreResult> {
+  +	// Signal 1: Low Anomaly Score (Score = 2, Notice: multiple parameter occurrence / parameter pollution)
+  +	const signal1Payload = 'p1=alpha&p1=beta';
+  +	
+  +	// Signal 2: Medium Anomaly Score (Score = 3, Warning: suspicious character sequence with multiple %20)
+  +	const signal2Payload = 'p2=test%20%20%20%20value';
+  +
+  +	// Signal 3: High Anomaly Score (Score = 5, Critical: classic SQLi token)
+  +	const signal3Payload = "' OR '1'='1";
+  +
+  +	// 1. Probe individual sub-critical signals
+  +	const [res1, res2] = await Promise.all([
+  +		sendRequest(url, 'GET', signal1Payload, undefined, undefined, false, false, undefined, undefined, {
+  +			fetch: options?.fetch,
+  +			quiet: true,
+  +		}),
+  +		sendRequest(url, 'GET', signal2Payload, undefined, undefined, false, false, undefined, undefined, {
+  +			fetch: options?.fetch,
+  +			quiet: true,
+
+... (more changes truncated)
+  +29 -0
+[full diff: rtk git diff --no-compact]
