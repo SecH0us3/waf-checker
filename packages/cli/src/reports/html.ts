@@ -1,4 +1,5 @@
 import { CheckResult, BatchResult } from '../report';
+import { ReverseEngineeringReport } from '@waf-checker/core';
 
 /**
  * Escape HTML characters to prevent XSS / HTML injection.
@@ -14,7 +15,7 @@ export function escapeHtml(str: string): string {
 /**
  * Generate a beautiful HTML report for CheckResults.
  */
-export function generateCheckHtml(url: string, results: CheckResult[]): string {
+export function generateCheckHtml(url: string, results: CheckResult[], reverseEngineering?: ReverseEngineeringReport): string {
 	const total = results.length;
 	const blocked = results.filter(r => r.status === 403 || r.status === 'BLOCKED').length;
 	const bypassed = results.filter(r => r.status === 200 || r.status === '200').length;
@@ -296,6 +297,72 @@ export function generateCheckHtml(url: string, results: CheckResult[]): string {
 			<div class="card-val val-warning">${redirect}</div>
 		</div>
 	</div>
+
+	${reverseEngineering ? `
+	<div class="main-section" style="margin-bottom: 2rem; border-color: rgba(99, 102, 241, 0.3);">
+		<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+			<div>
+				<h2 style="font-size: 1.3rem; color: var(--text-main); display: flex; align-items: center; gap: 0.5rem;">
+					🕵️ WAF Reverse Engineering & Core Rule Set (CRS)
+				</h2>
+				<p style="color: var(--text-muted); font-size: 0.85rem;">Deep behavioral probe: signature mapping, buffer limits, anomaly scoring mode, and rate limiting</p>
+			</div>
+			<span class="badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.4);">
+				CRS Active: ${reverseEngineering.crsSummary.activePercent}%
+			</span>
+		</div>
+
+		<div class="dashboard" style="margin-bottom: 1.5rem;">
+			<div class="card" style="background: rgba(255, 255, 255, 0.03);">
+				<div class="card-title">🛡️ Active CRS Rules</div>
+				<div class="card-val val-success" style="font-size: 1.4rem;">${reverseEngineering.crsSummary.active} <span style="font-size: 0.9rem; color: var(--text-muted)">/ ${reverseEngineering.crsSummary.total}</span></div>
+			</div>
+			<div class="card" style="background: rgba(255, 255, 255, 0.03);">
+				<div class="card-title">📦 Inspection Body Limit</div>
+				<div class="card-val val-info" style="font-size: 1.4rem;">${escapeHtml(reverseEngineering.bodyLimit.limitFormatted)}</div>
+			</div>
+			<div class="card" style="background: rgba(255, 255, 255, 0.03);">
+				<div class="card-title">⚖️ Scoring Paradigm</div>
+				<div class="card-val val-warning" style="font-size: 1.2rem;">${reverseEngineering.anomalyScore.mode === 'anomaly_scoring' ? `Anomaly Scoring (T=${reverseEngineering.anomalyScore.detectedThreshold ?? '?'})` : reverseEngineering.anomalyScore.mode === 'traditional_regex' ? 'Strict Regex' : 'Unknown'}</div>
+			</div>
+			<div class="card" style="background: rgba(255, 255, 255, 0.03);">
+				<div class="card-title">⏱️ Rate Limiting</div>
+				<div class="card-val" style="font-size: 1.2rem; color: ${reverseEngineering.rateLimit.detected ? 'var(--red)' : 'var(--green)'};">${reverseEngineering.rateLimit.detected ? `${reverseEngineering.rateLimit.thresholdRps} req/s` : `Safe (${reverseEngineering.rateLimit.safeTestedMaxRps} req/s)`}</div>
+			</div>
+		</div>
+
+		<div class="table-container">
+			<table>
+				<thead>
+					<tr>
+						<th>Rule ID</th>
+						<th>Rule Name</th>
+						<th>Category</th>
+						<th>Level</th>
+						<th>Score</th>
+						<th>Status</th>
+					</tr>
+				</thead>
+				<tbody>
+					${reverseEngineering.crsRules.map(r => `
+					<tr>
+						<td style="font-family: 'JetBrains Mono', monospace; font-weight: bold; color: var(--primary);">${escapeHtml(r.ruleId)}</td>
+						<td>${escapeHtml(r.name)}</td>
+						<td><span class="badge" style="background: rgba(255, 255, 255, 0.06); font-size: 0.75rem;">${escapeHtml(r.category)}</span></td>
+						<td><span class="badge" style="background: rgba(245, 158, 11, 0.15); color: var(--yellow);">PL${r.paranoiaLevel}</span></td>
+						<td>${r.anomalyScore}</td>
+						<td>
+							<span class="badge ${r.status === 'active' ? 'badge-success' : r.status === 'disabled' ? 'badge-danger' : 'badge-warning'}">
+								${r.status === 'active' ? '🛡️ Active' : r.status === 'disabled' ? '🔴 Disabled' : r.status === 'bypassed' ? '⚠️ Bypassed' : '❓ Unknown'}
+							</span>
+						</td>
+					</tr>
+					`).join('')}
+				</tbody>
+			</table>
+		</div>
+	</div>
+	` : ''}
 
 	<div class="main-section">
 		<div class="controls">

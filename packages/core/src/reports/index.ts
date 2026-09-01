@@ -1,11 +1,15 @@
 export * from './types';
 export * from './sarif';
 
-import { AuditResultItem, calculateAuditStats } from './types';
+import { AuditReportStats, AuditResultItem, calculateAuditStats } from './types';
 import { generateSARIFReport } from './sarif';
 
-export function generateJSONReport(results: AuditResultItem[], targetUrl?: string): string {
-	const stats = calculateAuditStats(results, targetUrl);
+export function generateJSONReport(
+	results: AuditResultItem[],
+	targetUrl?: string,
+	statsOverride?: Partial<AuditReportStats>,
+): string {
+	const stats = { ...calculateAuditStats(results, targetUrl), ...statsOverride };
 	return JSON.stringify(
 		{
 			summary: stats,
@@ -22,12 +26,13 @@ export function generateReport(
 	format: ReportFormat,
 	results: AuditResultItem[],
 	targetUrl?: string,
+	statsOverride?: Partial<AuditReportStats>,
 ): string {
 	switch (format) {
 		case 'sarif':
 			return generateSARIFReport(results, targetUrl);
 		case 'json':
 		default:
-			return generateJSONReport(results, targetUrl);
+			return generateJSONReport(results, targetUrl, statsOverride);
 	}
 }

@@ -2,13 +2,26 @@ import { handleApiCheckFiltered } from './handlers/check';
 import { handleWAFDetection } from './handlers/waf-detect';
 import { handleHTTPManipulation } from './handlers/http-manip';
 import { handleBatchStart, handleBatchStatus, handleBatchStop } from './handlers/batch';
-import { isValidTargetUrl } from '@waf-checker/core';
+import { isValidTargetUrl, runReverseEngineeringAudit } from '@waf-checker/core';
 
 export default {
 	async fetch(request: Request, env: { ASSETS: { fetch: typeof fetch } }): Promise<Response> {
 		const urlObj = new URL(request.url);
 		if (!urlObj.pathname.startsWith('/api/')) {
 			return env.ASSETS.fetch(request);
+		}
+		if (urlObj.pathname === '/api/reverse-engineer') {
+			const url = urlObj.searchParams.get('url');
+			if (!url) return new Response('Missing url param', { status: 400 });
+			if (!isValidTargetUrl(url)) {
+				return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
+			}
+			try {
+				const report = await runReverseEngineeringAudit(url, { isWorker: true });
+				return new Response(JSON.stringify(report), { headers: { 'content-type': 'application/json; charset=UTF-8' } });
+			} catch (err: any) {
+				return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'content-type': 'application/json' } });
+			}
 		}
 		if (urlObj.pathname === '/api/waf-detect') {
 			const url = urlObj.searchParams.get('url');

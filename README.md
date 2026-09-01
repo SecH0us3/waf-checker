@@ -2,22 +2,22 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/SecH0us3/waf-checker?color=blue&label=release)](https://github.com/SecH0us3/waf-checker/releases)
 [![GitHub Action](https://img.shields.io/badge/action-v1-blue?logo=githubactions&logoColor=white)](https://github.com/SecH0us3/waf-checker/releases)
-[![Coverage: Core](https://img.shields.io/badge/coverage%3A%20core-92.5%25-brightgreen)](packages/core)
-[![Coverage: CLI](https://img.shields.io/badge/coverage%3A%20cli-93.2%25-brightgreen)](packages/cli)
-[![Tests](https://img.shields.io/badge/tests-287%20passed-brightgreen)]()
+[![Coverage: Core](https://img.shields.io/badge/coverage%3A%20core-93.0%25-brightgreen)](packages/core)
+[![Coverage: CLI](https://img.shields.io/badge/coverage%3A%20cli-93.5%25-brightgreen)](packages/cli)
+[![Tests](https://img.shields.io/badge/tests-300%20passed-brightgreen)]()
 
 This project helps you check how well your Web Application Firewall (WAF) protects your product against common web attacks. It can be run as a Cloudflare Worker (with a built-in interactive Web UI) or as a standalone Node.js CLI tool.
 
 ## 🧪 Test Coverage & Status
 
-All packages are thoroughly tested with automated unit, integration, property-based (fast-check fuzzing), and network resilience suites (100% SSRF safety compliance, protocol evasion techniques, and report formatters):
+All packages are thoroughly tested with automated unit, integration, property-based (fast-check fuzzing), network resilience, and reverse engineering suites (100% SSRF safety compliance, protocol evasion techniques, and report formatters):
 
 | Package | Line Coverage | Statements | Functions | Test Suite |
 | :--- | :---: | :---: | :---: | :---: |
-| [**`@waf-checker/core`**](packages/core) | `92.5%` 🟢 | `92.1%` | `96.1%` | 🟢 210 passing |
-| [**`@waf-checker/cli`**](packages/cli) | `93.2%` 🟢 | `92.4%` | `96.7%` | 🟢 47 passing |
+| [**`@waf-checker/core`**](packages/core) | `93.0%` 🟢 | `92.6%` | `96.4%` | 🟢 221 passing |
+| [**`@waf-checker/cli`**](packages/cli) | `93.5%` 🟢 | `92.8%` | `96.7%` | 🟢 49 passing |
 | [**`@waf-checker/worker`**](packages/worker) | `Passing` 🟢 | — | — | 🟢 30 passing |
-| **Total Monorepo Suite** | **`92.8%`** | **`92.3%`** | **`96.4%`** | **🟢 287 tests passing** |
+| **Total Monorepo Suite** | **`93.2%`** | **`92.7%`** | **`96.6%`** | **🟢 300 tests passing** |
 
 ## Features
 
@@ -26,6 +26,12 @@ All packages are thoroughly tested with automated unit, integration, property-ba
 - Sends requests with attack payloads (in parameters, headers, or as file paths).
 - Color-coded terminal and web results: 🟢 403/BLOCKED = blocked, 🔴 2xx/5xx = potential bypass, 🟠 3xx = redirect.
 - Results displayed in a filterable table with details for each payload.
+
+### 🕵️ WAF Reverse Engineering & CRS Matrix (`--reverse`)
+- **OWASP Core Rule Set (CRS v3/v4) Mapping**: Audits active vs disabled rule IDs (`920xxx`, `921xxx`, `930xxx`, `931xxx`, `932xxx`, `933xxx`, `934xxx`, `941xxx`, `942xxx`, `943xxx`, `944xxx`) with Paranoia Levels (PL1-PL4).
+- **Inspection Body Limit Detection**: Binary search probing (8KB – 128KB, precision ~1KB) to identify buffer truncation boundaries.
+- **Anomaly Scoring Mode Detection**: Probes collaborative scoring mode vs strict regex blocking mode and identifies score thresholds.
+- **Safe Rate Limit Probing**: Safe ramp-up up to 30 req/s with immediate early termination upon HTTP 429 and `Retry-After` extraction.
 
 ### Attack Categories (25 total)
 SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusion, Sensitive Files, Open Redirect, SSTI, XXE, NoSQL Injection, GraphQL Injection, JWT Attack (Header), JWT Attack (Param), Prototype Pollution (JSON Body), Prototype Pollution (URL/Param), LDAP Injection, CRLF Injection, HTTP Parameter Pollution, User-Agent, IP Bypass, HTTP Request Smuggling, Web Cache Poisoning, UTF8/Unicode Bypass, WAF Inspection Limit Bypass (Padding).
