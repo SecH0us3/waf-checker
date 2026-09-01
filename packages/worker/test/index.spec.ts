@@ -21,6 +21,16 @@ describe('WAF Checker API', () => {
 		expect(data.error).toBe('Missing url parameter');
 	});
 
+	it('returns 400 for /api/reverse-engineer without url param or SSRF restricted target', async () => {
+		const responseNoUrl = await SELF.fetch('https://example.com/api/reverse-engineer');
+		expect(responseNoUrl.status).toBe(400);
+
+		const responseSsrf = await SELF.fetch('https://example.com/api/reverse-engineer?url=http://127.0.0.1:8080');
+		expect(responseSsrf.status).toBe(400);
+		const data = await responseSsrf.json();
+		expect(data.error).toBe('Invalid URL or restricted IP');
+	});
+
 	it('returns 400 for /api/http-manipulation without url param', async () => {
 		const response = await SELF.fetch('https://example.com/api/http-manipulation');
 		expect(response.status).toBe(400);

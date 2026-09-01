@@ -389,7 +389,7 @@ describe('CLI Argument Processing', () => {
 				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--output', 'report.html'])
 			).resolves.toBeDefined();
 
-			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array));
+			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array), undefined);
 		});
 
 		it('should write sarif report when .sarif extension is specified', async () => {
@@ -397,7 +397,7 @@ describe('CLI Argument Processing', () => {
 				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--output', 'report.sarif'])
 			).resolves.toBeDefined();
 
-			expect(writeReport).toHaveBeenCalledWith('report.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array));
+			expect(writeReport).toHaveBeenCalledWith('report.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array), undefined);
 		});
 
 		it('should write multiple reports simultaneously when flags are specified', async () => {
@@ -410,9 +410,29 @@ describe('CLI Argument Processing', () => {
 				])
 			).resolves.toBeDefined();
 
-			expect(writeReport).toHaveBeenCalledWith('results.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array));
-			expect(writeReport).toHaveBeenCalledWith('summary.md', 'markdown', 'check', 'https://example.com', expect.any(Array));
-			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array));
+			expect(writeReport).toHaveBeenCalledWith('results.sarif', 'sarif', 'check', 'https://example.com', expect.any(Array), undefined);
+			expect(writeReport).toHaveBeenCalledWith('summary.md', 'markdown', 'check', 'https://example.com', expect.any(Array), undefined);
+			expect(writeReport).toHaveBeenCalledWith('report.html', 'html', 'check', 'https://example.com', expect.any(Array), undefined);
+		});
+
+		it('should execute reverse engineering audit when --reverse flag is set', async () => {
+			const mockReverseReport = {
+				targetUrl: 'https://example.com',
+				crsRules: [],
+				crsSummary: { total: 10, active: 8, disabled: 2, bypassed: 0, activePercent: 80 },
+				bodyLimit: { detected: true, limitBytes: 16384, limitFormatted: '16 KB', confidence: 95 },
+				anomalyScore: { mode: 'anomaly_scoring' as const, detectedThreshold: 5, confidence: 95 },
+				rateLimit: { detected: false, thresholdRps: null, retryAfterSeconds: null, safeTestedMaxRps: 30 },
+				timestamp: new Date().toISOString(),
+			};
+			vi.spyOn(core, 'runReverseEngineeringAudit').mockResolvedValueOnce(mockReverseReport);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--reverse', '--output', 'report.json'])
+			).resolves.toBeDefined();
+
+			expect(core.runReverseEngineeringAudit).toHaveBeenCalledWith('https://example.com', expect.any(Object));
+			expect(writeReport).toHaveBeenCalledWith('report.json', 'json', 'check', 'https://example.com', expect.any(Array), mockReverseReport);
 		});
 
 		it('should pass quiet option when --quiet is set', async () => {

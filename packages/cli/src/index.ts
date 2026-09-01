@@ -8,7 +8,9 @@ import {
 	handleApiCheckFiltered,
 	isValidTargetUrl,
 	redactUrl,
-	PAYLOADS
+	PAYLOADS,
+	runReverseEngineeringAudit,
+	ReverseEngineeringReport
 } from '@waf-checker/core';
 import { writeReport, deduceFormat, ReportFormat } from './report';
 
@@ -171,6 +173,8 @@ checkCmd
 	.option('--markdown-output <path>', 'File path to save Markdown report to')
 	.option('--html-output <path>', 'File path to save HTML report to')
 	.option('--threshold <percent>', 'Minimum protection score percentage required to pass (e.g. 95). Exits with code 1 if score is lower')
+	.option('--reverse', 'Run deep WAF Reverse Engineering and OWASP Core Rule Set (CRS) audit', false)
+	.option('--reverse-engineer', 'Alias for --reverse', false)
 	.option('-q, --quiet', 'Suppress per-request logging, displaying only final results')
 	.option('--silent', 'Alias for --quiet')
 	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
@@ -217,8 +221,18 @@ checkCmd
 				{ fetch: customFetch, color: useColor, quiet: isQuiet }
 			);
 
+			let reverseReport: ReverseEngineeringReport | undefined = undefined;
+			if (options.reverse || options.reverseEngineer) {
+				if (!isQuiet) console.log(colors.cyan('\n[+] Executing deep WAF Reverse Engineering and OWASP CRS audit...'));
+				reverseReport = await runReverseEngineeringAudit(url, { fetch: customFetch, quiet: isQuiet, color: useColor });
+			}
+
 			if (options.json) {
-				console.log(JSON.stringify(results, null, 2));
+				if (reverseReport) {
+					console.log(JSON.stringify({ results, reverseEngineering: reverseReport }, null, 2));
+				} else {
+					console.log(JSON.stringify(results, null, 2));
+				}
 				return;
 			}
 
@@ -257,12 +271,20 @@ checkCmd
 			} else {
 				console.log(`\n${colors.green('🛡️ Perfect Score: All attack vectors were successfully blocked.')}`);
 			}
+
+			if (reverseReport) {
+				console.log(`\n=== 🕵️ WAF Reverse Engineering & CRS Matrix for ${colors.cyan(url)} ===`);
+				console.log(`  🛡️ CRS Active Rules:  ${colors.green(`${reverseReport.crsSummary.active} / ${reverseReport.crsSummary.total} (${reverseReport.crsSummary.activePercent}%)`)}`);
+				console.log(`  📦 Body Limit Window: ${colors.cyan(reverseReport.bodyLimit.limitFormatted)}`);
+				console.log(`  ⚖️ Scoring Paradigm:  ${colors.yellow(reverseReport.anomalyScore.mode === 'anomaly_scoring' ? `Collaborative Anomaly Scoring (Threshold: ${reverseReport.anomalyScore.detectedThreshold ?? '?'})` : reverseReport.anomalyScore.mode === 'traditional_regex' ? 'Traditional Strict Regex' : 'Unknown')}`);
+				console.log(`  ⏱️ Rate Limiting:     ${reverseReport.rateLimit.detected ? colors.red(`Triggered at ${reverseReport.rateLimit.thresholdRps} req/s`) : colors.green(`Safe up to ${reverseReport.rateLimit.safeTestedMaxRps} req/s (No 429)`)}`);
+			}
 			console.log();
 
 			if (options.output) {
 				const format = (options.format || deduceFormat(options.output)) as ReportFormat;
 				try {
-					writeReport(options.output, format, 'check', url, results);
+					writeReport(options.output, format, 'check', url, results, reverseReport);
 					console.log(colors.green(`Report saved to ${options.output} (${format.toUpperCase()})`));
 				} catch (err: any) {
 					console.error(colors.red(`Error writing report: ${err.message}`));
@@ -271,7 +293,7 @@ checkCmd
 
 			if (options.sarifOutput) {
 				try {
-					writeReport(options.sarifOutput, 'sarif', 'check', url, results);
+					writeReport(options.sarifOutput, 'sarif', 'check', url, results, reverseReport);
 					console.log(colors.green(`SARIF report saved to ${options.sarifOutput}`));
 				} catch (err: any) {
 					console.error(colors.red(`Error writing SARIF report: ${err.message}`));
@@ -280,7 +302,7 @@ checkCmd
 
 			if (options.markdownOutput) {
 				try {
-					writeReport(options.markdownOutput, 'markdown', 'check', url, results);
+					writeReport(options.markdownOutput, 'markdown', 'check', url, results, reverseReport);
 					console.log(colors.green(`Markdown report saved to ${options.markdownOutput}`));
 				} catch (err: any) {
 					console.error(colors.red(`Error writing Markdown report: ${err.message}`));
@@ -289,7 +311,7 @@ checkCmd
 
 			if (options.htmlOutput) {
 				try {
-					writeReport(options.htmlOutput, 'html', 'check', url, results);
+					writeReport(options.htmlOutput, 'html', 'check', url, results, reverseReport);
 					console.log(colors.green(`HTML report saved to ${options.htmlOutput}`));
 				} catch (err: any) {
 					console.error(colors.red(`Error writing HTML report: ${err.message}`));

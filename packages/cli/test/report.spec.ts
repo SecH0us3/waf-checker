@@ -192,5 +192,112 @@ describe('Report Module', () => {
 				'utf8'
 			);
 		});
+
+		it('should include reverseEngineering data in JSON, Markdown, and HTML reports', () => {
+			const mockReverseReport = {
+				targetUrl: 'https://example.com',
+				crsRules: [
+					{
+						ruleId: '942100',
+						name: 'SQL Injection - Boolean Based',
+						category: 'SQLi',
+						paranoiaLevel: 1 as const,
+						anomalyScore: 5,
+						status: 'active' as const,
+						probePayload: "' OR '1'='1",
+						statusCode: 403,
+						responseTime: 40,
+					},
+					{
+						ruleId: '941100',
+						name: 'XSS Filter - Script Tag',
+						category: 'XSS',
+						paranoiaLevel: 1 as const,
+						anomalyScore: 5,
+						status: 'disabled' as const,
+						probePayload: '<script>alert(1)</script>',
+						statusCode: 200,
+						responseTime: 35,
+					},
+				],
+				crsSummary: {
+					total: 2,
+					active: 1,
+					disabled: 1,
+					bypassed: 0,
+					activePercent: 50,
+				},
+				bodyLimit: {
+					limitBytes: 16384,
+					limitFormatted: '16 KB',
+					confidence: 95,
+					detected: true,
+				},
+				anomalyScore: {
+					mode: 'anomaly_scoring' as const,
+					detectedThreshold: 5,
+					confidence: 95,
+				},
+				rateLimit: {
+					detected: true,
+					thresholdRps: 20,
+					retryAfterSeconds: 60,
+					safeTestedMaxRps: 20,
+				},
+				timestamp: new Date().toISOString(),
+			};
+
+			// 1. JSON Report
+			vi.mocked(fs.writeFileSync).mockClear();
+			writeReport('report.json', 'json', 'check', 'https://example.com', checkResults, mockReverseReport as any);
+			expect(fs.writeFileSync).toHaveBeenCalledWith(
+				'report.json',
+				expect.stringContaining('"reverseEngineering"'),
+				'utf8'
+			);
+			expect(fs.writeFileSync).toHaveBeenCalledWith(
+				'report.json',
+				expect.stringContaining('16 KB'),
+				'utf8'
+			);
+
+			// 2. Markdown Report
+			vi.mocked(fs.writeFileSync).mockClear();
+			writeReport('report.md', 'markdown', 'check', 'https://example.com', checkResults, mockReverseReport as any);
+			expect(fs.writeFileSync).toHaveBeenCalledWith(
+				'report.md',
+				expect.stringContaining('WAF Reverse Engineering & OWASP Core Rule Set (CRS)'),
+				'utf8'
+			);
+			expect(fs.writeFileSync).toHaveBeenCalledWith(
+				'report.md',
+				expect.stringContaining('16 KB'),
+				'utf8'
+			);
+			expect(fs.writeFileSync).toHaveBeenCalledWith(
+				'report.md',
+				expect.stringContaining('942100'),
+				'utf8'
+			);
+
+			// 3. HTML Report
+			vi.mocked(fs.writeFileSync).mockClear();
+			writeReport('report.html', 'html', 'check', 'https://example.com', checkResults, mockReverseReport as any);
+			expect(fs.writeFileSync).toHaveBeenCalledWith(
+				'report.html',
+				expect.stringContaining('WAF Reverse Engineering & Core Rule Set (CRS)'),
+				'utf8'
+			);
+			expect(fs.writeFileSync).toHaveBeenCalledWith(
+				'report.html',
+				expect.stringContaining('16 KB'),
+				'utf8'
+			);
+			expect(fs.writeFileSync).toHaveBeenCalledWith(
+				'report.html',
+				expect.stringContaining('942100'),
+				'utf8'
+			);
+		});
 	});
 });

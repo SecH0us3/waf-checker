@@ -11,6 +11,8 @@ export interface AuditResultItem {
 	bypassTechnique?: string;
 }
 
+import { ReverseEngineeringReport } from '../reverse-engineering/types';
+
 export interface AuditReportStats {
 	total: number;
 	blocked: number;
@@ -22,6 +24,7 @@ export interface AuditReportStats {
 	durationMs?: number;
 	targetUrl?: string;
 	timestamp?: string;
+	reverseEngineering?: ReverseEngineeringReport;
 }
 
 export function calculateAuditStats(results: AuditResultItem[], targetUrl?: string): AuditReportStats {

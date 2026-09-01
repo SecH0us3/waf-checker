@@ -101,6 +101,8 @@ function generateBatchCsv(results: BatchResult[]): string {
 	return lines.join('\n');
 }
 
+import { ReverseEngineeringReport } from '@waf-checker/core';
+
 /**
  * Write check or batch report to file.
  */
@@ -109,12 +111,17 @@ export function writeReport(
 	format: ReportFormat,
 	type: 'check' | 'batch',
 	urlOrFile: string,
-	results: any[]
+	results: any[],
+	reverseEngineering?: ReverseEngineeringReport
 ): void {
 	let outputContent = '';
 
 	if (format === 'json') {
-		outputContent = JSON.stringify(results, null, 2);
+		if (type === 'check' && reverseEngineering) {
+			outputContent = JSON.stringify({ results, reverseEngineering }, null, 2);
+		} else {
+			outputContent = JSON.stringify(results, null, 2);
+		}
 	} else if (format === 'sarif') {
 		if (type === 'batch') {
 			throw new Error('SARIF report format is only supported for single target audits (check command), not batch audits.');
@@ -122,7 +129,7 @@ export function writeReport(
 		outputContent = generateSARIFReport(results, urlOrFile);
 	} else if (format === 'markdown' || format === 'md') {
 		if (type === 'check') {
-			outputContent = generateMarkdownReport(results as CheckResult[], urlOrFile);
+			outputContent = generateMarkdownReport(results as CheckResult[], urlOrFile, reverseEngineering);
 		} else {
 			outputContent = generateBatchMarkdown(results as BatchResult[]);
 		}
@@ -132,7 +139,7 @@ export function writeReport(
 			: generateBatchCsv(results as BatchResult[]);
 	} else {
 		outputContent = type === 'check'
-			? generateCheckHtml(urlOrFile, results as CheckResult[])
+			? generateCheckHtml(urlOrFile, results as CheckResult[], reverseEngineering)
 			: generateBatchHtml(results as BatchResult[]);
 	}
 

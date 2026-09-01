@@ -1,6 +1,11 @@
 import { CheckResult, BatchResult } from '../report';
+import { ReverseEngineeringReport } from '@waf-checker/core';
 
-export function generateMarkdownReport(results: CheckResult[], targetUrl?: string): string {
+export function generateMarkdownReport(
+	results: CheckResult[],
+	targetUrl?: string,
+	reverseEngineering?: ReverseEngineeringReport
+): string {
 	let blocked = 0;
 	let bypassed = 0;
 	let errors = 0;
@@ -112,6 +117,33 @@ export function generateMarkdownReport(results: CheckResult[], targetUrl?: strin
 	} else {
 		lines.push(`### ✅ No Bypasses Detected`);
 		lines.push(`All executed attack payloads were successfully blocked by the WAF.`);
+	}
+
+	if (reverseEngineering) {
+		lines.push(``);
+		lines.push(`### 🕵️ WAF Reverse Engineering & OWASP Core Rule Set (CRS)`);
+		lines.push(``);
+		lines.push(`| Diagnostic Metric | Detection Result |`);
+		lines.push(`| :--- | :--- |`);
+		lines.push(`| 🛡️ **OWASP CRS Active Rules** | \`${reverseEngineering.crsSummary.active} / ${reverseEngineering.crsSummary.total} (${reverseEngineering.crsSummary.activePercent}% active)\` |`);
+		lines.push(`| 📦 **Inspection Body Limit** | \`${reverseEngineering.bodyLimit.limitFormatted}\` |`);
+		lines.push(`| ⚖️ **Scoring Mode** | \`${reverseEngineering.anomalyScore.mode === 'anomaly_scoring' ? `Collaborative Anomaly Scoring (Threshold: ${reverseEngineering.anomalyScore.detectedThreshold ?? 'Unknown'})` : reverseEngineering.anomalyScore.mode === 'traditional_regex' ? 'Traditional Strict Regex Blocking' : 'Unknown'}\` |`);
+		lines.push(`| ⏱️ **Rate Limit Protection** | \`${reverseEngineering.rateLimit.detected ? `Triggered at ${reverseEngineering.rateLimit.thresholdRps} req/s` : `Safe up to ${reverseEngineering.rateLimit.safeTestedMaxRps} req/s (No 429)`}\` |`);
+		lines.push(``);
+
+		if (reverseEngineering.crsRules.length > 0) {
+			lines.push(`<details>`);
+			lines.push(`<summary><b>Click to inspect OWASP CRS Rules Matrix (${reverseEngineering.crsRules.length} rules)</b></summary>`);
+			lines.push(``);
+			lines.push(`| Rule ID | Rule Name | Category | Paranoia Level | Status |`);
+			lines.push(`| :--- | :--- | :--- | :---: | :--- |`);
+			for (const r of reverseEngineering.crsRules) {
+				const statusEmoji = r.status === 'active' ? '🟢 Active' : r.status === 'disabled' ? '🔴 Disabled' : r.status === 'bypassed' ? '⚠️ Bypassed' : '❓ Unknown';
+				lines.push(`| \`${r.ruleId}\` | ${r.name} | \`${r.category}\` | \`PL${r.paranoiaLevel}\` | ${statusEmoji} |`);
+			}
+			lines.push(``);
+			lines.push(`</details>`);
+		}
 	}
 
 	lines.push(``);
