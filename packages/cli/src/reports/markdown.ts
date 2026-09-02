@@ -1,10 +1,11 @@
 import { CheckResult, BatchResult } from '../report';
-import { ReverseEngineeringReport } from '@waf-checker/core';
+import { ReverseEngineeringReport, VirtualPatchReport } from '@waf-checker/core';
 
 export function generateMarkdownReport(
 	results: CheckResult[],
 	targetUrl?: string,
-	reverseEngineering?: ReverseEngineeringReport
+	reverseEngineering?: ReverseEngineeringReport,
+	virtualPatches?: VirtualPatchReport
 ): string {
 	let blocked = 0;
 	let bypassed = 0;
@@ -144,6 +145,40 @@ export function generateMarkdownReport(
 			lines.push(``);
 			lines.push(`</details>`);
 		}
+	}
+
+	// Virtual Patches (Auto-Mitigation) Section
+	if (virtualPatches && virtualPatches.totalBypasses > 0) {
+		lines.push(``);
+		lines.push(`### 🛡️ Recommended Virtual Patches (Auto-Mitigation)`);
+		lines.push(``);
+		lines.push(`> Generated **${virtualPatches.patches.length} virtual patch rules** across supported WAF engines to remediate **${virtualPatches.totalBypasses} detected bypasses**.`);
+		lines.push(``);
+		lines.push(`<details>`);
+		lines.push(`<summary><b>Click to inspect ready-to-deploy configuration snippets & Terraform HCL</b></summary>`);
+		lines.push(``);
+
+		for (const [vendor, bundle] of Object.entries(virtualPatches.bundles)) {
+			if (bundle.ruleCount === 0) continue;
+			const vendorTitle = vendor === 'cloudflare' ? 'Cloudflare Ruleset Engine' : vendor === 'aws' ? 'AWS WAF v2' : vendor === 'modsecurity' ? 'ModSecurity (CRS-style)' : 'NGINX';
+			lines.push(`#### ${vendorTitle}`);
+			lines.push(``);
+			lines.push('```' + (vendor === 'aws' ? 'json' : vendor === 'cloudflare' ? 'text' : 'apache'));
+			lines.push(bundle.native);
+			lines.push('```');
+			lines.push(``);
+
+			if (bundle.terraform) {
+				lines.push(`*Terraform (HCL):*`);
+				lines.push(``);
+				lines.push('```hcl');
+				lines.push(bundle.terraform);
+				lines.push('```');
+				lines.push(``);
+			}
+		}
+
+		lines.push(`</details>`);
 	}
 
 	lines.push(``);

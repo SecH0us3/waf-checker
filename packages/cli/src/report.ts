@@ -101,7 +101,7 @@ function generateBatchCsv(results: BatchResult[]): string {
 	return lines.join('\n');
 }
 
-import { ReverseEngineeringReport } from '@waf-checker/core';
+import { ReverseEngineeringReport, VirtualPatchReport } from '@waf-checker/core';
 
 /**
  * Write check or batch report to file.
@@ -112,13 +112,14 @@ export function writeReport(
 	type: 'check' | 'batch',
 	urlOrFile: string,
 	results: any[],
-	reverseEngineering?: ReverseEngineeringReport
+	reverseEngineering?: ReverseEngineeringReport,
+	virtualPatches?: VirtualPatchReport
 ): void {
 	let outputContent = '';
 
 	if (format === 'json') {
 		if (type === 'check') {
-			outputContent = JSON.stringify({ results, reverseEngineering }, null, 2);
+			outputContent = JSON.stringify({ results, reverseEngineering, virtualPatches }, null, 2);
 		} else {
 			outputContent = JSON.stringify(results, null, 2);
 		}
@@ -129,7 +130,7 @@ export function writeReport(
 		outputContent = generateSARIFReport(results, urlOrFile, reverseEngineering);
 	} else if (format === 'markdown' || format === 'md') {
 		if (type === 'check') {
-			outputContent = generateMarkdownReport(results as CheckResult[], urlOrFile, reverseEngineering);
+			outputContent = generateMarkdownReport(results as CheckResult[], urlOrFile, reverseEngineering, virtualPatches);
 		} else {
 			outputContent = generateBatchMarkdown(results as BatchResult[]);
 		}

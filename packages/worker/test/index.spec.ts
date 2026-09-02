@@ -84,4 +84,45 @@ describe('WAF Checker API', () => {
 		});
 		expect(response.status).toBe(400);
 	});
+
+	it('returns 405 for /api/virtual-patch with GET request', async () => {
+		const response = await SELF.fetch('https://example.com/api/virtual-patch');
+		expect(response.status).toBe(405);
+	});
+
+	it('returns 400 for /api/virtual-patch without results array', async () => {
+		const response = await SELF.fetch('https://example.com/api/virtual-patch', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({}),
+		});
+		expect(response.status).toBe(400);
+	});
+
+	it('handles /api/virtual-patch and returns generated patches', async () => {
+		const response = await SELF.fetch('https://example.com/api/virtual-patch', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				results: [
+					{
+						category: 'SQL Injection',
+						method: 'GET',
+						payload: "' UNION SELECT 1",
+						status: 200,
+						responseTime: 40,
+					},
+				],
+				options: {
+					vendor: 'cloudflare',
+					targetUrl: 'https://example.com/api',
+				},
+			}),
+		});
+		expect(response.status).toBe(200);
+		const data: any = await response.json();
+		expect(data.totalBypasses).toBe(1);
+		expect(data.bundles.cloudflare).toBeDefined();
+		expect(data.bundles.cloudflare.ruleCount).toBeGreaterThan(0);
+	});
 });

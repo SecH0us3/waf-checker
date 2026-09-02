@@ -8,3 +8,4 @@ export * from './utils/security';
 export * from './utils/payload-utils';
 export * from './reports';
 export * from './reverse-engineering';
+export * from './virtual-patch';

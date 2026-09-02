@@ -100,6 +100,9 @@
 					<button type="button" id="reverseEngineerBtn" class="btn btn-outline-primary btn-sm" onclick="runReverseEngineering()">
 						🕵️ CRS & Reverse
 					</button>
+					<button type="button" id="virtualPatchBtn" class="btn btn-outline-success btn-sm" onclick="showVirtualPatchModal()">
+						🛡️ Virtual Patches
+					</button>
 					<button type="button" id="httpManipulationBtn" class="btn btn-outline-warning btn-sm"
 						onclick="testHTTPManipulation()">
 						🔄 HTTP Tests
@@ -117,6 +120,17 @@
 
 			<!-- Scrollable Results Area -->
 			<div class="middle-content scrollable-column p-4 flex-grow-1" id="resultsContainer">
+				<!-- Virtual Patching Remediation Banner (Hidden initially) -->
+				<div id="virtualPatchBanner" class="alert alert-warning mb-3 d-flex justify-content-between align-items-center" style="display: none;">
+					<div>
+						<div class="fw-bold">⚠️ <span id="virtualPatchBypassCount">0</span> WAF Bypass(es) Detected!</div>
+						<small class="text-muted">Generate instant virtual patches for Cloudflare, AWS WAF, ModSecurity, and NGINX to mitigate these risks immediately.</small>
+					</div>
+					<button type="button" class="btn btn-sm btn-primary ms-3 text-nowrap" onclick="showVirtualPatchModal()">
+						🛡️ Remediation Studio
+					</button>
+				</div>
+
 				<!-- WAF Detection Results Panel (Initially Hidden) -->
 				<div id="wafDetectionPanel" class="alert alert-info mb-3" style="display: none">
 					<h6 class="fw-bold mb-2">🛡️ WAF Detection Results</h6>
@@ -412,6 +426,91 @@
 						onclick="exportBatchResults()">
 						📊 Export Results
 					</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- Virtual Patch Modal -->
+	<div class="modal fade" id="virtualPatchModal" tabindex="-1">
+		<div class="modal-dialog modal-dialog-centered modal-xl">
+			<div class="modal-content" style="background-color: var(--bs-body-bg); color: var(--bs-body-color);">
+				<div class="modal-header">
+					<h5 class="modal-title fw-bold">🛡️ WAF Virtual Patching Studio (Auto-Remediation)</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+				</div>
+				<div class="modal-body">
+					<!-- No bypasses alert -->
+					<div id="vpNoBypassesAlert" class="alert alert-success mb-3" style="display: none;">
+						🛡️ <strong>No bypasses detected!</strong> All tested attack vectors were successfully blocked by your WAF. No virtual patches are currently required.
+					</div>
+
+					<div id="vpContentContainer">
+						<!-- Vendor Selector Tabs -->
+						<ul class="nav nav-pills mb-3" id="vpVendorTabs" role="tablist">
+							<li class="nav-item" role="presentation">
+								<button class="nav-link active" id="tab-cloudflare" onclick="selectVpVendor('cloudflare')">☁️ Cloudflare</button>
+							</li>
+							<li class="nav-item" role="presentation">
+								<button class="nav-link" id="tab-aws" onclick="selectVpVendor('aws')">🟧 AWS WAF v2</button>
+							</li>
+							<li class="nav-item" role="presentation">
+								<button class="nav-link" id="tab-modsecurity" onclick="selectVpVendor('modsecurity')">🛡️ ModSecurity</button>
+							</li>
+							<li class="nav-item" role="presentation">
+								<button class="nav-link" id="tab-nginx" onclick="selectVpVendor('nginx')">🟩 NGINX</button>
+							</li>
+						</ul>
+
+						<!-- Options toolbar -->
+						<div class="row g-2 align-items-center mb-3 p-2 bg-subtle rounded border">
+							<div class="col-auto">
+								<label class="form-label mb-0 small fw-bold">Tier:</label>
+								<select id="vpTierSelect" class="form-select form-select-sm" onchange="refreshVpCode()">
+									<option value="both" selected>Dual-Tier (Strict &amp; Heuristic)</option>
+									<option value="strict">Strict Hotfix Only (0% FP)</option>
+									<option value="heuristic">Heuristic Regex Pattern Only</option>
+								</select>
+							</div>
+							<div class="col-auto">
+								<label class="form-label mb-0 small fw-bold">Action:</label>
+								<select id="vpActionSelect" class="form-select form-select-sm" onchange="refreshVpCode()">
+									<option value="block" selected>Block / Deny (403)</option>
+									<option value="simulate">Count / Simulate (Safe Test)</option>
+								</select>
+							</div>
+							<div class="col-auto" id="vpFormatContainer">
+								<label class="form-label mb-0 small fw-bold">Format:</label>
+								<select id="vpFormatSelect" class="form-select form-select-sm" onchange="refreshVpCode()">
+									<option value="native" selected>Native Rules</option>
+									<option value="terraform">Terraform (HCL)</option>
+								</select>
+							</div>
+							<div class="col-auto ms-auto">
+								<div class="form-check mt-3">
+									<input class="form-check-input" type="checkbox" id="vpScopeCheckbox" onchange="refreshVpCode()">
+									<label class="form-check-label small" for="vpScopeCheckbox">Scope to Endpoint Path</label>
+								</div>
+							</div>
+						</div>
+
+						<!-- Rules preview box -->
+						<div class="position-relative">
+							<pre id="vpCodeViewer" class="p-3 rounded text-light" style="background: #111827; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;"></pre>
+						</div>
+					</div>
+				</div>
+				<div class="modal-footer d-flex justify-content-between">
+					<span id="vpRuleCountBadge" class="badge bg-secondary">0 rules generated</span>
+					<div class="d-flex gap-2">
+						<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+						<button type="button" id="vpCopyBtn" class="btn btn-primary" onclick="copyVpCode()">
+							📋 Copy to Clipboard
+						</button>
+						<button type="button" id="vpDownloadBtn" class="btn btn-outline-success" onclick="downloadVpCode()">
+							💾 Download
+						</button>
+					</div>
 				</div>
 			</div>
 		</div>
