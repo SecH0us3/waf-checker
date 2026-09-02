@@ -27,6 +27,12 @@ export default {
 					});
 				}
 				const options = body?.options || {};
+				if (options.targetUrl && !isValidTargetUrl(options.targetUrl)) {
+					return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), {
+						status: 400,
+						headers: { 'content-type': 'application/json' },
+					});
+				}
 				const report = generateVirtualPatches(results, options);
 				return new Response(JSON.stringify(report), {
 					headers: { 'content-type': 'application/json; charset=UTF-8' },

@@ -1,6 +1,6 @@
 import { AuditResultItem } from '../../reports/types';
 import { VirtualPatchOptions, GeneratedPatch } from '../types';
-import { CATEGORY_HEURISTICS, detectInspectionLocation, escapeRegex, sanitizeStrictToken } from '../heuristics';
+import { CATEGORY_HEURISTICS, detectInspectionLocation, escapeRegex, sanitizeStrictToken, escapeHclString } from '../heuristics';
 
 /**
  * Extracts URL path component for scoping if enabled.
@@ -46,42 +46,40 @@ export function generateCloudflarePatches(
 	const urlPath = options.scopeToPath ? getUrlPath(options.targetUrl) : null;
 	const pathScope = urlPath ? `(http.request.uri.path eq "${urlPath}") and ` : '';
 
-	// Group by category if requested
 	const groups: Record<string, AuditResultItem[]> = {};
 	if (options.groupByCategory !== false) {
 		for (const b of bypasses) {
-			groups[b.category] = groups[b.category] || [];
-			groups[b.category].push(b);
+			const cat = b.category || 'General Attack';
+			if (!groups[cat]) groups[cat] = [];
+			groups[cat].push(b);
 		}
 	} else {
 		bypasses.forEach((b, idx) => {
-			groups[`${b.category}_${idx + 1}`] = [b];
+			groups[`${b.category || 'Attack'}_${idx}`] = [b];
 		});
 	}
 
 	let ruleIndex = 1;
-	for (const [groupKey, items] of Object.entries(groups)) {
-		const category = items[0].category;
-		const location = detectInspectionLocation(category, items[0].method, items[0].payload);
+	for (const [category, items] of Object.entries(groups)) {
+		const sampleItem = items[0];
+		const location = detectInspectionLocation(category, sampleItem.method, sampleItem.payload);
 		const cfField = getCloudflareField(location, category);
-		const sanitizedCat = category.toLowerCase().replace(/[^a-z0-9]/g, '_');
+		const sanitizedCat = category.replace(/[^a-zA-Z0-9]/g, '_');
 
 		// 1. Strict Hotfix Tier
 		if (options.tier !== 'heuristic') {
-			const tokens = [...new Set(items.map((it) => sanitizeStrictToken(it.payload)))];
-			const conditions = tokens.map((token) => {
-				const escaped = token.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-				return `(lower(${cfField}) contains "${escaped.toLowerCase()}")`;
-			});
-
-			const exprBody = conditions.length === 1 ? conditions[0] : `(${conditions.join(' or ')})`;
-			const fullExpression = `${pathScope}${exprBody}`;
+			const tokens = Array.from(new Set(items.map((i) => sanitizeStrictToken(i.payload)))).filter(Boolean);
+			const matchClauses = tokens.map(
+				(t) => `(lower(${cfField}) contains "${t.replace(/\\/g, '\\\\').replace(/"/g, '\\"').toLowerCase()}")`
+			);
+			const condition = matchClauses.length === 1 ? matchClauses[0] : `(${matchClauses.join(' or ')})`;
+			const fullExpression = `${pathScope}${condition}`;
 			const ruleRef = `waf_checker_cf_${sanitizedCat}_strict_${ruleIndex}`;
 
 			const terraformSnippet = `resource "cloudflare_ruleset" "virtual_patch_${sanitizedCat}_strict" {
   zone_id     = var.cloudflare_zone_id
   name        = "WAF-Checker Virtual Patch [${category}] (Strict)"
-  description = "Auto-generated virtual patch for ${category} bypasses"
+  description = "Auto-generated strict hotfix for verified bypass tokens"
   kind        = "zone"
   phase       = "http_request_firewall_custom"
 
@@ -89,7 +87,7 @@ export function generateCloudflarePatches(
     {
       ref         = "${ruleRef}"
       description = "Block verified ${category} bypass tokens"
-      expression  = "${fullExpression.replace(/"/g, '\\"')}"
+      expression  = "${escapeHclString(fullExpression)}"
       action      = "${action}"
       enabled     = true
     }
@@ -125,7 +123,7 @@ export function generateCloudflarePatches(
     {
       ref         = "${ruleRef}"
       description = "Heuristic regex defense for ${category}"
-      expression  = "${fullExpression.replace(/"/g, '\\"')}"
+      expression  = "${escapeHclString(fullExpression)}"
       action      = "${action}"
       enabled     = true
     }

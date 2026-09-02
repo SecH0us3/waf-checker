@@ -125,4 +125,20 @@ describe('WAF Checker API', () => {
 		expect(data.bundles.cloudflare).toBeDefined();
 		expect(data.bundles.cloudflare.ruleCount).toBeGreaterThan(0);
 	});
+
+	it('returns 400 for /api/virtual-patch with SSRF restricted targetUrl', async () => {
+		const response = await SELF.fetch('https://example.com/api/virtual-patch', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				results: [{ category: 'SQLi', method: 'GET', payload: 'test', status: 200, responseTime: 10 }],
+				options: {
+					targetUrl: 'http://169.254.169.254/latest',
+				},
+			}),
+		});
+		expect(response.status).toBe(400);
+		const data = await response.json();
+		expect(data.error).toBe('Invalid URL or restricted IP');
+	});
 });

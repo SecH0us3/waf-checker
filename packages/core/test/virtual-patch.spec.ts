@@ -244,5 +244,67 @@ describe('Virtual Patching & Rule Generator', () => {
 			const patch = report.patches[0];
 			expect(patch.nativeRule).toContain('location /v1/auth {');
 		});
+
+		it('should escape double quotes in NGINX payloads and regexes', () => {
+			const bypassWithQuotes: AuditResultItem[] = [
+				{
+					category: 'SQL Injection',
+					method: 'GET',
+					payload: 'admin" OR "1"="1',
+					status: 200,
+					responseTime: 45,
+				},
+			];
+			const report = generateVirtualPatches(bypassWithQuotes, { vendor: 'nginx', tier: 'strict' });
+			const patch = report.patches[0];
+			expect(patch.nativeRule).toContain('\\"1\\"');
+			expect(patch.nativeRule).not.toMatch(/~[*] ".*[^\\]".*"/);
+		});
+	});
+
+	describe('Engine Safety & Escaping', () => {
+		it('should escape HCL interpolation syntax for SSTI in Terraform', () => {
+			const sstiBypasses: AuditResultItem[] = [
+				{
+					category: 'SSTI',
+					method: 'GET',
+					payload: '${7*7}',
+					status: 200,
+					responseTime: 30,
+				},
+			];
+			const report = generateVirtualPatches(sstiBypasses, { vendor: 'aws', tier: 'heuristic' });
+			const patch = report.patches[0];
+			expect(patch.terraformHcl).toContain('$${');
+			expect(patch.terraformHcl).not.toContain('"${.*?}"');
+		});
+
+		it('should generate or_statement in AWS Terraform for multiple strict tokens', () => {
+			const multiBypasses: AuditResultItem[] = [
+				{ category: 'XSS', method: 'GET', payload: '<script>1</script>', status: 200, responseTime: 20 },
+				{ category: 'XSS', method: 'GET', payload: '<script>2</script>', status: 200, responseTime: 22 },
+			];
+			const report = generateVirtualPatches(multiBypasses, { vendor: 'aws', tier: 'strict' });
+			const patch = report.patches[0];
+			expect(patch.terraformHcl).toContain('or_statement');
+			expect(patch.terraformHcl).toContain('<script>1</script>');
+			expect(patch.terraformHcl).toContain('<script>2</script>');
+		});
+
+		it('should generate single_header in AWS Terraform for header bypasses', () => {
+			const headerBypasses: AuditResultItem[] = [
+				{ category: 'User-Agent', method: 'GET', payload: 'sqlmap/1.0', status: 200, responseTime: 20 },
+			];
+			const report = generateVirtualPatches(headerBypasses, { vendor: 'aws', tier: 'strict' });
+			const patch = report.patches[0];
+			expect(patch.terraformHcl).toContain('single_header');
+			expect(patch.terraformHcl).toContain('name = "user-agent"');
+		});
+
+		it('should start ModSecurity rule IDs at 1000000 by default to avoid CRS conflicts', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'modsecurity' });
+			const patch = report.patches[0];
+			expect(patch.nativeRule).toContain('id:1000000');
+		});
 	});
 });

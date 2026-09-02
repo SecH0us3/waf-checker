@@ -41,7 +41,7 @@ export interface VirtualPatchOptions {
 
 	/**
 	 * Starting numeric ID for rule engines requiring unique rule IDs (e.g. ModSecurity).
-	 * Default: 900000.
+	 * Default: 1000000 (reserving 900000-999999 for OWASP Core Rule Set).
 	 */
 	ruleIdPrefix?: number;
 

@@ -1,6 +1,6 @@
 import { AuditResultItem } from '../../reports/types';
 import { VirtualPatchOptions, GeneratedPatch } from '../types';
-import { CATEGORY_HEURISTICS, detectInspectionLocation, escapeRegex, sanitizeStrictToken } from '../heuristics';
+import { CATEGORY_HEURISTICS, detectInspectionLocation, escapeRegex, sanitizeStrictToken, escapeHclString } from '../heuristics';
 
 function getUrlPath(targetUrl?: string): string | null {
 	if (!targetUrl) return null;
@@ -26,6 +26,16 @@ function getAwsFieldToMatch(location: 'query' | 'body' | 'header' | 'uri', categ
 		default:
 			return { AllQueryArguments: {} };
 	}
+}
+
+function getAwsTerraformFieldToMatch(location: 'query' | 'body' | 'header' | 'uri', category: string): string {
+	if (location === 'header') {
+		const headerName = category === 'User-Agent' ? 'user-agent' : category.includes('JWT') ? 'authorization' : 'x-forwarded-for';
+		return `single_header {\n          name = "${headerName}"\n        }`;
+	}
+	if (location === 'uri') return 'uri_path {}';
+	if (location === 'body') return 'body {}';
+	return 'all_query_arguments {}';
 }
 
 export function generateAwsPatches(
@@ -110,6 +120,46 @@ export function generateAwsPatches(
 
 			const nativeRuleJson = JSON.stringify(nativeRuleObj, null, 2);
 
+			const statementTerraform = tokens.length === 1
+				? `      byte_match_statement {
+        positional_constraint = "CONTAINS"
+        search_string         = "${escapeHclString(tokens[0])}"
+
+        field_to_match {
+          ${getAwsTerraformFieldToMatch(location, category)}
+        }
+
+        text_transformation {
+          priority = 0
+          type     = "URL_DECODE"
+        }
+        text_transformation {
+          priority = 1
+          type     = "LOWERCASE"
+        }
+      }`
+				: `      or_statement {
+${tokens.map((t) => `        statement {
+          byte_match_statement {
+            positional_constraint = "CONTAINS"
+            search_string         = "${escapeHclString(t)}"
+
+            field_to_match {
+              ${getAwsTerraformFieldToMatch(location, category)}
+            }
+
+            text_transformation {
+              priority = 0
+              type     = "URL_DECODE"
+            }
+            text_transformation {
+              priority = 1
+              type     = "LOWERCASE"
+            }
+          }
+        }`).join('\n')}
+      }`;
+
 			const terraformSnippet = `resource "aws_wafv2_rule_group" "virtual_patch_${sanitizedCat.toLowerCase()}_strict" {
   name     = "${ruleName}"
   scope    = "REGIONAL"
@@ -124,23 +174,7 @@ export function generateAwsPatches(
     }
 
     statement {
-      byte_match_statement {
-        positional_constraint = "CONTAINS"
-        search_string         = "${tokens[0].replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"
-
-        field_to_match {
-          ${location === 'uri' ? 'uri_path {}' : location === 'body' ? 'body {}' : 'all_query_arguments {}'}
-        }
-
-        text_transformation {
-          priority = 0
-          type     = "URL_DECODE"
-        }
-        text_transformation {
-          priority = 1
-          type     = "LOWERCASE"
-        }
-      }
+${statementTerraform}
     }
 
     visibility_config {
@@ -164,7 +198,7 @@ export function generateAwsPatches(
 				tier: 'strict',
 				nativeRule: nativeRuleJson,
 				terraformHcl: terraformSnippet,
-				description: `AWS WAF v2 ByteMatch rule matching ${tokens.length} verified ${category} bypass token(s)`,
+				description: `AWS WAF ByteMatchStatement against ${tokens.length} verified ${category} bypass token(s)`,
 			});
 		}
 
@@ -173,6 +207,34 @@ export function generateAwsPatches(
 			const heuristic = CATEGORY_HEURISTICS[category];
 			const pattern = heuristic ? heuristic.pattern : escapeRegex(items[0].payload);
 			const ruleName = `WafChecker_Patch_${sanitizedCat}_Heuristic`;
+
+			let heuristicStatement: any = {
+				RegexPatternSetReferenceStatement: {
+					ARN: `arn:aws:wafv2:region:account:regional/regexpatternset/${ruleName}/id`,
+					FieldToMatch: fieldToMatch,
+					TextTransformations: [
+						{ Priority: 0, Type: 'URL_DECODE' },
+						{ Priority: 1, Type: 'LOWERCASE' },
+					],
+				},
+			};
+			if (urlPath) {
+				heuristicStatement = {
+					AndStatement: {
+						Statements: [
+							{
+								ByteMatchStatement: {
+									SearchString: urlPath,
+									FieldToMatch: { UriPath: {} },
+									TextTransformations: [{ Priority: 0, Type: 'NONE' }],
+									PositionalConstraint: 'EXACTLY',
+								},
+							},
+							heuristicStatement,
+						],
+					},
+				};
+			}
 
 			const nativeRuleObj = {
 				Name: ruleName,
@@ -183,16 +245,7 @@ export function generateAwsPatches(
 					CloudWatchMetricsEnabled: true,
 					MetricName: ruleName,
 				},
-				Statement: {
-					RegexPatternSetReferenceStatement: {
-						ARN: `arn:aws:wafv2:region:account:regional/regexpatternset/${ruleName}/id`,
-						FieldToMatch: fieldToMatch,
-						TextTransformations: [
-							{ Priority: 0, Type: 'URL_DECODE' },
-							{ Priority: 1, Type: 'LOWERCASE' },
-						],
-					},
-				},
+				Statement: heuristicStatement,
 			};
 
 			const nativeRuleJson = JSON.stringify(nativeRuleObj, null, 2);
@@ -202,7 +255,7 @@ export function generateAwsPatches(
   scope = "REGIONAL"
 
   regular_expression {
-    regex_string = "${pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"
+    regex_string = "${escapeHclString(pattern)}"
   }
 }
 
@@ -224,7 +277,7 @@ resource "aws_wafv2_rule_group" "virtual_patch_${sanitizedCat.toLowerCase()}_heu
         arn = aws_wafv2_regex_pattern_set.pattern_${sanitizedCat.toLowerCase()}.arn
 
         field_to_match {
-          ${location === 'uri' ? 'uri_path {}' : location === 'body' ? 'body {}' : 'all_query_arguments {}'}
+          ${getAwsTerraformFieldToMatch(location, category)}
         }
 
         text_transformation {

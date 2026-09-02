@@ -1,6 +1,6 @@
 import { AuditResultItem } from '../../reports/types';
 import { VirtualPatchOptions, GeneratedPatch } from '../types';
-import { CATEGORY_HEURISTICS, detectInspectionLocation, escapeRegex, sanitizeStrictToken } from '../heuristics';
+import { CATEGORY_HEURISTICS, detectInspectionLocation, escapeRegex, sanitizeStrictToken, escapeNginxString } from '../heuristics';
 
 function getUrlPath(targetUrl?: string): string | null {
 	if (!targetUrl) return null;
@@ -61,11 +61,17 @@ export function generateNginxPatches(
 		// 1. Strict Hotfix Tier
 		if (options.tier !== 'heuristic') {
 			const tokens = [...new Set(items.map((it) => sanitizeStrictToken(it.payload)))];
-			const escapedAlternation = tokens.map((tok) => escapeRegex(tok)).join('|');
+			const escapedAlternation = tokens.map((tok) => escapeNginxString(escapeRegex(tok))).join('|');
 
 			const lines: string[] = [
 				`# --- WAF-Checker Virtual Patch: ${category} (Strict) ---`,
 			];
+
+			if (location === 'body') {
+				lines.push(
+					`# NOTE: NGINX native rewrite module cannot inspect POST request bodies without lua-nginx-module (ngx.req.read_body()) or ModSecurity.`
+				);
+			}
 
 			if (urlPath) {
 				lines.push(
@@ -91,7 +97,7 @@ export function generateNginxPatches(
 				`# High-Performance Alternative (Add in http {} block):`,
 				`# map ${nginxVar} $waf_patch_${sanitizedCat}_blocked {`,
 				`#     default 0;`,
-				...tokens.map((t) => `#     "~*${escapeRegex(t)}" 1;`),
+				...tokens.map((t) => `#     "~*${escapeNginxString(escapeRegex(t))}" 1;`),
 				`# }`,
 				`# Inside server/location: if ($waf_patch_${sanitizedCat}_blocked) { ${isSimulate ? 'add_header X-WAF-Simulation "1";' : 'return 403;'} }`
 			);
@@ -110,11 +116,18 @@ export function generateNginxPatches(
 		// 2. Heuristic Pattern Tier
 		if (options.tier !== 'strict') {
 			const heuristic = CATEGORY_HEURISTICS[category];
-			const pattern = heuristic ? heuristic.pattern : escapeRegex(items[0].payload);
+			const rawPattern = heuristic ? heuristic.pattern : escapeRegex(items[0].payload);
+			const pattern = escapeNginxString(rawPattern);
 
 			const lines: string[] = [
 				`# --- WAF-Checker Heuristic Defense: ${category} ---`,
 			];
+
+			if (location === 'body') {
+				lines.push(
+					`# NOTE: NGINX native rewrite module cannot inspect POST request bodies without lua-nginx-module (ngx.req.read_body()) or ModSecurity.`
+				);
+			}
 
 			if (urlPath) {
 				lines.push(

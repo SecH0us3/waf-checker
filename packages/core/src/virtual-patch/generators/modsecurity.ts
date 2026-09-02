@@ -37,7 +37,7 @@ export function generateModSecurityPatches(
 	const actionStr = isSimulate ? 'pass,log,auditlog' : 'deny,status:403';
 	const actionPrefix = isSimulate ? '[SIMULATION] ' : '';
 	const urlPath = options.scopeToPath ? getUrlPath(options.targetUrl) : null;
-	let currentId = options.ruleIdPrefix || 900000;
+	let currentId = options.ruleIdPrefix || 1000000;
 
 	const groups: Record<string, AuditResultItem[]> = {};
 	if (options.groupByCategory !== false) {

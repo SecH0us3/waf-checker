@@ -40,7 +40,7 @@ export const CATEGORY_HEURISTICS: Record<string, CategoryHeuristic> = {
 		defaultLocation: 'query',
 	},
 	'SSTI': {
-		pattern: `(?:\\{\\{.*?\\}\\}|\\$\\{.*?\\}|<%.*?%>|\\[\\[.*?\\]\\]|T\\(java\\.lang\\.Runtime\\)|#\\{.*?\\})`,
+		pattern: '(?:\\{\\{.*?\\}\\}|\\${.*?\\}|<%.*?%>|\\[\\[.*?\\]\\]|T\\(java\\.lang\\.Runtime\\)|#\\{.*?\\})',
 		description: 'Detects template expression brackets (Jinja2, Twig, SpEL, FreeMarker, Ruby ERB)',
 		defaultLocation: 'query',
 	},
@@ -90,8 +90,8 @@ export const CATEGORY_HEURISTICS: Record<string, CategoryHeuristic> = {
 		defaultLocation: 'query',
 	},
 	'HTTP Parameter Pollution': {
-		pattern: `(?i)(?:(?:&|\\?)([a-zA-Z0-9_-]+)=.*?(?:&\\1=))`,
-		description: 'Detects duplicate parameter names designed to cause server-side parameter pollution (HPP)',
+		pattern: `(?i)(?:(?:id|user|username|uid|admin|role|token|redirect|url|file|page|search|query|email|callback)=[^&]*&(?:[^&]*&)*(?:id|user|username|uid|admin|role|token|redirect|url|file|page|search|query|email|callback)=)`,
+		description: 'Detects duplicate parameter names in query string designed to cause HTTP parameter pollution (HPP)',
 		defaultLocation: 'query',
 	},
 	'User-Agent': {
@@ -141,6 +141,24 @@ export const CATEGORY_HEURISTICS: Record<string, CategoryHeuristic> = {
  */
 export function escapeRegex(str: string): string {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Escapes strings for embedding inside Terraform HCL double-quoted strings.
+ * Escapes backslashes, double quotes, and '${' (HCL interpolation syntax).
+ */
+export function escapeHclString(str: string): string {
+	return str
+		.replace(/\\/g, '\\\\')
+		.replace(/"/g, '\\"')
+		.replaceAll('${', () => '$${');
+}
+
+/**
+ * Escapes strings for embedding inside NGINX configuration double-quoted regexes.
+ */
+export function escapeNginxString(str: string): string {
+	return str.replace(/"/g, '\\"');
 }
 
 /**

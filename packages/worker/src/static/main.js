@@ -667,8 +667,13 @@ function updateVpTabs() {
 
 	// Toggle Terraform option visibility (only Cloudflare & AWS support it)
 	const formatContainer = document.getElementById('vpFormatContainer');
+	const formatSelect = document.getElementById('vpFormatSelect');
 	if (formatContainer) {
-		formatContainer.style.display = (currentVpVendor === 'cloudflare' || currentVpVendor === 'aws') ? 'block' : 'none';
+		const supportsTf = currentVpVendor === 'cloudflare' || currentVpVendor === 'aws';
+		formatContainer.style.display = supportsTf ? 'block' : 'none';
+		if (!supportsTf && formatSelect) {
+			formatSelect.value = 'native';
+		}
 	}
 }
 
