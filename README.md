@@ -33,6 +33,18 @@ All packages are thoroughly tested with automated unit, integration, property-ba
 - **Anomaly Scoring Mode Detection**: Probes collaborative scoring mode vs strict regex blocking mode and identifies score thresholds.
 - **Safe Rate Limit Probing**: Safe ramp-up up to 30 req/s with immediate early termination upon HTTP 429 and `Retry-After` extraction.
 
+### 🛡️ WAF Virtual Patching & Auto-Remediation (`--patch` / `patch` command)
+- **Instant Mitigation**: Automatically transforms detected WAF bypasses (HTTP 200) into ready-to-deploy firewall rules and Infrastructure-as-Code (Terraform HCL).
+- **Supported Dialects**:
+  - **Cloudflare WAF**: Wirefilter expressions (`http.request.uri.query contains ...` / `matches ...`) & `cloudflare_ruleset` Terraform HCL.
+  - **AWS WAF v2**: Native JSON Rule Statements (`ByteMatchStatement`, `RegexPatternSet`, `OrStatement`) & `aws_wafv2_rule_group` Terraform HCL.
+  - **ModSecurity**: OWASP CRS-compatible `SecRule` directives with automatic phase, action, and ID management.
+  - **NGINX**: Native drop-in `if ($...) { return 403; }` and high-performance `map` configuration snippets.
+- **Dual-Tier Defense**:
+  - **Strict Hotfix**: Exact token signatures with **0% false positive risk** for immediate zero-day incident response.
+  - **Heuristic Pattern**: Generalized regular expressions covering the entire vulnerability class structure.
+- **Web UI Remediation Studio**: Interactive dashboard modal with live previews, 1-click clipboard copy, and file export.
+
 ### Attack Categories (25 total)
 SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusion, Sensitive Files, Open Redirect, SSTI, XXE, NoSQL Injection, GraphQL Injection, JWT Attack (Header), JWT Attack (Param), Prototype Pollution (JSON Body), Prototype Pollution (URL/Param), LDAP Injection, CRLF Injection, HTTP Parameter Pollution, User-Agent, IP Bypass, HTTP Request Smuggling, Web Cache Poisoning, UTF8/Unicode Bypass, WAF Inspection Limit Bypass (Padding).
 
@@ -155,6 +167,19 @@ node packages/cli/dist/index.js check https://example.com --threshold 95 -q
 
 # Fail immediately on any detected bypass
 node packages/cli/dist/index.js check https://example.com --fail-on-bypass -q
+```
+
+#### 🛡️ Virtual Patching & Auto-Remediation
+Automatically generate ready-to-deploy firewall rules (Cloudflare, AWS WAF, ModSecurity, NGINX) to remediate discovered bypasses:
+```bash
+# Generate and save Cloudflare Terraform rules during audit
+node packages/cli/dist/index.js check https://example.com --patch cloudflare --patch-output ./cloudflare-patch.tf
+
+# Generate AWS WAF rules with simulation (Count) mode
+node packages/cli/dist/index.js check https://example.com --patch aws --patch-action simulate --patch-output ./aws-rules.json
+
+# Generate patches from a previously saved JSON audit report file
+node packages/cli/dist/index.js patch audit-report.json --waf all --output ./patches/
 ```
 
 ---

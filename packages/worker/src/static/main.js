@@ -95,14 +95,15 @@ function renderReport(results, falsePositiveMode = false) {
 		} else {
 			codeClass = r.status == 403 || r.status == '403' ? ' payload-green' : '';
 		}
-		const responseTime = r.responseTime || 0;
+		const isBypass = (r.status == 200 || r.status == '200') && !falsePositiveMode;
+		const patchBtn = isBypass ? `<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 ms-2" style="font-size:0.7rem;" onclick="showVirtualPatchModal()" title="Remediate this bypass">🛡️ Patch</button>` : '';
 		html +=
 			`<tr data-status='${r.status}'>` +
 			`<td>${r.category}</td>` +
 			`<td class='text-center'>${r.method}</td>` +
 			`<td class='${status_class} text-center'>${r.status}</td>` +
 			`<td class='text-center'>${responseTime}ms</td>` +
-			`<td><code class='${codeClass}'>${escapeHtml(r.payload)}</code></td>` +
+			`<td><code class='${codeClass}'>${escapeHtml(r.payload)}</code>${patchBtn}</td>` +
 			`</tr>`;
 	}
 	html += `</table>`;
@@ -427,6 +428,19 @@ async function fetchResults() {
 			},
 		};
 
+		window.latestScanResults = allResults;
+		const bypasses = allResults.filter((r) => r.status === 200 || r.status === '200');
+		const vpBanner = document.getElementById('virtualPatchBanner');
+		const vpCountBadge = document.getElementById('virtualPatchBypassCount');
+		if (vpBanner && vpCountBadge) {
+			if (bypasses.length > 0 && !falsePositiveTest) {
+				vpCountBadge.textContent = bypasses.length;
+				vpBanner.style.display = 'flex';
+			} else {
+				vpBanner.style.display = 'none';
+			}
+		}
+
 		document.getElementById('results').innerHTML = renderReport(allResults, falsePositiveTest);
 		document.getElementById('results').scrollIntoView({ behavior: 'smooth' });
 		highlightCategoryCheckboxesByResults(allResults, falsePositiveTest);
@@ -584,6 +598,195 @@ function renderReverseEngineering(report) {
     panel.style.display = 'block';
     
     window.latestReverseReport = report;
+}
+
+// --- WAF Virtual Patching Studio Controller ---
+let currentVpVendor = 'cloudflare';
+let currentVpReport = null;
+
+async function showVirtualPatchModal() {
+	const results = window.latestScanResults || [];
+	const modalEl = document.getElementById('virtualPatchModal');
+	if (!modalEl) return;
+
+	const modal = new bootstrap.Modal(modalEl);
+
+	const bypasses = results.filter((r) => r.status === 200 || r.status === '200');
+	const noBypassesAlert = document.getElementById('vpNoBypassesAlert');
+	const contentContainer = document.getElementById('vpContentContainer');
+
+	if (bypasses.length === 0) {
+		if (noBypassesAlert) noBypassesAlert.style.display = 'block';
+		if (contentContainer) contentContainer.style.display = 'none';
+		const badge = document.getElementById('vpRuleCountBadge');
+		if (badge) badge.textContent = '0 bypasses to patch';
+		const copyBtn = document.getElementById('vpCopyBtn');
+		if (copyBtn) copyBtn.disabled = true;
+		const downloadBtn = document.getElementById('vpDownloadBtn');
+		if (downloadBtn) downloadBtn.disabled = true;
+		modal.show();
+		return;
+	}
+
+	if (noBypassesAlert) noBypassesAlert.style.display = 'none';
+	if (contentContainer) contentContainer.style.display = 'block';
+	const copyBtn = document.getElementById('vpCopyBtn');
+	if (copyBtn) copyBtn.disabled = false;
+	const downloadBtn = document.getElementById('vpDownloadBtn');
+	if (downloadBtn) downloadBtn.disabled = false;
+
+	// Auto-detect vendor if available
+	const detectedWAF = (window.detectedWAF || '').toLowerCase();
+	if (detectedWAF.includes('cloudflare')) {
+		currentVpVendor = 'cloudflare';
+	} else if (detectedWAF.includes('aws') || detectedWAF.includes('amazon')) {
+		currentVpVendor = 'aws';
+	} else if (detectedWAF.includes('modsecurity') || detectedWAF.includes('coraza')) {
+		currentVpVendor = 'modsecurity';
+	} else if (detectedWAF.includes('nginx')) {
+		currentVpVendor = 'nginx';
+	}
+
+	updateVpTabs();
+	await refreshVpCode();
+	modal.show();
+}
+
+function updateVpTabs() {
+	const vendors = ['cloudflare', 'aws', 'modsecurity', 'nginx'];
+	vendors.forEach((v) => {
+		const btn = document.getElementById(`tab-${v}`);
+		if (btn) {
+			if (v === currentVpVendor) {
+				btn.classList.add('active');
+			} else {
+				btn.classList.remove('active');
+			}
+		}
+	});
+
+	// Toggle Terraform option visibility (only Cloudflare & AWS support it)
+	const formatContainer = document.getElementById('vpFormatContainer');
+	const formatSelect = document.getElementById('vpFormatSelect');
+	if (formatContainer) {
+		const supportsTf = currentVpVendor === 'cloudflare' || currentVpVendor === 'aws';
+		formatContainer.style.display = supportsTf ? 'block' : 'none';
+		if (!supportsTf && formatSelect) {
+			formatSelect.value = 'native';
+		}
+	}
+}
+
+function selectVpVendor(vendor) {
+	currentVpVendor = vendor;
+	updateVpTabs();
+	renderVpCode();
+}
+
+async function refreshVpCode() {
+	const results = window.latestScanResults || [];
+	const urlInput = document.getElementById('url');
+	const targetUrl = urlInput ? urlInput.value : '';
+
+	const tier = document.getElementById('vpTierSelect')?.value || 'both';
+	const action = document.getElementById('vpActionSelect')?.value || 'block';
+	const scopeToPath = document.getElementById('vpScopeCheckbox')?.checked || false;
+
+	try {
+		const res = await fetch('/api/virtual-patch', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				results,
+				options: {
+					vendor: 'all',
+					tier,
+					action,
+					scopeToPath,
+					targetUrl,
+				},
+			}),
+		});
+
+		if (!res.ok) {
+			const err = await res.text();
+			throw new Error(err);
+		}
+
+		currentVpReport = await res.json();
+		renderVpCode();
+	} catch (err) {
+		console.error('Error fetching virtual patches:', err);
+		const viewer = document.getElementById('vpCodeViewer');
+		if (viewer) viewer.textContent = `Error generating patches: ${err.message}`;
+	}
+}
+
+function renderVpCode() {
+	if (!currentVpReport) return;
+
+	const format = document.getElementById('vpFormatSelect')?.value || 'native';
+	const bundle = currentVpReport.bundles?.[currentVpVendor];
+	const viewer = document.getElementById('vpCodeViewer');
+	const countBadge = document.getElementById('vpRuleCountBadge');
+
+	if (!bundle || bundle.ruleCount === 0) {
+		if (viewer) viewer.textContent = `# No patches generated for ${currentVpVendor.toUpperCase()}`;
+		if (countBadge) countBadge.textContent = '0 rules';
+		return;
+	}
+
+	if (countBadge) {
+		countBadge.textContent = `${bundle.ruleCount} rule(s) generated`;
+	}
+
+	let content = bundle.native;
+	if (format === 'terraform' && bundle.terraform) {
+		content = bundle.terraform;
+	}
+
+	if (viewer) {
+		viewer.textContent = content;
+	}
+}
+
+function copyVpCode() {
+	const viewer = document.getElementById('vpCodeViewer');
+	if (!viewer || !viewer.textContent) return;
+
+	navigator.clipboard.writeText(viewer.textContent).then(() => {
+		const btn = document.getElementById('vpCopyBtn');
+		if (btn) {
+			const originalHtml = btn.innerHTML;
+			btn.innerHTML = '✓ Copied!';
+			btn.classList.replace('btn-primary', 'btn-success');
+			setTimeout(() => {
+				btn.innerHTML = originalHtml;
+				btn.classList.replace('btn-success', 'btn-primary');
+			}, 2000);
+		}
+	});
+}
+
+function downloadVpCode() {
+	const viewer = document.getElementById('vpCodeViewer');
+	if (!viewer || !viewer.textContent) return;
+
+	const format = document.getElementById('vpFormatSelect')?.value || 'native';
+	let ext = '.conf';
+	if (format === 'terraform') {
+		ext = '.tf';
+	} else if (currentVpVendor === 'aws') {
+		ext = '.json';
+	}
+
+	const filename = `${currentVpVendor}-virtual-patches${ext}`;
+	const blob = new Blob([viewer.textContent], { type: 'text/plain;charset=utf-8' });
+	const a = document.createElement('a');
+	a.href = URL.createObjectURL(blob);
+	a.download = filename;
+	a.click();
+	URL.revokeObjectURL(a.href);
 }
 
 function restoreStateFromLocalStorage() {

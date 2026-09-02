@@ -2,7 +2,7 @@ import { handleApiCheckFiltered } from './handlers/check';
 import { handleWAFDetection } from './handlers/waf-detect';
 import { handleHTTPManipulation } from './handlers/http-manip';
 import { handleBatchStart, handleBatchStatus, handleBatchStop } from './handlers/batch';
-import { isValidTargetUrl, runReverseEngineeringAudit } from '@waf-checker/core';
+import { isValidTargetUrl, runReverseEngineeringAudit, generateVirtualPatches } from '@waf-checker/core';
 
 export default {
 	async fetch(request: Request, env: { ASSETS: { fetch: typeof fetch } }): Promise<Response> {
@@ -10,8 +10,48 @@ export default {
 		if (!urlObj.pathname.startsWith('/api/')) {
 			return env.ASSETS.fetch(request);
 		}
+		if (urlObj.pathname === '/api/virtual-patch') {
+			if (request.method !== 'POST') {
+				return new Response(JSON.stringify({ error: 'Method not allowed. Use POST.' }), {
+					status: 405,
+					headers: { 'content-type': 'application/json' },
+				});
+			}
+			try {
+				const body: any = await request.json();
+				const results = body?.results;
+				if (!results || !Array.isArray(results)) {
+					return new Response(JSON.stringify({ error: 'Missing results array in request body' }), {
+						status: 400,
+						headers: { 'content-type': 'application/json' },
+					});
+				}
+				const options = body?.options || {};
+				if (options.targetUrl && !isValidTargetUrl(options.targetUrl)) {
+					return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), {
+						status: 400,
+						headers: { 'content-type': 'application/json' },
+					});
+				}
+				const report = generateVirtualPatches(results, options);
+				return new Response(JSON.stringify(report), {
+					headers: { 'content-type': 'application/json; charset=UTF-8' },
+				});
+			} catch (err: any) {
+				return new Response(JSON.stringify({ error: err.message }), {
+					status: 500,
+					headers: { 'content-type': 'application/json' },
+				});
+			}
+		}
 		if (urlObj.pathname === '/api/reverse-engineer') {
-			const url = urlObj.searchParams.get('url');
+			let url = urlObj.searchParams.get('url');
+			if (!url && request.method === 'POST') {
+				try {
+					const body: any = await request.clone().json();
+					if (body && typeof body.url === 'string') url = body.url;
+				} catch {}
+			}
 			if (!url) return new Response('Missing url param', { status: 400 });
 			if (!isValidTargetUrl(url)) {
 				return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
