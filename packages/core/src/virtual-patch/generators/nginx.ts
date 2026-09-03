@@ -102,7 +102,7 @@ export function generateNginxPatches(
 					);
 				}
 				if (fileTokens.length > 0) {
-					const escapedFiles = fileTokens.map((f) => escapeNginxString(escapeRegex(f))).join('|');
+					const escapedFiles = fileTokens.map((f) => escapeRegex(f)).join('|');
 					locLines.push(
 						`# Block specific sensitive files`,
 						`location ~* /(${escapedFiles}) {`,
