@@ -526,8 +526,8 @@ describe('Virtual Patching & Rule Generator', () => {
 			const report = generateVirtualPatches(sensitiveFiles, { vendor: 'haproxy', tier: 'strict' });
 			const patch = report.patches[0];
 			expect(patch.vendor).toBe('haproxy');
-			expect(patch.nativeRule).toContain('acl is_sensitive_files_ext path_end -i .sql');
-			expect(patch.nativeRule).toContain('acl is_sensitive_files_vcs path_beg -i /.git');
+			expect(patch.nativeRule).toContain('acl is_sensitive_files_ext path_end -i -- .sql');
+			expect(patch.nativeRule).toContain('acl is_sensitive_files_vcs path_beg -i -- /.git');
 			expect(patch.nativeRule).toContain('http-request deny deny_status 403');
 		});
 

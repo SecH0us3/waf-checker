@@ -17,6 +17,10 @@ function getUrlPath(targetUrl?: string): string | null {
 	}
 }
 
+function escapeHAProxyString(str: string): string {
+	return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$');
+}
+
 /**
  * Generates HAProxy ACL configuration snippets (native haproxy.cfg).
  */
@@ -68,28 +72,28 @@ export function generateHAProxyPatches(
 
 				if (exts.length > 0) {
 					const aclName = `is_${sanitizedCat}_ext`;
-					aclLines.push(`acl ${aclName} path_end -i ${exts.join(' ')}`);
+					aclLines.push(`acl ${aclName} path_end -i -- ${exts.join(' ')}`);
 					aclConditionNames.push(aclName);
 				}
 				if (vcs.length > 0) {
 					const aclName = `is_${sanitizedCat}_vcs`;
-					aclLines.push(`acl ${aclName} path_beg -i ${vcs.map((v) => `/${v}`).join(' ')}`);
+					aclLines.push(`acl ${aclName} path_beg -i -- ${vcs.map((v) => `/${v}`).join(' ')}`);
 					aclConditionNames.push(aclName);
 				}
 				if (files.length > 0) {
 					const aclName = `is_${sanitizedCat}_files`;
-					aclLines.push(`acl ${aclName} path_end -i ${files.map((f) => (f.startsWith('/') ? f : `/${f}`)).join(' ')}`);
+					aclLines.push(`acl ${aclName} path_end -i -- ${files.map((f) => (f.startsWith('/') ? f : `/${f}`)).join(' ')}`);
 					aclConditionNames.push(aclName);
 				}
 			} else if (location === 'header') {
 				const hdrName = category === 'User-Agent' ? 'User-Agent' : 'Authorization';
 				const aclName = `is_${sanitizedCat}_hdr`;
-				aclLines.push(`acl ${aclName} req.hdr(${hdrName}) -m sub -i ${tokens.map((t) => `"${t.replace(/"/g, '\\"')}"`).join(' ')}`);
+				aclLines.push(`acl ${aclName} req.hdr(${hdrName}) -m sub -i -- ${tokens.map((t) => `"${escapeHAProxyString(t)}"`).join(' ')}`);
 				aclConditionNames.push(aclName);
 			} else {
 				// Query or Body
 				const aclName = `is_${sanitizedCat}_query`;
-				aclLines.push(`acl ${aclName} query -m sub -i ${tokens.map((t) => `"${t.replace(/"/g, '\\"')}"`).join(' ')}`);
+				aclLines.push(`acl ${aclName} query -m sub -i -- ${tokens.map((t) => `"${escapeHAProxyString(t)}"`).join(' ')}`);
 				aclConditionNames.push(aclName);
 			}
 
@@ -130,12 +134,12 @@ export function generateHAProxyPatches(
 			}
 
 			if (location === 'uri') {
-				aclLines.push(`acl ${aclName} path_reg -i "${rawPattern.replace(/"/g, '\\"')}"`);
+				aclLines.push(`acl ${aclName} path -m reg -i -- "${escapeHAProxyString(rawPattern)}"`);
 			} else if (location === 'header') {
 				const hdrName = category === 'User-Agent' ? 'User-Agent' : 'Authorization';
-				aclLines.push(`acl ${aclName} req.hdr_reg(${hdrName}) -i "${rawPattern.replace(/"/g, '\\"')}"`);
+				aclLines.push(`acl ${aclName} req.hdr(${hdrName}) -m reg -i -- "${escapeHAProxyString(rawPattern)}"`);
 			} else {
-				aclLines.push(`acl ${aclName} query_reg -i "${rawPattern.replace(/"/g, '\\"')}"`);
+				aclLines.push(`acl ${aclName} query -m reg -i -- "${escapeHAProxyString(rawPattern)}"`);
 			}
 
 			const fullCond = urlPath ? `is_scoped_path_${sanitizedCat} ${aclName}` : aclName;
