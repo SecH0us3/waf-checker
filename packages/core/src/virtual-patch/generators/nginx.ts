@@ -73,34 +73,81 @@ export function generateNginxPatches(
 				);
 			}
 
-			if (urlPath) {
-				lines.push(
-					`location ${urlPath} {`,
-					`    # Match verified bypass signatures within ${urlPath}`,
-					`    if (${nginxVar} ~* "(${escapedAlternation})") {`,
-					`        ${actionSnippet}`,
-					`    }`,
-					`}`
-				);
+			if (location === 'uri' && !urlPath) {
+				// For URI paths and sensitive files, generate native high-performance location blocks
+				const isVcs = (t: string) => t === '.git' || t === '.svn' || t === '.hg';
+				const extTokens = tokens
+					.filter((t) => t.startsWith('.') && !isVcs(t) && !t.includes('/'))
+					.map((t) => t.slice(1));
+				const vcsTokens = tokens.filter(isVcs).map((t) => t.slice(1));
+				const fileTokens = tokens
+					.filter((t) => !t.startsWith('.'))
+					.map((t) => t.replace(/^\/+/, ''));
+
+				const locLines: string[] = [];
+				if (extTokens.length > 0) {
+					locLines.push(
+						`# Block sensitive file extensions`,
+						`location ~* \\.(${extTokens.join('|')})$ {`,
+						`    ${actionSnippet}`,
+						`}`
+					);
+				}
+				if (vcsTokens.length > 0) {
+					locLines.push(
+						`# Block sensitive hidden VCS directories`,
+						`location ~ /\\.(?:${vcsTokens.join('|')}) {`,
+						`    ${actionSnippet}`,
+						`}`
+					);
+				}
+				if (fileTokens.length > 0) {
+					const escapedFiles = fileTokens.map((f) => escapeNginxString(escapeRegex(f))).join('|');
+					locLines.push(
+						`# Block specific sensitive files`,
+						`location ~* /(${escapedFiles}) {`,
+						`    ${actionSnippet}`,
+						`}`
+					);
+				}
+				if (locLines.length === 0) {
+					locLines.push(
+						`location ~* "(${escapedAlternation})" {`,
+						`    ${actionSnippet}`,
+						`}`
+					);
+				}
+				lines.push(...locLines);
 			} else {
+				if (urlPath) {
+					lines.push(
+						`location ${urlPath} {`,
+						`    # Match verified bypass signatures within ${urlPath}`,
+						`    if (${nginxVar} ~* "(${escapedAlternation})") {`,
+						`        ${actionSnippet}`,
+						`    }`,
+						`}`
+					);
+				} else {
+					lines.push(
+						`# Drop-in check for server/location block`,
+						`if (${nginxVar} ~* "(${escapedAlternation})") {`,
+						`    ${actionSnippet}`,
+						`}`
+					);
+				}
+
+				// Add concise high-performance map snippet comment
 				lines.push(
-					`# Drop-in check for server/location block`,
-					`if (${nginxVar} ~* "(${escapedAlternation})") {`,
-					`    ${actionSnippet}`,
-					`}`
+					``,
+					`# High-Performance Alternative (Add in http {} block):`,
+					`# map ${nginxVar} $waf_patch_${sanitizedCat}_blocked {`,
+					`#     default 0;`,
+					`#     "~*(${escapedAlternation})" 1;`,
+					`# }`,
+					`# Inside server/location: if ($waf_patch_${sanitizedCat}_blocked) { ${isSimulate ? 'add_header X-WAF-Simulation-Triggered "1" always;' : 'return 403;'} }`
 				);
 			}
-
-			// Add high-performance map snippet comment
-			lines.push(
-				``,
-				`# High-Performance Alternative (Add in http {} block):`,
-				`# map ${nginxVar} $waf_patch_${sanitizedCat}_blocked {`,
-				`#     default 0;`,
-				...tokens.map((t) => `#     "~*${escapeNginxString(escapeRegex(t))}" 1;`),
-				`# }`,
-				`# Inside server/location: if ($waf_patch_${sanitizedCat}_blocked) { ${isSimulate ? 'add_header X-WAF-Simulation "1";' : 'return 403;'} }`
-			);
 
 			const nativeRule = lines.join('\n');
 			patches.push({
