@@ -11,6 +11,10 @@ import { generateAwsPatches } from './generators/aws';
 import { generateModSecurityPatches } from './generators/modsecurity';
 import { generateNginxPatches } from './generators/nginx';
 import { generateGcpPatches } from './generators/gcp';
+import { generateAzurePatches } from './generators/azure';
+import { generateHAProxyPatches } from './generators/haproxy';
+import { generateCaddyPatches } from './generators/caddy';
+import { generateK8sPatches } from './generators/k8s';
 
 export * from './types';
 export * from './heuristics';
@@ -19,6 +23,10 @@ export * from './generators/aws';
 export * from './generators/modsecurity';
 export * from './generators/nginx';
 export * from './generators/gcp';
+export * from './generators/azure';
+export * from './generators/haproxy';
+export * from './generators/caddy';
+export * from './generators/k8s';
 
 /**
  * Filters audit results to isolate confirmed WAF bypasses (HTTP 200)
@@ -69,13 +77,25 @@ export function generateVirtualPatches(
 		if (targetVendor === 'all' || targetVendor === 'gcp') {
 			allPatches.push(...generateGcpPatches(bypasses, options));
 		}
+		if (targetVendor === 'all' || targetVendor === 'azure') {
+			allPatches.push(...generateAzurePatches(bypasses, options));
+		}
+		if (targetVendor === 'all' || targetVendor === 'haproxy') {
+			allPatches.push(...generateHAProxyPatches(bypasses, options));
+		}
+		if (targetVendor === 'all' || targetVendor === 'caddy') {
+			allPatches.push(...generateCaddyPatches(bypasses, options));
+		}
+		if (targetVendor === 'all' || targetVendor === 'k8s') {
+			allPatches.push(...generateK8sPatches(bypasses, options));
+		}
 	}
 
 	// Build vendor-level bundle strings for easy 1-click copy / download
 	const bundles: Record<string, VendorPatchBundle> = {};
 	const vendorsToBundle: PatchVendor[] =
 		targetVendor === 'all'
-			? ['cloudflare', 'aws', 'modsecurity', 'nginx', 'gcp']
+			? ['cloudflare', 'aws', 'modsecurity', 'nginx', 'gcp', 'azure', 'haproxy', 'caddy', 'k8s']
 			: [targetVendor];
 
 	for (const v of vendorsToBundle) {
@@ -87,6 +107,9 @@ export function generateVirtualPatches(
 		const gcloudParts = vendorPatches
 			.filter((p) => p.gcloudCommand)
 			.map((p) => p.gcloudCommand!);
+		const azureCliParts = vendorPatches
+			.filter((p) => p.azureCliCommand)
+			.map((p) => p.azureCliCommand!);
 
 		let nativeJoined = '';
 		if (v === 'cloudflare') {
@@ -102,8 +125,11 @@ export function generateVirtualPatches(
 				nativeParts.length <= 1
 					? nativeParts[0] || ''
 					: nativeParts.join(' ||\n\n');
-		} else if (v === 'aws') {
-			// Format multiple AWS WAF rules as a valid JSON array for AWS CLI / CloudFormation
+		} else if (v === 'k8s') {
+			// In Kubernetes, separate manifests with standard '---'
+			nativeJoined = nativeParts.join('\n---\n');
+		} else if (v === 'aws' || v === 'azure') {
+			// Format multiple JSON rules as a valid JSON array
 			if (nativeParts.length <= 1) {
 				nativeJoined = nativeParts[0] || '';
 			} else {
@@ -123,6 +149,7 @@ export function generateVirtualPatches(
 			native: nativeJoined,
 			terraform: tfParts.length > 0 ? tfParts.join('\n\n') : undefined,
 			gcloud: gcloudParts.length > 0 ? gcloudParts.join('\n\n') : undefined,
+			azureCli: azureCliParts.length > 0 ? azureCliParts.join('\n\n') : undefined,
 			ruleCount: vendorPatches.length,
 		};
 	}

@@ -180,7 +180,7 @@ checkCmd
 	.option('--threshold <percent>', 'Minimum protection score percentage required to pass (e.g. 95). Exits with code 1 if score is lower')
 	.option('--reverse', 'Run deep WAF Reverse Engineering and OWASP Core Rule Set (CRS) audit', false)
 	.option('--reverse-engineer', 'Alias for --reverse', false)
-	.option('--patch [vendor]', 'Generate ready-to-deploy virtual patches (cloudflare, aws, modsecurity, nginx, gcp, all)')
+	.option('--patch [vendor]', 'Generate ready-to-deploy virtual patches (cloudflare, aws, modsecurity, nginx, gcp, azure, haproxy, caddy, k8s, all)')
 	.option('--patch-output <path>', 'File path or directory to save generated virtual patch(es) to')
 	.option('--patch-tier <tier>', 'Defense tier: strict (exact token), heuristic (regex pattern), or both', 'both')
 	.option('--patch-action <action>', 'Rule action: block or simulate', 'block')
@@ -600,7 +600,7 @@ batchCmd
 program
 	.command('patch <file>')
 	.description('Generate ready-to-deploy virtual patches from a saved JSON audit report')
-	.option('-w, --waf <vendor>', 'Target WAF vendor (cloudflare, aws, modsecurity, nginx, gcp, all)', 'all')
+	.option('-w, --waf <vendor>', 'Target WAF vendor (cloudflare, aws, modsecurity, nginx, gcp, azure, haproxy, caddy, k8s, all)', 'all')
 	.option('-t, --tier <tier>', 'Defense tier: strict, heuristic, or both', 'both')
 	.option('-a, --action <action>', 'Rule action: block or simulate', 'block')
 	.option('-o, --output <path>', 'Output file or directory to write patches to')
@@ -651,7 +651,7 @@ program
 
 			if (options.output) {
 				const outPath = path.resolve(options.output);
-				if (outPath.endsWith('.tf') || outPath.endsWith('.conf') || outPath.endsWith('.json') || outPath.endsWith('.txt')) {
+				if (outPath.endsWith('.tf') || outPath.endsWith('.conf') || outPath.endsWith('.json') || outPath.endsWith('.yaml') || outPath.endsWith('.cfg') || outPath.endsWith('.txt')) {
 					const dir = path.dirname(outPath);
 					if (dir && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 					const bundledText = Object.values(patchReport.bundles)
@@ -661,9 +661,27 @@ program
 					fs.writeFileSync(outPath, bundledText, 'utf8');
 				} else {
 					if (!fs.existsSync(outPath)) fs.mkdirSync(outPath, { recursive: true });
+					const extMap: Record<string, string> = {
+						cloudflare: 'conf',
+						aws: 'json',
+						modsecurity: 'conf',
+						nginx: 'conf',
+						gcp: 'cel',
+						azure: 'json',
+						haproxy: 'cfg',
+						caddy: 'caddyfile',
+						k8s: 'yaml',
+					};
 					for (const [v, b] of Object.entries(patchReport.bundles)) {
 						if (b.ruleCount === 0) continue;
-						fs.writeFileSync(path.join(outPath, `${v}-patches.conf`), b.native, 'utf8');
+						const ext = extMap[v] || 'conf';
+						fs.writeFileSync(path.join(outPath, `${v}-patches.${ext}`), b.native, 'utf8');
+						if (b.gcloud) {
+							fs.writeFileSync(path.join(outPath, `${v}-gcloud.sh`), b.gcloud, 'utf8');
+						}
+						if (b.azureCli) {
+							fs.writeFileSync(path.join(outPath, `${v}-azure-cli.sh`), b.azureCli, 'utf8');
+						}
 						if (b.terraform) {
 							fs.writeFileSync(path.join(outPath, `${v}-patches.tf`), b.terraform, 'utf8');
 						}
@@ -679,6 +697,10 @@ program
 					if (b.gcloud) {
 						console.log(`\n--- ${v.toUpperCase()} (gcloud CLI) ---`);
 						console.log(b.gcloud);
+					}
+					if (b.azureCli) {
+						console.log(`\n--- ${v.toUpperCase()} (Azure CLI) ---`);
+						console.log(b.azureCli);
 					}
 					if (b.terraform) {
 						console.log(`\n--- ${v.toUpperCase()} (Terraform) ---`);

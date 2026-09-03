@@ -124,12 +124,20 @@ describe('Virtual Patching & Rule Generator', () => {
 			expect(report.bundles.modsecurity).toBeDefined();
 			expect(report.bundles.nginx).toBeDefined();
 			expect(report.bundles.gcp).toBeDefined();
+			expect(report.bundles.azure).toBeDefined();
+			expect(report.bundles.haproxy).toBeDefined();
+			expect(report.bundles.caddy).toBeDefined();
+			expect(report.bundles.k8s).toBeDefined();
 
 			expect(report.bundles.cloudflare.ruleCount).toBeGreaterThan(0);
 			expect(report.bundles.aws.ruleCount).toBeGreaterThan(0);
 			expect(report.bundles.modsecurity.ruleCount).toBeGreaterThan(0);
 			expect(report.bundles.nginx.ruleCount).toBeGreaterThan(0);
 			expect(report.bundles.gcp.ruleCount).toBeGreaterThan(0);
+			expect(report.bundles.azure.ruleCount).toBeGreaterThan(0);
+			expect(report.bundles.haproxy.ruleCount).toBeGreaterThan(0);
+			expect(report.bundles.caddy.ruleCount).toBeGreaterThan(0);
+			expect(report.bundles.k8s.ruleCount).toBeGreaterThan(0);
 		});
 
 		it('should filter by specific vendor when requested', () => {
@@ -476,6 +484,110 @@ describe('Virtual Patching & Rule Generator', () => {
 			expect(gcpBundle.native).toContain(' ||\n\n');
 			expect(gcpBundle.terraform).toContain('google_compute_security_policy');
 			expect(gcpBundle.gcloud).toContain('gcloud compute security-policies');
+		});
+	});
+
+	describe('Azure WAF Generator', () => {
+		const sensitiveFiles: AuditResultItem[] = [
+			{ category: 'Sensitive Files', method: 'GET', payload: '/dump.sql', status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/backup.zip', status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/.git/config', status: 200, responseTime: 20 },
+		];
+
+		it('should generate valid Azure WAF custom rules, Terraform, and Azure CLI commands', () => {
+			const report = generateVirtualPatches(sensitiveFiles, { vendor: 'azure', tier: 'strict' });
+			const patch = report.patches[0];
+			expect(patch.vendor).toBe('azure');
+			expect(patch.nativeRule).toContain('"operator": "EndsWith"');
+			expect(patch.nativeRule).toContain('.sql');
+			expect(patch.nativeRule).toContain('"operator": "RegEx"');
+			expect(patch.terraformHcl).toContain('custom_rules');
+			expect(patch.terraformHcl).toContain('operator           = "EndsWith"');
+			expect(patch.azureCliCommand).toContain('az network front-door waf-policy rule create');
+			expect(patch.azureCliCommand).toContain('--action="Block"');
+		});
+
+		it('should support simulation mode (action = Log) in Azure WAF', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'azure', action: 'simulate' });
+			const patch = report.patches[0];
+			expect(patch.nativeRule).toContain('"action": "Log"');
+			expect(patch.terraformHcl).toContain('action    = "Log"');
+			expect(patch.azureCliCommand).toContain('--action="Log"');
+		});
+	});
+
+	describe('HAProxy Generator', () => {
+		const sensitiveFiles: AuditResultItem[] = [
+			{ category: 'Sensitive Files', method: 'GET', payload: '/dump.sql', status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/.git/config', status: 200, responseTime: 20 },
+		];
+
+		it('should generate valid HAProxy ACL directives', () => {
+			const report = generateVirtualPatches(sensitiveFiles, { vendor: 'haproxy', tier: 'strict' });
+			const patch = report.patches[0];
+			expect(patch.vendor).toBe('haproxy');
+			expect(patch.nativeRule).toContain('acl is_sensitive_files_ext path_end -i .sql');
+			expect(patch.nativeRule).toContain('acl is_sensitive_files_vcs path_beg -i /.git');
+			expect(patch.nativeRule).toContain('http-request deny deny_status 403');
+		});
+
+		it('should support simulation mode in HAProxy', () => {
+			const report = generateVirtualPatches(sensitiveFiles, { vendor: 'haproxy', action: 'simulate' });
+			const patch = report.patches[0];
+			expect(patch.nativeRule).toContain('http-request set-header X-WAF-Simulation "blocked"');
+		});
+	});
+
+	describe('Caddy Generator', () => {
+		const sensitiveFiles: AuditResultItem[] = [
+			{ category: 'Sensitive Files', method: 'GET', payload: '/dump.sql', status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/.git/config', status: 200, responseTime: 20 },
+		];
+
+		it('should generate valid Caddyfile named matchers', () => {
+			const report = generateVirtualPatches(sensitiveFiles, { vendor: 'caddy', tier: 'strict' });
+			const patch = report.patches[0];
+			expect(patch.vendor).toBe('caddy');
+			expect(patch.nativeRule).toContain('@waf_patch_sensitive_files_strict');
+			expect(patch.nativeRule).toContain('path *.sql');
+			expect(patch.nativeRule).toContain('path */.git/*');
+			expect(patch.nativeRule).toContain('respond @waf_patch_sensitive_files_strict 403');
+		});
+
+		it('should support simulation mode in Caddy', () => {
+			const report = generateVirtualPatches(sensitiveFiles, { vendor: 'caddy', action: 'simulate' });
+			const patch = report.patches[0];
+			expect(patch.nativeRule).toContain('header @waf_patch_sensitive_files_strict X-WAF-Simulation "blocked"');
+		});
+	});
+
+	describe('Kubernetes Ingress Generator', () => {
+		const sensitiveFiles: AuditResultItem[] = [
+			{ category: 'Sensitive Files', method: 'GET', payload: '/dump.sql', status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/.git/config', status: 200, responseTime: 20 },
+		];
+
+		it('should generate valid Kubernetes Ingress YAML manifests', () => {
+			const report = generateVirtualPatches(sensitiveFiles, {
+				vendor: 'k8s',
+				tier: 'strict',
+				targetUrl: 'https://security.example.com',
+			});
+			const patch = report.patches[0];
+			expect(patch.vendor).toBe('k8s');
+			expect(patch.nativeRule).toContain('kind: Ingress');
+			expect(patch.nativeRule).toContain('nginx.ingress.kubernetes.io/server-snippet:');
+			expect(patch.nativeRule).toContain('location ~* \\.(sql)$');
+			expect(patch.nativeRule).toContain('location ~ /\\.(?:git)');
+			expect(patch.nativeRule).toContain('host: security.example.com');
+		});
+
+		it('should join multiple K8s manifests with --- in bundle', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'k8s', tier: 'both' });
+			const k8sBundle = report.bundles.k8s;
+			expect(k8sBundle).toBeDefined();
+			expect(k8sBundle.ruleCount).toBeGreaterThan(1);
+			expect(k8sBundle.native).toContain('\n---\n');
 		});
 	});
 });

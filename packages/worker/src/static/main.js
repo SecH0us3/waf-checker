@@ -696,6 +696,10 @@ async function showVirtualPatchModal(initialScope) {
 		currentVpVendor = 'aws';
 	} else if (detectedWAF.includes('cloud armor') || detectedWAF.includes('gcp') || detectedWAF.includes('google')) {
 		currentVpVendor = 'gcp';
+	} else if (detectedWAF.includes('azure') || detectedWAF.includes('front door')) {
+		currentVpVendor = 'azure';
+	} else if (detectedWAF.includes('haproxy')) {
+		currentVpVendor = 'haproxy';
 	} else if (detectedWAF.includes('modsecurity') || detectedWAF.includes('coraza')) {
 		currentVpVendor = 'modsecurity';
 	} else if (detectedWAF.includes('nginx')) {
@@ -708,7 +712,7 @@ async function showVirtualPatchModal(initialScope) {
 }
 
 function updateVpTabs() {
-	const vendors = ['cloudflare', 'aws', 'modsecurity', 'nginx', 'gcp'];
+	const vendors = ['cloudflare', 'aws', 'gcp', 'azure', 'modsecurity', 'nginx', 'haproxy', 'caddy', 'k8s'];
 	vendors.forEach((v) => {
 		const btn = document.getElementById(`tab-${v}`);
 		if (btn) {
@@ -720,23 +724,29 @@ function updateVpTabs() {
 		}
 	});
 
-	// Toggle Terraform and gcloud option visibility
+	// Toggle Terraform, gcloud, and azureCli option visibility
 	const formatContainer = document.getElementById('vpFormatContainer');
 	const formatSelect = document.getElementById('vpFormatSelect');
 	if (formatContainer && formatSelect) {
-		const supportsTf = currentVpVendor === 'cloudflare' || currentVpVendor === 'aws' || currentVpVendor === 'gcp';
+		const supportsTf = currentVpVendor === 'cloudflare' || currentVpVendor === 'aws' || currentVpVendor === 'gcp' || currentVpVendor === 'azure';
 		const supportsGcloud = currentVpVendor === 'gcp';
+		const supportsAzureCli = currentVpVendor === 'azure';
 
 		const tfOpt = formatSelect.querySelector('option[value="terraform"]');
 		const gcloudOpt = formatSelect.querySelector('option[value="gcloud"]');
+		const azureCliOpt = formatSelect.querySelector('option[value="azureCli"]');
 		if (tfOpt) tfOpt.style.display = supportsTf ? 'block' : 'none';
 		if (gcloudOpt) gcloudOpt.style.display = supportsGcloud ? 'block' : 'none';
+		if (azureCliOpt) azureCliOpt.style.display = supportsAzureCli ? 'block' : 'none';
 
-		formatContainer.style.display = (supportsTf || supportsGcloud) ? 'block' : 'none';
+		formatContainer.style.display = (supportsTf || supportsGcloud || supportsAzureCli) ? 'block' : 'none';
 		if (!supportsTf && formatSelect.value === 'terraform') {
 			formatSelect.value = 'native';
 		}
 		if (!supportsGcloud && formatSelect.value === 'gcloud') {
+			formatSelect.value = 'native';
+		}
+		if (!supportsAzureCli && formatSelect.value === 'azureCli') {
 			formatSelect.value = 'native';
 		}
 	}
@@ -826,6 +836,8 @@ function renderVpCode() {
 		content = bundle.terraform;
 	} else if (format === 'gcloud' && bundle.gcloud) {
 		content = bundle.gcloud;
+	} else if (format === 'azureCli' && bundle.azureCli) {
+		content = bundle.azureCli;
 	}
 
 	if (viewer) {
@@ -859,12 +871,18 @@ function downloadVpCode() {
 	let ext = '.conf';
 	if (format === 'terraform') {
 		ext = '.tf';
-	} else if (format === 'gcloud') {
+	} else if (format === 'gcloud' || format === 'azureCli') {
 		ext = '.sh';
-	} else if (currentVpVendor === 'aws') {
+	} else if (currentVpVendor === 'aws' || currentVpVendor === 'azure') {
 		ext = '.json';
 	} else if (currentVpVendor === 'gcp') {
 		ext = '.cel';
+	} else if (currentVpVendor === 'haproxy') {
+		ext = '.cfg';
+	} else if (currentVpVendor === 'caddy') {
+		ext = '.caddyfile';
+	} else if (currentVpVendor === 'k8s') {
+		ext = '.yaml';
 	}
 
 	const filename = `${currentVpVendor}-virtual-patches${ext}`;
