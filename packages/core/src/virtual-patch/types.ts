@@ -10,6 +10,7 @@ export type PatchVendor =
 	| 'haproxy'
 	| 'caddy'
 	| 'k8s'
+	| 'coraza'
 	| 'all';
 export type PatchTier = 'strict' | 'heuristic' | 'both';
 export type PatchAction = 'block' | 'simulate';

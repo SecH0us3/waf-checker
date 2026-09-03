@@ -180,7 +180,7 @@ checkCmd
 	.option('--threshold <percent>', 'Minimum protection score percentage required to pass (e.g. 95). Exits with code 1 if score is lower')
 	.option('--reverse', 'Run deep WAF Reverse Engineering and OWASP Core Rule Set (CRS) audit', false)
 	.option('--reverse-engineer', 'Alias for --reverse', false)
-	.option('--patch [vendor]', 'Generate ready-to-deploy virtual patches (cloudflare, aws, modsecurity, nginx, gcp, azure, haproxy, caddy, k8s, all)')
+	.option('--patch [vendor]', 'Generate ready-to-deploy virtual patches (cloudflare, aws, modsecurity, coraza, nginx, gcp, azure, haproxy, caddy, k8s, all)')
 	.option('--patch-output <path>', 'File path or directory to save generated virtual patch(es) to')
 	.option('--patch-tier <tier>', 'Defense tier: strict (exact token), heuristic (regex pattern), or both', 'both')
 	.option('--patch-action <action>', 'Rule action: block or simulate', 'block')
@@ -602,7 +602,7 @@ batchCmd
 program
 	.command('patch <file>')
 	.description('Generate ready-to-deploy virtual patches from a saved JSON audit report')
-	.option('-w, --waf <vendor>', 'Target WAF vendor (cloudflare, aws, modsecurity, nginx, gcp, azure, haproxy, caddy, k8s, all)', 'all')
+	.option('-w, --waf <vendor>', 'Target WAF vendor (cloudflare, aws, modsecurity, coraza, nginx, gcp, azure, haproxy, caddy, k8s, all)', 'all')
 	.option('-t, --tier <tier>', 'Defense tier: strict, heuristic, or both', 'both')
 	.option('-a, --action <action>', 'Rule action: block or simulate', 'block')
 	.option('-o, --output <path>', 'Output file or directory to write patches to')

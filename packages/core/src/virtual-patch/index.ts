@@ -68,7 +68,7 @@ export function generateVirtualPatches(
 		if (targetVendor === 'all' || targetVendor === 'aws') {
 			allPatches.push(...generateAwsPatches(bypasses, options));
 		}
-		if (targetVendor === 'all' || targetVendor === 'modsecurity') {
+		if (targetVendor === 'all' || targetVendor === 'modsecurity' || targetVendor === 'coraza') {
 			allPatches.push(...generateModSecurityPatches(bypasses, options));
 		}
 		if (targetVendor === 'all' || targetVendor === 'nginx') {
@@ -99,7 +99,7 @@ export function generateVirtualPatches(
 			: [targetVendor];
 
 	for (const v of vendorsToBundle) {
-		const vendorPatches = allPatches.filter((p) => p.vendor === v);
+		const vendorPatches = allPatches.filter((p) => p.vendor === v || (v === 'coraza' && p.vendor === 'modsecurity'));
 		const nativeParts = vendorPatches.map((p) => p.nativeRule);
 		const tfParts = vendorPatches
 			.filter((p) => p.terraformHcl)

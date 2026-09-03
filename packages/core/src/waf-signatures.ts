@@ -50,6 +50,40 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 		bodyPatterns: [/AWS WAF/i, /403 ERROR.*The request could not be satisfied/i, /Request blocked\./i],
 	},
 
+	// BunkerWeb (Next-Gen WAF)
+	{
+		name: 'BunkerWeb',
+		headers: {
+			server: /bunkerweb/i,
+			'x-bunkerweb': /.*/i,
+			'x-bw-reason': /.*/i,
+		},
+		statusCodes: [403, 429, 503],
+		cookiePatterns: [/^bw_/i, /bunkerweb/i],
+		bodyPatterns: [
+			/bunkerweb/i,
+			/This website is protected with.*BunkerWeb/i,
+			/Generating BunkerWeb config/i,
+			/bunkerweb\.io/i,
+		],
+	},
+
+	// OWASP Coraza (Next-Gen WAF)
+	{
+		name: 'OWASP Coraza',
+		headers: {
+			server: /coraza/i,
+			'x-coraza': /.*/i,
+			'x-coraza-waf': /.*/i,
+		},
+		statusCodes: [403],
+		bodyPatterns: [
+			/coraza/i,
+			/OWASP Coraza/i,
+			/corazawaf/i,
+		],
+	},
+
 	// DDoS-Guard
 	{
 		name: 'DDoS-Guard',
