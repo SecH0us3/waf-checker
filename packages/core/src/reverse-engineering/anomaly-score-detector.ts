@@ -24,11 +24,13 @@ export async function detectAnomalyScoringMode(
 			fetch: options?.fetch,
 			quiet: true,
 			rawPayload: true,
+			allowLocal: options?.allowLocal,
 		}),
 		sendRequest(url, 'GET', signal2Payload, undefined, undefined, false, false, undefined, undefined, {
 			fetch: options?.fetch,
 			quiet: true,
 			rawPayload: true,
+			allowLocal: options?.allowLocal,
 		}),
 	]);
 
@@ -58,7 +60,7 @@ export async function detectAnomalyScoringMode(
 		false,
 		undefined,
 		undefined,
-		{ fetch: options?.fetch, quiet: true, rawPayload: true },
+		{ fetch: options?.fetch, quiet: true, rawPayload: true, allowLocal: options?.allowLocal },
 	);
 
 	if (resScore5 && resScore5.status === 403) {
@@ -81,7 +83,7 @@ export async function detectAnomalyScoringMode(
 		false,
 		undefined,
 		undefined,
-		{ fetch: options?.fetch, quiet: true, rawPayload: true },
+		{ fetch: options?.fetch, quiet: true, rawPayload: true, allowLocal: options?.allowLocal },
 	);
 
 	if (resCritical && resCritical.status === 403) {
@@ -106,7 +108,7 @@ export async function detectAnomalyScoringMode(
 		false,
 		undefined,
 		undefined,
-		{ fetch: options?.fetch, quiet: true, rawPayload: true },
+		{ fetch: options?.fetch, quiet: true, rawPayload: true, allowLocal: options?.allowLocal },
 	);
 
 	if (resScore10 && resScore10.status === 403) {

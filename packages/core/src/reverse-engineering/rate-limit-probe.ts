@@ -28,7 +28,7 @@ export async function probeRateLimit(
 				false,
 				undefined,
 				undefined,
-				{ fetch: options?.fetch, quiet: true },
+				{ fetch: options?.fetch, quiet: true, allowLocal: options?.allowLocal },
 			),
 		);
 

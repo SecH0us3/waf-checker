@@ -64,7 +64,7 @@ export async function runReverseEngineeringAudit(
 				false,
 				undefined,
 				undefined,
-				{ fetch: options?.fetch, quiet: true, rawPayload: true },
+				{ fetch: options?.fetch, quiet: true, rawPayload: true, allowLocal: options?.allowLocal },
 			);
 
 			const responseTime = Date.now() - startTime;
