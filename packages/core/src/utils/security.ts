@@ -1,9 +1,13 @@
-export function isValidTargetUrl(urlString: string): boolean {
+export function isValidTargetUrl(urlString: string, options: { allowLocal?: boolean } = {}): boolean {
 	try {
 		const url = new URL(urlString);
 
 		if (url.protocol !== 'http:' && url.protocol !== 'https:') {
 			return false;
+		}
+
+		if (options.allowLocal) {
+			return true;
 		}
 
 		let hostname = url.hostname;

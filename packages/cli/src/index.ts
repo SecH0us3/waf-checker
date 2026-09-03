@@ -189,11 +189,13 @@ checkCmd
 	.option('-q, --quiet', 'Suppress per-request logging, displaying only final results')
 	.option('--silent', 'Alias for --quiet')
 	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
+	.option('--allow-local', 'Allow testing localhost, 127.0.0.1, and private IP ranges (Docker/LAN)', false)
 	.addHelpText('after', detailedHelp)
 	.action(async (url: string, options: any) => {
 		const isQuiet = options.quiet || options.silent;
+		const allowLocal = Boolean(options.allowLocal);
 		try {
-			if (!isValidTargetUrl(url)) {
+			if (!isValidTargetUrl(url, { allowLocal })) {
 				console.error(colors.red(`Error: Invalid target URL "${url}" or restricted IP.`));
 				process.exit(1);
 			}
@@ -229,13 +231,13 @@ checkCmd
 				options.encodingVariations,
 				options.detectedWaf,
 				httpManipulationOpts,
-				{ fetch: customFetch, color: useColor, quiet: isQuiet }
+				{ fetch: customFetch, color: useColor, quiet: isQuiet, allowLocal }
 			);
 
 			let reverseReport: ReverseEngineeringReport | undefined = undefined;
 			if (options.reverse || options.reverseEngineer) {
 				if (!isQuiet) console.log(colors.cyan('\n[+] Executing deep WAF Reverse Engineering and OWASP CRS audit...'));
-				reverseReport = await runReverseEngineeringAudit(url, { fetch: customFetch, quiet: isQuiet, color: useColor });
+				reverseReport = await runReverseEngineeringAudit(url, { fetch: customFetch, quiet: isQuiet, color: useColor, allowLocal });
 			}
 
 			let patchReport: VirtualPatchReport | undefined = undefined;

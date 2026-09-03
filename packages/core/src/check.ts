@@ -22,7 +22,7 @@ export async function sendRequest(
 	useEnhancedPayloads: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; rawPayload?: boolean },
+	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; rawPayload?: boolean; allowLocal?: boolean },
 ) {
 	const fetchFn = options?.fetch || globalThis.fetch;
 	try {
@@ -56,7 +56,7 @@ export async function sendRequest(
 		}
 
 		// Validate finalUrl after substitution to prevent SSRF
-		if (!isValidTargetUrl(finalUrl)) {
+		if (!isValidTargetUrl(finalUrl, { allowLocal: options?.allowLocal })) {
 			console.error(`Blocked SSRF attempt to: ${redactUrl(finalUrl)}`);
 			return { status: 'BLOCKED', is_redirect: false, responseTime: 0 };
 		}
@@ -115,7 +115,7 @@ export async function sendRequest(
 					if (!location) break;
 
 					const nextUrl = new URL(location, currentUrl).toString();
-					if (!isValidTargetUrl(nextUrl)) {
+					if (!isValidTargetUrl(nextUrl, { allowLocal: options?.allowLocal })) {
 						console.error(`Blocked SSRF redirect attempt to: ${redactUrl(nextUrl)}`);
 						return { status: 'BLOCKED', is_redirect: true, responseTime: Date.now() - startTime };
 					}
@@ -199,7 +199,7 @@ export async function handleApiCheckFiltered(
 	useEncodingVariations: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; isWorker?: boolean },
+	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; isWorker?: boolean; allowLocal?: boolean },
 ): Promise<any[]> {
 	const METHODS = methods && methods.length ? methods : ['GET'];
 	const results: any[] = [];

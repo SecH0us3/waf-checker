@@ -24,7 +24,7 @@ export async function runReverseEngineeringAudit(
 	url: string,
 	options?: ReverseEngineeringOptions,
 ): Promise<ReverseEngineeringReport> {
-	if (!isValidTargetUrl(url)) {
+	if (!isValidTargetUrl(url, { allowLocal: options?.allowLocal })) {
 		throw new Error('Invalid URL or restricted IP');
 	}
 
