@@ -837,5 +837,40 @@ describe('CLI Argument Processing', () => {
 
 			expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('GCP'));
 		});
+
+		it('should generate Azure, HAProxy, Caddy, and K8s patches when specific --waf is specified', async () => {
+			vi.mocked(fs.existsSync).mockReturnValue(true);
+			vi.mocked(fs.readFileSync).mockReturnValue(
+				JSON.stringify([
+					{
+						category: 'Sensitive Files',
+						method: 'GET',
+						payload: '/dump.sql',
+						status: 200,
+						responseTime: 40,
+					},
+				])
+			);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'patch', 'report.json', '--waf', 'azure'])
+			).resolves.toBeDefined();
+			expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('AZURE'));
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'patch', 'report.json', '--waf', 'haproxy'])
+			).resolves.toBeDefined();
+			expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('HAPROXY'));
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'patch', 'report.json', '--waf', 'caddy'])
+			).resolves.toBeDefined();
+			expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('CADDY'));
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'patch', 'report.json', '--waf', 'k8s'])
+			).resolves.toBeDefined();
+			expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('K8S'));
+		});
 	});
 });

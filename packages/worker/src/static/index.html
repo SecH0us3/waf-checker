@@ -455,13 +455,25 @@
 								<button class="nav-link" id="tab-aws" onclick="selectVpVendor('aws')">🟧 AWS WAF v2</button>
 							</li>
 							<li class="nav-item" role="presentation">
+								<button class="nav-link" id="tab-gcp" onclick="selectVpVendor('gcp')">☁️ Cloud Armor</button>
+							</li>
+							<li class="nav-item" role="presentation">
+								<button class="nav-link" id="tab-azure" onclick="selectVpVendor('azure')">🔷 Azure WAF</button>
+							</li>
+							<li class="nav-item" role="presentation">
 								<button class="nav-link" id="tab-modsecurity" onclick="selectVpVendor('modsecurity')">🛡️ ModSecurity</button>
 							</li>
 							<li class="nav-item" role="presentation">
 								<button class="nav-link" id="tab-nginx" onclick="selectVpVendor('nginx')">🟩 NGINX</button>
 							</li>
 							<li class="nav-item" role="presentation">
-								<button class="nav-link" id="tab-gcp" onclick="selectVpVendor('gcp')">☁️ Cloud Armor</button>
+								<button class="nav-link" id="tab-haproxy" onclick="selectVpVendor('haproxy')">🔶 HAProxy</button>
+							</li>
+							<li class="nav-item" role="presentation">
+								<button class="nav-link" id="tab-caddy" onclick="selectVpVendor('caddy')">🚀 Caddy</button>
+							</li>
+							<li class="nav-item" role="presentation">
+								<button class="nav-link" id="tab-k8s" onclick="selectVpVendor('k8s')">☸️ K8s Ingress</button>
 							</li>
 						</ul>
 
@@ -493,9 +505,10 @@
 							<div class="col-auto" id="vpFormatContainer">
 								<label class="form-label mb-0 small fw-bold">Format:</label>
 								<select id="vpFormatSelect" class="form-select form-select-sm" onchange="refreshVpCode()">
-									<option value="native" selected>Native Rules</option>
+									<option value="native" selected>Native Rules / Config</option>
 									<option value="terraform">Terraform (HCL)</option>
 									<option value="gcloud">gcloud CLI Command</option>
+									<option value="azureCli">Azure CLI Command</option>
 								</select>
 							</div>
 							<div class="col-auto ms-auto">
