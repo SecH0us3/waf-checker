@@ -158,7 +158,7 @@ export function escapeHclString(str: string): string {
  * Escapes strings for embedding inside NGINX configuration double-quoted regexes.
  */
 export function escapeNginxString(str: string): string {
-	return str.replace(/"/g, '\\"');
+	return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 /**
