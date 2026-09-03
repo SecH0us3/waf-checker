@@ -209,6 +209,13 @@ node packages/cli/dist/index.js check http://127.0.0.1:8088/ --allow-local --rev
 node packages/cli/dist/index.js check http://127.0.0.1:8089/ --allow-local --patch caddy
 ```
 
+#### 🧪 Automated Live Docker E2E Suite (`npm run test:e2e`)
+Run end-to-end integration audits against live Docker containers (ModSecurity CRS, Caddy, HAProxy, NGINX, and Backend) in one command:
+```bash
+npm run test:e2e
+```
+See the complete [Local WAF Testing & E2E Validation Guide](docs/LOCAL_WAF_TESTING.md) for full benchmarks, architecture diagrams, and manual reproduction steps.
+
 ---
 
 ## 🚀 GitHub Action (CI/CD)

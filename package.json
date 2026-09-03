@@ -13,6 +13,7 @@
   },
   "scripts": {
     "test": "npm run test --workspaces --if-present",
+    "test:e2e": "bash scripts/e2e-test-wafs.sh",
     "build": "npm run build --workspace=@waf-checker/core && npm run build --workspace=@waf-checker/cli",
     "dev:worker": "npm run dev --workspace=packages/worker"
   }

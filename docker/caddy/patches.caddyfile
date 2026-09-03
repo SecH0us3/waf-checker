@@ -1,0 +1,100 @@
+# --- WAF-Checker Virtual Patch: SQL Injection (Strict) ---
+@waf_patch_sql_injection_strict {
+    query "*=*' OR '1'='1*"
+    query "*=*1; DROP TABLE notablewaftest17 --*"
+    query "*=*admin' --*"
+    query "*=*' OR 1=1--*"
+    query "*=*' OR 'a'='a*"
+    query "*=*' OR 1=1#*"
+    query "*=*' OR 1=1/**"
+    query "*=*' OR SLEEP(5)--*"
+    query "*=*' OR 1=1 LIMIT 1;--*"
+    query "*=*WAITFOR DELAY '0:0:5'*"
+    query "*=*)) OR EXISTS(SELECT * FROM users WHERE username='admin')--*"
+    query "*=*%2553%2527%2520OR%25201%253D1*"
+    query "*=*/**/OR/**/1=1*"
+    query "*=*%2527%2520OR%25201%253D1--*"
+    query "*=*'/**/OR/**/1=1--*"
+    query "*=*'%09OR%091=1--*"
+    query "*=*'\u0020OR\u00201=1--*"
+    query "*=*0x27204f52203120314431--*"
+    query "*=*'UNION/*!50000SELECT*/1,2,3--*"
+}
+respond @waf_patch_sql_injection_strict 403
+
+# --- WAF-Checker Virtual Patch: SQL Injection (Heuristic) ---
+@waf_patch_sql_injection_heuristic {
+    expression {http.request.uri.query}.matches(r"(?i)(?:\b(?:union\s+(?:all\s+)?select|select\s+.*\bfrom|insert\s+into|delete\s+from|drop\s+table|update\s+.*\bset)\b|\bexec(?:ute)?\s*\(|'\s*(?:or|and)\s+['\d]=['\d]|--\s*$|;\s*--)")
+}
+respond @waf_patch_sql_injection_heuristic 403
+
+# --- WAF-Checker Virtual Patch: XSS (Strict) ---
+@waf_patch_xss_strict {
+    query "*=*<script>alert('xss')</script>*"
+    query "*=*<img src=x onerror=alert('xss')>*"
+    query "*=*<iframe src=\"javascript:alert('XSS')\"></iframe>*"
+    query "*=*<svg/onload=alert('xss')>*"
+    query "*=*<body onload=alert('xss')>*"
+    query "*=*<a href=javascript:alert('xss')>click</a>*"
+    query "*=*<math href=javascript:alert(1)>*"
+    query "*=*javascript:/*--></title></style></textarea></script></xmp><svg/onload='+/\"/+/onmouseover=1/+/[*/[]/+alert(1)//'*"
+    query "*=*<marquee onstart=alert(1)>*"
+    query "*=*';alert(String.fromCharCode(88,83,83))//';alert(String.fromCharCode(88,83,83))//\"*"
+    query "*=*<input onfocus=alert(1) autofocus>*"
+    query "*=*%253Cscript%253Ealert%25281%2529%253C%252Fscript%253E*"
+    query "*=*<img src=x onerror=\u0061\u006c\u0065\u0072\u0074\u0028\u0031\u0029>*"
+    query "*=*&#60;script&#62;alert&#40;1&#41;&#60;/script&#62;*"
+    query "*=*<ScRiPt>AlErT(1)</ScRiPt>*"
+    query "*=*javascript:\u0061\u006c\u0065\u0072\u0074\u0028\u0031\u0029*"
+    query "*=*<details open ontoggle=alert(1)>*"
+}
+respond @waf_patch_xss_strict 403
+
+# --- WAF-Checker Virtual Patch: XSS (Heuristic) ---
+@waf_patch_xss_heuristic {
+    expression {http.request.uri.query}.matches(r"(?i)(?:<script[^>]*>|javascript\s*:|\bon(?:error|load|click|mouseover|focus|blur)\s*=|alert\s*\(|document\.(?:cookie|location|domain)|eval\s*\()")
+}
+respond @waf_patch_xss_heuristic 403
+
+# --- WAF-Checker Virtual Patch: Path Traversal (Strict) ---
+@waf_patch_path_traversal_strict {
+    path *../../etc/passwd *../../../../../../../etc/passwd *.ini *..%2F..%2F..%2F..%2Fetc%2Fpasswd *..%c0%af..%c0%af..%c0%afetc%c0%afpasswd
+}
+respond @waf_patch_path_traversal_strict 403
+
+# --- WAF-Checker Virtual Patch: Path Traversal (Heuristic) ---
+@waf_patch_path_traversal_heuristic {
+    path_regexp "(?i)(?:\.\.[\/\\]){2,}|(?:%2e%2e[%2f%5c]){2,}|[\/\\]etc[\/\\](?:passwd|shadow|hosts)|[\/\\](?:boot\.ini|win\.ini|windows[\/\\]system32)"
+}
+respond @waf_patch_path_traversal_heuristic 403
+
+# --- WAF-Checker Virtual Patch: Command Injection (Strict) ---
+@waf_patch_command_injection_strict {
+    query "*=*$(cat /etc/passwd)*"
+    query "*=*| cat /etc/passwd*"
+    query "*=*; ls -la*"
+    query "*=*& whoami*"
+    query "*=*| id*"
+    query "*=*; ping -c 10 127.0.0.1*"
+    query "*=*| nc -lvp 4444*"
+}
+respond @waf_patch_command_injection_strict 403
+
+# --- WAF-Checker Virtual Patch: Command Injection (Heuristic) ---
+@waf_patch_command_injection_heuristic {
+    expression {http.request.uri.query}.matches(r"(?i)(?:;|\||&&|\n|\x60|\$\()\s*(?:cat|ls|id|whoami|curl|wget|bash|sh|powershell|cmd|nc|python|perl|echo)\b")
+}
+respond @waf_patch_command_injection_heuristic 403
+
+# --- WAF-Checker Virtual Patch: SSRF (Strict) ---
+@waf_patch_ssrf_strict {
+    query "*=*http://127.0.0.1/*"
+    query "*=*file:///etc/passwd*"
+}
+respond @waf_patch_ssrf_strict 403
+
+# --- WAF-Checker Virtual Patch: SSRF (Heuristic) ---
+@waf_patch_ssrf_heuristic {
+    expression {http.request.uri.query}.matches(r"(?i)(?:169\.254\.169\.254|metadata\.google\.internal|127\.0\.0\.1|0\.0\.0\.0|localhost|\[::1\]|instance-data|fd00:)")
+}
+respond @waf_patch_ssrf_heuristic 403
