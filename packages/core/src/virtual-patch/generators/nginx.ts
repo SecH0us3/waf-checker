@@ -60,7 +60,7 @@ export function generateNginxPatches(
 
 		// 1. Strict Hotfix Tier
 		if (options.tier !== 'heuristic') {
-			const tokens = [...new Set(items.map((it) => sanitizeStrictToken(it.payload)))];
+			const tokens = [...new Set(items.map((it) => sanitizeStrictToken(it.payload, category)))];
 			const escapedAlternation = tokens.map((tok) => escapeNginxString(escapeRegex(tok))).join('|');
 
 			const lines: string[] = [

@@ -162,14 +162,112 @@ export function escapeNginxString(str: string): string {
 }
 
 /**
- * Cleans and extracts a meaningful literal token from an attack payload for strict matching.
- * Trims extraneous whitespace while preserving essential attack signature tokens.
+ * Common sensitive file extensions and paths that should never be exposed or publicly served on web servers.
+ * When generating virtual patches, specific filenames (e.g. 'dump.sql', 'db.sql', 'database.sql') are
+ * consolidated into generic extension rules (e.g. '.sql') for broader perimeter defense and compact rules.
  */
-export function sanitizeStrictToken(payload: string): string {
-	return payload
-		.replace(/[\r\n]+/g, ' ')
-		.trim()
-		.slice(0, 200); // Reasonable bound for token matchers
+export const SENSITIVE_EXTENSIONS: readonly string[] = [
+	// Compound archive extensions (must precede single extensions)
+	'.tar.gz',
+	'.tar.bz2',
+	'.tar.xz',
+	// Databases & dumps
+	'.sql',
+	'.db',
+	'.sqlite',
+	'.sqlite3',
+	'.dump',
+	'.rdb',
+	'.mdb',
+	'.accdb',
+	// Backups & archives
+	'.bak',
+	'.old',
+	'.orig',
+	'.backup',
+	'.swp',
+	'.~',
+	'.sav',
+	'.save',
+	'.copy',
+	'.tar',
+	'.tgz',
+	'.gz',
+	'.bz2',
+	'.xz',
+	'.zip',
+	'.rar',
+	'.7z',
+	// Configs, secrets & environment
+	'.env',
+	'.ini',
+	'.conf',
+	'.cfg',
+	'.config',
+	'.yml',
+	'.yaml',
+	'.toml',
+	// Keys, certificates & keystores
+	'.key',
+	'.pem',
+	'.crt',
+	'.cer',
+	'.der',
+	'.p12',
+	'.pfx',
+	'.jks',
+	'.keystore',
+	'.pub',
+	// Logs
+	'.log',
+	// Scripts & executables
+	'.sh',
+	'.bash',
+	'.bat',
+	'.cmd',
+	'.ps1',
+	'.vbs',
+	// Source control & metadata
+	'.git',
+	'.svn',
+	'.hg',
+	'.ds_store',
+	'.htpasswd',
+	'.htaccess',
+];
+
+/**
+ * Cleans and extracts a meaningful literal token from an attack payload for strict matching.
+ * For sensitive file checks, consolidates specific filenames (e.g. "dump.sql", "db.sql") into
+ * their dangerous file extension (e.g. ".sql") or hidden directory prefix (e.g. ".git").
+ */
+export function sanitizeStrictToken(payload: string, category?: string): string {
+	const trimmed = payload.replace(/[\r\n]+/g, ' ').trim();
+	const normalized = trimmed.startsWith('/') ? trimmed.slice(1) : trimmed;
+
+	if (category === 'Sensitive Files' || category === 'Path Traversal') {
+		const lower = normalized.toLowerCase();
+
+		// Check hidden VCS / env directory paths first (e.g. .git/config -> .git)
+		if (lower.startsWith('.git') || lower.includes('/.git')) return '.git';
+		if (lower.startsWith('.env') || lower.includes('/.env')) return '.env';
+		if (lower.startsWith('.svn') || lower.includes('/.svn')) return '.svn';
+		if (lower.startsWith('.hg') || lower.includes('/.hg')) return '.hg';
+
+		// Check known sensitive extensions (.tar.gz before .gz, .sqlite3 before .sql, etc.)
+		for (const ext of SENSITIVE_EXTENSIONS) {
+			if (
+				lower.endsWith(ext) ||
+				lower.includes(`${ext}?`) ||
+				lower.includes(`${ext}#`) ||
+				lower.includes(`${ext}/`)
+			) {
+				return ext;
+			}
+		}
+	}
+
+	return trimmed.slice(0, 200);
 }
 
 /**

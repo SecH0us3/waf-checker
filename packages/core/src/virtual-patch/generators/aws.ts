@@ -67,7 +67,7 @@ export function generateAwsPatches(
 
 		// 1. Strict Hotfix Tier
 		if (options.tier !== 'heuristic') {
-			const tokens = [...new Set(items.map((it) => sanitizeStrictToken(it.payload)))];
+			const tokens = [...new Set(items.map((it) => sanitizeStrictToken(it.payload, category)))];
 			const byteStatements = tokens.map((tok) => ({
 				ByteMatchStatement: {
 					SearchString: tok,

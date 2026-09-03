@@ -80,9 +80,21 @@ export function generateVirtualPatches(
 			.filter((p) => p.terraformHcl)
 			.map((p) => p.terraformHcl!);
 
+		let nativeJoined = '';
+		if (v === 'cloudflare') {
+			// In Cloudflare Wirefilter, all expressions in the custom firewall rule must be
+			// joined with boolean 'or' so it forms a single, syntactically valid expression.
+			nativeJoined =
+				nativeParts.length <= 1
+					? nativeParts[0] || ''
+					: nativeParts.join(' or\n\n');
+		} else {
+			nativeJoined = nativeParts.join('\n\n');
+		}
+
 		bundles[v] = {
 			vendor: v,
-			native: nativeParts.join('\n\n'),
+			native: nativeJoined,
 			terraform: tfParts.length > 0 ? tfParts.join('\n\n') : undefined,
 			ruleCount: vendorPatches.length,
 		};
