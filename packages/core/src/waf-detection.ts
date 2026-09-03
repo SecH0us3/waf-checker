@@ -137,8 +137,8 @@ export class WAFDetector {
 	/**
 	 * Perform active WAF detection by sending probe requests
 	 */
-	static async activeDetection(url: string, options?: { fetch?: typeof fetch; isWorker?: boolean }): Promise<WAFDetectionResult> {
-		if (!isValidTargetUrl(url)) {
+	static async activeDetection(url: string, options?: { fetch?: typeof fetch; isWorker?: boolean; allowLocal?: boolean }): Promise<WAFDetectionResult> {
+		if (!isValidTargetUrl(url, { allowLocal: options?.allowLocal })) {
 			throw new Error('Invalid URL or restricted IP');
 		}
 		const fetchFn = options?.fetch || globalThis.fetch;
@@ -320,13 +320,13 @@ export class WAFDetector {
 	/**
 	 * Detect WAF bypass opportunities
 	 */
-	static async detectBypassOpportunities(url: string, options?: { fetch?: typeof fetch }): Promise<{
+	static async detectBypassOpportunities(url: string, options?: { fetch?: typeof fetch; allowLocal?: boolean }): Promise<{
 		httpMethodsBypass: boolean;
 		headerBypass: boolean;
 		encodingBypass: boolean;
 		parameterPollution: boolean;
 	}> {
-		if (!isValidTargetUrl(url)) {
+		if (!isValidTargetUrl(url, { allowLocal: options?.allowLocal })) {
 			throw new Error('Invalid URL or restricted IP');
 		}
 		const fetchFn = options?.fetch || globalThis.fetch;

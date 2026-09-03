@@ -75,4 +75,5 @@ export interface ReverseEngineeringOptions {
 	skipBodyLimit?: boolean;
 	skipAnomalyScore?: boolean;
 	maxRpsProbe?: number;
+	allowLocal?: boolean;
 }
