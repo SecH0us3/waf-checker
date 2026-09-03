@@ -1,0 +1,4 @@
+:80 {
+    import /etc/caddy/patches.caddyfile
+    reverse_proxy http://waf-test-backend:80
+}
