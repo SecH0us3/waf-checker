@@ -388,4 +388,43 @@ describe('Virtual Patching & Rule Generator', () => {
 			expect(cfBundle.native).toMatch(/\)\s+or\s+\(/);
 		});
 	});
+
+	describe('Idiomatic Rules (NGINX, ModSecurity, AWS WAF)', () => {
+		const sensitiveFiles: AuditResultItem[] = [
+			{ category: 'Sensitive Files', method: 'GET', payload: '/dump.sql', status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/backup.zip', status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/.git/config', status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/wp-config.php', status: 200, responseTime: 20 },
+		];
+
+		it('NGINX should generate native location blocks for Sensitive Files instead of if', () => {
+			const report = generateVirtualPatches(sensitiveFiles, { vendor: 'nginx', tier: 'strict' });
+			const patch = report.patches[0];
+			expect(patch.nativeRule).toContain('location ~* \\.');
+			expect(patch.nativeRule).toContain('location ~ /\\.(?:git)');
+			expect(patch.nativeRule).toContain('location ~* /(wp-config\\.php)');
+			expect(patch.nativeRule).toContain('return 403;');
+		});
+
+		it('ModSecurity should generate a single @pm rule for multi-token sensitive file checks', () => {
+			const report = generateVirtualPatches(sensitiveFiles, { vendor: 'modsecurity', tier: 'strict' });
+			const patch = report.patches[0];
+			expect(patch.nativeRule).toContain('@pm');
+			expect(patch.nativeRule).toContain('.sql');
+			expect(patch.nativeRule).toContain('.zip');
+			expect(patch.nativeRule).toContain('.git');
+			expect(patch.nativeRule).toContain('wp-config.php');
+			expect(patch.nativeRule).not.toContain('@contains');
+		});
+
+		it('AWS WAF bundle should format multiple rules as a valid JSON array', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'aws' });
+			const awsBundle = report.bundles.aws;
+			expect(awsBundle.ruleCount).toBeGreaterThan(1);
+			expect(() => JSON.parse(awsBundle.native)).not.toThrow();
+			const parsed = JSON.parse(awsBundle.native);
+			expect(Array.isArray(parsed)).toBe(true);
+			expect(parsed[0].Name).toBeDefined();
+		});
+	});
 });

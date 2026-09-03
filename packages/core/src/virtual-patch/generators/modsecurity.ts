@@ -66,22 +66,40 @@ export function generateModSecurityPatches(
 				`# ------------------------------------------------------------------------`,
 			];
 
-			tokens.forEach((token) => {
-				const escapedToken = token.replace(/"/g, '\\"');
+			const allTokensSingleWord = tokens.length > 1 && tokens.every((t) => !/\s/.test(t));
+			if (allTokensSingleWord) {
+				const pmTokens = tokens.map((t) => t.replace(/"/g, '\\"')).join(' ');
 				if (urlPath) {
 					lines.push(
 						`SecRule REQUEST_URI "@beginsWith ${urlPath}" \\`,
 						`    "id:${currentId},phase:2,chain,${actionStr},t:none,msg:'${actionPrefix}WAF-Checker Virtual Patch: ${category}',tag:'waf-checker',tag:'virtual-patch'"`,
-						`    SecRule ${targetVar} "@contains ${escapedToken}" "t:none,t:urlDecodeUni,t:lowercase"`
+						`    SecRule ${targetVar} "@pm ${pmTokens}" "t:none,t:urlDecodeUni,t:lowercase"`
 					);
 				} else {
 					lines.push(
-						`SecRule ${targetVar} "@contains ${escapedToken}" \\`,
+						`SecRule ${targetVar} "@pm ${pmTokens}" \\`,
 						`    "id:${currentId},phase:2,${actionStr},t:none,t:urlDecodeUni,t:lowercase,msg:'${actionPrefix}WAF-Checker Virtual Patch: ${category}',tag:'waf-checker',tag:'virtual-patch'"`
 					);
 				}
 				currentId++;
-			});
+			} else {
+				tokens.forEach((token) => {
+					const escapedToken = token.replace(/"/g, '\\"');
+					if (urlPath) {
+						lines.push(
+							`SecRule REQUEST_URI "@beginsWith ${urlPath}" \\`,
+							`    "id:${currentId},phase:2,chain,${actionStr},t:none,msg:'${actionPrefix}WAF-Checker Virtual Patch: ${category}',tag:'waf-checker',tag:'virtual-patch'"`,
+							`    SecRule ${targetVar} "@contains ${escapedToken}" "t:none,t:urlDecodeUni,t:lowercase"`
+						);
+					} else {
+						lines.push(
+							`SecRule ${targetVar} "@contains ${escapedToken}" \\`,
+							`    "id:${currentId},phase:2,${actionStr},t:none,t:urlDecodeUni,t:lowercase,msg:'${actionPrefix}WAF-Checker Virtual Patch: ${category}',tag:'waf-checker',tag:'virtual-patch'"`
+						);
+					}
+					currentId++;
+				});
+			}
 
 			const nativeRule = lines.join('\n');
 			patches.push({

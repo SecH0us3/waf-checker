@@ -88,6 +88,18 @@ export function generateVirtualPatches(
 				nativeParts.length <= 1
 					? nativeParts[0] || ''
 					: nativeParts.join(' or\n\n');
+		} else if (v === 'aws') {
+			// Format multiple AWS WAF rules as a valid JSON array for AWS CLI / CloudFormation
+			if (nativeParts.length <= 1) {
+				nativeJoined = nativeParts[0] || '';
+			} else {
+				try {
+					const parsed = nativeParts.map((p) => JSON.parse(p));
+					nativeJoined = JSON.stringify(parsed, null, 2);
+				} catch {
+					nativeJoined = nativeParts.join('\n\n');
+				}
+			}
 		} else {
 			nativeJoined = nativeParts.join('\n\n');
 		}
