@@ -160,9 +160,34 @@ describe('WAF Checker API', () => {
 		const fn = new Function('window', 'document', 'setTimeout', code + '\nreturn renderReport;');
 		const renderReport = fn(sandbox.window, sandbox.document, sandbox.setTimeout);
 		const html = renderReport([
-			{ category: 'SQL Injection', method: 'GET', payload: 'union select', status: 200, responseTime: 120 }
+			{ category: 'SQL Injection', method: 'GET', payload: 'union select', status: 200, responseTime: 120 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/.git/config', status: 404, responseTime: 95 },
 		], false);
 		expect(html).toContain('120ms');
-		expect(html).toContain('🛡️ Patch');
+		expect(html).toContain('95ms');
+		expect(html).toContain('btn-outline-danger');
+		expect(html).toContain('btn-outline-warning');
+		expect(html).toContain('showVirtualPatchModal(\'misses\')');
+	});
+
+	it('handles /api/virtual-patch with includeMisses: true for 404 status vectors', async () => {
+		const response = await SELF.fetch('https://example.com/api/virtual-patch', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({
+				results: [
+					{ category: 'Sensitive Files', method: 'GET', payload: '/.git/config', status: 404, responseTime: 30 },
+				],
+				options: {
+					vendor: 'cloudflare',
+					includeMisses: true,
+				},
+			}),
+		});
+		expect(response.status).toBe(200);
+		const data: any = await response.json();
+		expect(data.totalBypasses).toBe(1);
+		expect(data.bundles.cloudflare.ruleCount).toBeGreaterThan(0);
+		expect(data.bundles.cloudflare.native).toContain('.git');
 	});
 });

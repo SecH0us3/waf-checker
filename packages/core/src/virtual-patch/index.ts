@@ -19,9 +19,23 @@ export * from './generators/modsecurity';
 export * from './generators/nginx';
 
 /**
- * Filters audit results to isolate confirmed WAF bypasses (HTTP 200).
+ * Filters audit results to isolate confirmed WAF bypasses (HTTP 200)
+ * and optionally WAF misses (e.g. 404 Not Found, 5xx Server Errors).
  */
-export function filterBypasses(results: AuditResultItem[]): AuditResultItem[] {
+export function filterBypasses(
+	results: AuditResultItem[],
+	options: { includeMisses?: boolean; statusCodes?: number[] } = {}
+): AuditResultItem[] {
+	if (options.statusCodes && options.statusCodes.length > 0) {
+		const set = new Set(options.statusCodes.map(String));
+		return results.filter((r) => set.has(String(r.status)));
+	}
+	if (options.includeMisses) {
+		return results.filter((r) => {
+			const s = parseInt(String(r.status), 10);
+			return s === 200 || s === 404 || (s >= 500 && s < 600);
+		});
+	}
 	return results.filter((r) => r.status === 200 || r.status === '200');
 }
 
@@ -33,7 +47,7 @@ export function generateVirtualPatches(
 	results: AuditResultItem[],
 	options: VirtualPatchOptions = {}
 ): VirtualPatchReport {
-	const bypasses = filterBypasses(results);
+	const bypasses = filterBypasses(results, options);
 	const targetVendor = options.vendor || 'all';
 	const allPatches: GeneratedPatch[] = [];
 

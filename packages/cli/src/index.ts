@@ -185,6 +185,7 @@ checkCmd
 	.option('--patch-tier <tier>', 'Defense tier: strict (exact token), heuristic (regex pattern), or both', 'both')
 	.option('--patch-action <action>', 'Rule action: block or simulate', 'block')
 	.option('--patch-scope', 'Scope virtual patches to the target URL path', false)
+	.option('--patch-include-misses', 'Include 404 Not Found and 5xx origin responses in virtual patch generation', false)
 	.option('-q, --quiet', 'Suppress per-request logging, displaying only final results')
 	.option('--silent', 'Alias for --quiet')
 	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
@@ -245,6 +246,7 @@ checkCmd
 					tier: options.patchTier as PatchTier,
 					action: options.patchAction as PatchAction,
 					scopeToPath: Boolean(options.patchScope),
+					includeMisses: Boolean(options.patchIncludeMisses),
 					targetUrl: url,
 				});
 
@@ -603,6 +605,7 @@ program
 	.option('-a, --action <action>', 'Rule action: block or simulate', 'block')
 	.option('-o, --output <path>', 'Output file or directory to write patches to')
 	.option('--scope-to-path', 'Scope rules to target URL path if present in report', false)
+	.option('--include-misses', 'Include 404 Not Found and 5xx origin responses in virtual patch generation', false)
 	.option('--json', 'Output patch report in JSON format', false)
 	.action(async (file: string, options: any) => {
 		try {
@@ -622,6 +625,7 @@ program
 				tier: options.tier as PatchTier,
 				action: options.action as PatchAction,
 				scopeToPath: Boolean(options.scopeToPath),
+				includeMisses: Boolean(options.includeMisses),
 				targetUrl,
 			});
 

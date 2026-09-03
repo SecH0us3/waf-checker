@@ -95,8 +95,15 @@ function renderReport(results, falsePositiveMode = false) {
 		} else {
 			codeClass = r.status == 403 || r.status == '403' ? ' payload-green' : '';
 		}
+		const codeNum = parseInt(r.status, 10);
 		const isBypass = (r.status == 200 || r.status == '200') && !falsePositiveMode;
-		const patchBtn = isBypass ? `<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 ms-2" style="font-size:0.7rem;" onclick="showVirtualPatchModal()" title="Remediate this bypass">🛡️ Patch</button>` : '';
+		const isMiss = !falsePositiveMode && !isBypass && (codeNum === 404 || (codeNum >= 500 && codeNum < 600));
+		let patchBtn = '';
+		if (isBypass) {
+			patchBtn = `<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 ms-2" style="font-size:0.7rem;" onclick="showVirtualPatchModal('bypasses')" title="Remediate this bypass (200 OK)">🛡️ Patch</button>`;
+		} else if (isMiss) {
+			patchBtn = `<button type="button" class="btn btn-sm btn-outline-warning py-0 px-1 ms-2" style="font-size:0.7rem;" onclick="showVirtualPatchModal('misses')" title="Remediate this unprotected vector (WAF Miss: Status ${r.status})">🛡️ Patch</button>`;
+		}
 		const responseTime = r.responseTime || 0;
 		html +=
 			`<tr data-status='${r.status}'>` +
@@ -431,11 +438,35 @@ async function fetchResults() {
 
 		window.latestScanResults = allResults;
 		const bypasses = allResults.filter((r) => r.status === 200 || r.status === '200');
+		const misses = allResults.filter((r) => {
+			const s = parseInt(String(r.status), 10);
+			return s === 404 || (s >= 500 && s < 600);
+		});
 		const vpBanner = document.getElementById('virtualPatchBanner');
 		const vpCountBadge = document.getElementById('virtualPatchBypassCount');
+		const vpTitle = document.getElementById('virtualPatchBannerTitle');
+		const vpSubtitle = document.getElementById('virtualPatchBannerSubtitle');
 		if (vpBanner && vpCountBadge) {
-			if (bypasses.length > 0 && !falsePositiveTest) {
-				vpCountBadge.textContent = bypasses.length;
+			if ((bypasses.length > 0 || misses.length > 0) && !falsePositiveTest) {
+				if (bypasses.length > 0) {
+					vpCountBadge.textContent = bypasses.length;
+					if (vpTitle) {
+						vpTitle.textContent = misses.length > 0
+							? `WAF Bypass(es) & ${misses.length} Unprotected Miss(es) Detected!`
+							: 'WAF Bypass(es) Detected!';
+					}
+					if (vpSubtitle) {
+						vpSubtitle.textContent = 'Generate instant virtual patches for Cloudflare, AWS WAF, ModSecurity, and NGINX to mitigate these risks immediately.';
+					}
+				} else {
+					vpCountBadge.textContent = misses.length;
+					if (vpTitle) {
+						vpTitle.textContent = 'Unprotected Attack Vectors (404/5xx) Detected!';
+					}
+					if (vpSubtitle) {
+						vpSubtitle.textContent = 'These attack requests reached your origin server without WAF interception. Generate perimeter rules to block them.';
+					}
+				}
 				vpBanner.style.display = 'flex';
 			} else {
 				vpBanner.style.display = 'none';
@@ -605,7 +636,7 @@ function renderReverseEngineering(report) {
 let currentVpVendor = 'cloudflare';
 let currentVpReport = null;
 
-async function showVirtualPatchModal() {
+async function showVirtualPatchModal(initialScope) {
 	const results = window.latestScanResults || [];
 	const modalEl = document.getElementById('virtualPatchModal');
 	if (!modalEl) return;
@@ -613,14 +644,35 @@ async function showVirtualPatchModal() {
 	const modal = new bootstrap.Modal(modalEl);
 
 	const bypasses = results.filter((r) => r.status === 200 || r.status === '200');
+	const misses = results.filter((r) => {
+		const s = parseInt(String(r.status), 10);
+		return s === 404 || (s >= 500 && s < 600);
+	});
+
+	const scopeSelect = document.getElementById('vpVectorScopeSelect');
+	if (scopeSelect) {
+		if (initialScope === 'misses') {
+			scopeSelect.value = 'misses';
+		} else if (initialScope === 'all') {
+			scopeSelect.value = 'all';
+		} else if (initialScope === 'bypasses') {
+			scopeSelect.value = 'bypasses';
+		} else {
+			scopeSelect.value = bypasses.length > 0 ? 'bypasses' : misses.length > 0 ? 'all' : 'bypasses';
+		}
+	}
+
 	const noBypassesAlert = document.getElementById('vpNoBypassesAlert');
 	const contentContainer = document.getElementById('vpContentContainer');
 
-	if (bypasses.length === 0) {
-		if (noBypassesAlert) noBypassesAlert.style.display = 'block';
+	if (bypasses.length === 0 && misses.length === 0) {
+		if (noBypassesAlert) {
+			noBypassesAlert.style.display = 'block';
+			noBypassesAlert.textContent = 'All tested attack payloads were successfully blocked by the WAF (403 Forbidden). No patches required!';
+		}
 		if (contentContainer) contentContainer.style.display = 'none';
 		const badge = document.getElementById('vpRuleCountBadge');
-		if (badge) badge.textContent = '0 bypasses to patch';
+		if (badge) badge.textContent = '0 vectors to patch';
 		const copyBtn = document.getElementById('vpCopyBtn');
 		if (copyBtn) copyBtn.disabled = true;
 		const downloadBtn = document.getElementById('vpDownloadBtn');
@@ -689,22 +741,38 @@ async function refreshVpCode() {
 	const urlInput = document.getElementById('url');
 	const targetUrl = urlInput ? urlInput.value : '';
 
+	const vectorScope = document.getElementById('vpVectorScopeSelect')?.value || 'bypasses';
 	const tier = document.getElementById('vpTierSelect')?.value || 'both';
 	const action = document.getElementById('vpActionSelect')?.value || 'block';
 	const scopeToPath = document.getElementById('vpScopeCheckbox')?.checked || false;
+
+	let payloadResults = results;
+	let includeMisses = false;
+	if (vectorScope === 'bypasses') {
+		payloadResults = results.filter((r) => r.status === 200 || r.status === '200');
+	} else if (vectorScope === 'misses') {
+		payloadResults = results.filter((r) => {
+			const s = parseInt(String(r.status), 10);
+			return s === 404 || (s >= 500 && s < 600);
+		});
+		includeMisses = true;
+	} else if (vectorScope === 'all') {
+		includeMisses = true;
+	}
 
 	try {
 		const res = await fetch('/api/virtual-patch', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				results,
+				results: payloadResults,
 				options: {
 					vendor: 'all',
 					tier,
 					action,
 					scopeToPath,
 					targetUrl,
+					includeMisses,
 				},
 			}),
 		});
