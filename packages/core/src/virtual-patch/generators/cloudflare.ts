@@ -68,7 +68,7 @@ export function generateCloudflarePatches(
 
 		// 1. Strict Hotfix Tier
 		if (options.tier !== 'heuristic') {
-			const tokens = Array.from(new Set(items.map((i) => sanitizeStrictToken(i.payload)))).filter(Boolean);
+			const tokens = Array.from(new Set(items.map((i) => sanitizeStrictToken(i.payload, category)))).filter(Boolean);
 			const matchClauses = tokens.map(
 				(t) => `(lower(${cfField}) contains "${t.replace(/\\/g, '\\\\').replace(/"/g, '\\"').toLowerCase()}")`
 			);

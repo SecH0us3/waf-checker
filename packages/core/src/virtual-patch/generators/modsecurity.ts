@@ -58,7 +58,7 @@ export function generateModSecurityPatches(
 
 		// 1. Strict Hotfix Tier
 		if (options.tier !== 'heuristic') {
-			const tokens = [...new Set(items.map((it) => sanitizeStrictToken(it.payload)))];
+			const tokens = [...new Set(items.map((it) => sanitizeStrictToken(it.payload, category)))];
 			const lines: string[] = [
 				`# ------------------------------------------------------------------------`,
 				`# WAF-Checker Virtual Patch: ${category} (Strict)`,

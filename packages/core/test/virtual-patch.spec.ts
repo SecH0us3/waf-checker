@@ -77,8 +77,18 @@ describe('Virtual Patching & Rule Generator', () => {
 			expect(escapeRegex('127.0.0.1')).toBe('127\\.0\\.0\\.1');
 		});
 
-		it('should sanitize strict tokens properly', () => {
+		it('should sanitize strict tokens properly and consolidate sensitive extensions', () => {
 			expect(sanitizeStrictToken("  ' OR '1'='1 \n")).toBe("' OR '1'='1");
+			expect(sanitizeStrictToken('/dump.sql', 'Sensitive Files')).toBe('.sql');
+			expect(sanitizeStrictToken('database.sql', 'Sensitive Files')).toBe('.sql');
+			expect(sanitizeStrictToken('db.sql', 'Sensitive Files')).toBe('.sql');
+			expect(sanitizeStrictToken('backup.tar.gz', 'Sensitive Files')).toBe('.tar.gz');
+			expect(sanitizeStrictToken('backup.zip', 'Sensitive Files')).toBe('.zip');
+			expect(sanitizeStrictToken('server.key', 'Sensitive Files')).toBe('.key');
+			expect(sanitizeStrictToken('server.pem', 'Sensitive Files')).toBe('.pem');
+			expect(sanitizeStrictToken('.git/config', 'Sensitive Files')).toBe('.git');
+			expect(sanitizeStrictToken('.env', 'Sensitive Files')).toBe('.env');
+			expect(sanitizeStrictToken('wp-config.php', 'Sensitive Files')).toBe('wp-config.php');
 		});
 
 		it('should detect inspection location correctly', () => {
@@ -348,6 +358,34 @@ describe('Virtual Patching & Rule Generator', () => {
 			const gitPatch = report.patches.find((p) => p.category === 'Sensitive Files');
 			expect(gitPatch).toBeDefined();
 			expect(gitPatch?.nativeRule).toContain('.git');
+		});
+	});
+
+	describe('Cloudflare Wirefilter & Extension Consolidation', () => {
+		it('should consolidate dump.sql and db.sql into a single .sql match in Cloudflare rules', () => {
+			const sqlFiles: AuditResultItem[] = [
+				{ category: 'Sensitive Files', method: 'GET', payload: '/dump.sql', status: 200, responseTime: 20 },
+				{ category: 'Sensitive Files', method: 'GET', payload: '/db.sql', status: 200, responseTime: 20 },
+				{ category: 'Sensitive Files', method: 'GET', payload: '/database.sql', status: 200, responseTime: 20 },
+			];
+
+			const report = generateVirtualPatches(sqlFiles, { vendor: 'cloudflare', tier: 'strict' });
+			const cfBundle = report.bundles.cloudflare;
+			expect(cfBundle.native).toContain('contains ".sql"');
+			expect(cfBundle.native).not.toContain('contains "dump.sql"');
+			expect(cfBundle.native).not.toContain('contains "db.sql"');
+		});
+
+		it('should join multiple Cloudflare rules with boolean "or" in native bundle for valid Wirefilter syntax', () => {
+			const mixed: AuditResultItem[] = [
+				{ category: 'Sensitive Files', method: 'GET', payload: '/dump.sql', status: 200, responseTime: 20 },
+			];
+
+			const report = generateVirtualPatches(mixed, { vendor: 'cloudflare', tier: 'both' });
+			const cfBundle = report.bundles.cloudflare;
+			expect(cfBundle.ruleCount).toBe(2);
+			expect(cfBundle.native).toContain(' or\n\n');
+			expect(cfBundle.native).toMatch(/\)\s+or\s+\(/);
 		});
 	});
 });
