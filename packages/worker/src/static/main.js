@@ -694,6 +694,8 @@ async function showVirtualPatchModal(initialScope) {
 		currentVpVendor = 'cloudflare';
 	} else if (detectedWAF.includes('aws') || detectedWAF.includes('amazon')) {
 		currentVpVendor = 'aws';
+	} else if (detectedWAF.includes('cloud armor') || detectedWAF.includes('gcp') || detectedWAF.includes('google')) {
+		currentVpVendor = 'gcp';
 	} else if (detectedWAF.includes('modsecurity') || detectedWAF.includes('coraza')) {
 		currentVpVendor = 'modsecurity';
 	} else if (detectedWAF.includes('nginx')) {
@@ -706,7 +708,7 @@ async function showVirtualPatchModal(initialScope) {
 }
 
 function updateVpTabs() {
-	const vendors = ['cloudflare', 'aws', 'modsecurity', 'nginx'];
+	const vendors = ['cloudflare', 'aws', 'modsecurity', 'nginx', 'gcp'];
 	vendors.forEach((v) => {
 		const btn = document.getElementById(`tab-${v}`);
 		if (btn) {
@@ -718,13 +720,23 @@ function updateVpTabs() {
 		}
 	});
 
-	// Toggle Terraform option visibility (only Cloudflare & AWS support it)
+	// Toggle Terraform and gcloud option visibility
 	const formatContainer = document.getElementById('vpFormatContainer');
 	const formatSelect = document.getElementById('vpFormatSelect');
-	if (formatContainer) {
-		const supportsTf = currentVpVendor === 'cloudflare' || currentVpVendor === 'aws';
-		formatContainer.style.display = supportsTf ? 'block' : 'none';
-		if (!supportsTf && formatSelect) {
+	if (formatContainer && formatSelect) {
+		const supportsTf = currentVpVendor === 'cloudflare' || currentVpVendor === 'aws' || currentVpVendor === 'gcp';
+		const supportsGcloud = currentVpVendor === 'gcp';
+
+		const tfOpt = formatSelect.querySelector('option[value="terraform"]');
+		const gcloudOpt = formatSelect.querySelector('option[value="gcloud"]');
+		if (tfOpt) tfOpt.style.display = supportsTf ? 'block' : 'none';
+		if (gcloudOpt) gcloudOpt.style.display = supportsGcloud ? 'block' : 'none';
+
+		formatContainer.style.display = (supportsTf || supportsGcloud) ? 'block' : 'none';
+		if (!supportsTf && formatSelect.value === 'terraform') {
+			formatSelect.value = 'native';
+		}
+		if (!supportsGcloud && formatSelect.value === 'gcloud') {
 			formatSelect.value = 'native';
 		}
 	}
@@ -812,6 +824,8 @@ function renderVpCode() {
 	let content = bundle.native;
 	if (format === 'terraform' && bundle.terraform) {
 		content = bundle.terraform;
+	} else if (format === 'gcloud' && bundle.gcloud) {
+		content = bundle.gcloud;
 	}
 
 	if (viewer) {
@@ -845,8 +859,12 @@ function downloadVpCode() {
 	let ext = '.conf';
 	if (format === 'terraform') {
 		ext = '.tf';
+	} else if (format === 'gcloud') {
+		ext = '.sh';
 	} else if (currentVpVendor === 'aws') {
 		ext = '.json';
+	} else if (currentVpVendor === 'gcp') {
+		ext = '.cel';
 	}
 
 	const filename = `${currentVpVendor}-virtual-patches${ext}`;

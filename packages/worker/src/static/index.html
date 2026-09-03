@@ -460,6 +460,9 @@
 							<li class="nav-item" role="presentation">
 								<button class="nav-link" id="tab-nginx" onclick="selectVpVendor('nginx')">🟩 NGINX</button>
 							</li>
+							<li class="nav-item" role="presentation">
+								<button class="nav-link" id="tab-gcp" onclick="selectVpVendor('gcp')">☁️ Cloud Armor</button>
+							</li>
 						</ul>
 
 						<!-- Options toolbar -->
@@ -492,6 +495,7 @@
 								<select id="vpFormatSelect" class="form-select form-select-sm" onchange="refreshVpCode()">
 									<option value="native" selected>Native Rules</option>
 									<option value="terraform">Terraform (HCL)</option>
+									<option value="gcloud">gcloud CLI Command</option>
 								</select>
 							</div>
 							<div class="col-auto ms-auto">
