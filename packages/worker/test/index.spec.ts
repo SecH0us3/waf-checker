@@ -141,4 +141,28 @@ describe('WAF Checker API', () => {
 		const data = await response.json();
 		expect(data.error).toBe('Invalid URL or restricted IP');
 	});
+
+	it('serves main.js and renderReport renders table with responseTime without errors', async () => {
+		const response = await SELF.fetch('https://example.com/main.js');
+		expect(response.status).toBe(200);
+		const code = await response.text();
+
+		const sandbox = {
+			window: {} as any,
+			document: {
+				querySelectorAll: () => [],
+				getElementById: () => null,
+				addEventListener: () => {},
+				createElement: () => ({ set textContent(v: string) { (this as any)._v = v; }, get innerHTML() { return (this as any)._v; } }),
+			} as any,
+			setTimeout: (fn: Function) => fn(),
+		};
+		const fn = new Function('window', 'document', 'setTimeout', code + '\nreturn renderReport;');
+		const renderReport = fn(sandbox.window, sandbox.document, sandbox.setTimeout);
+		const html = renderReport([
+			{ category: 'SQL Injection', method: 'GET', payload: 'union select', status: 200, responseTime: 120 }
+		], false);
+		expect(html).toContain('120ms');
+		expect(html).toContain('🛡️ Patch');
+	});
 });

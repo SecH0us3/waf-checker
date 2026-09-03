@@ -97,6 +97,7 @@ function renderReport(results, falsePositiveMode = false) {
 		}
 		const isBypass = (r.status == 200 || r.status == '200') && !falsePositiveMode;
 		const patchBtn = isBypass ? `<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 ms-2" style="font-size:0.7rem;" onclick="showVirtualPatchModal()" title="Remediate this bypass">🛡️ Patch</button>` : '';
+		const responseTime = r.responseTime || 0;
 		html +=
 			`<tr data-status='${r.status}'>` +
 			`<td>${r.category}</td>` +
