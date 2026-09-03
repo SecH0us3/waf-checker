@@ -32,7 +32,7 @@ export async function detectBodyInspectionLimit(
 		false,
 		undefined,
 		undefined,
-		{ fetch: options?.fetch, quiet: true },
+		{ fetch: options?.fetch, quiet: true, allowLocal: options?.allowLocal },
 	);
 
 	if (!baselineRes || baselineRes.status !== 403) {
@@ -61,7 +61,7 @@ export async function detectBodyInspectionLimit(
 			false,
 			undefined,
 			undefined,
-			{ fetch: options?.fetch, quiet: true },
+			{ fetch: options?.fetch, quiet: true, allowLocal: options?.allowLocal },
 		);
 
 		if (res && res.status !== 403 && res.status !== 'ERR' && res.status !== 'BLOCKED') {
@@ -100,7 +100,7 @@ export async function detectBodyInspectionLimit(
 			false,
 			undefined,
 			undefined,
-			{ fetch: options?.fetch, quiet: true },
+			{ fetch: options?.fetch, quiet: true, allowLocal: options?.allowLocal },
 		);
 
 		if (res && res.status !== 403 && res.status !== 'ERR' && res.status !== 'BLOCKED') {
