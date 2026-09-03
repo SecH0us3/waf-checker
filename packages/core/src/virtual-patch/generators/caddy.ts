@@ -79,11 +79,11 @@ export function generateCaddyPatches(
 			} else if (location === 'header') {
 				const hdrName = category === 'User-Agent' ? 'User-Agent' : 'Authorization';
 				for (const tok of tokens) {
-					lines.push(`    header ${hdrName} *${tok}*`);
+					lines.push(`    header ${hdrName} "*${tok.replace(/"/g, '\\"')}*"`);
 				}
 			} else {
 				for (const tok of tokens) {
-					lines.push(`    query *${tok.replace(/\s+/g, '*')}*`);
+					lines.push(`    query "*=*${tok.replace(/"/g, '\\"')}*"`);
 				}
 			}
 
@@ -120,13 +120,15 @@ export function generateCaddyPatches(
 				lines.push(`    path ${urlPath}*`);
 			}
 
+			const cleanPattern = rawPattern.startsWith('(?i)') ? rawPattern : `(?i)${rawPattern}`;
 			if (location === 'uri') {
-				lines.push(`    path_regexp "(?i)${rawPattern.replace(/"/g, '\\"')}"`);
+				lines.push(`    path_regexp "${cleanPattern.replace(/"/g, '\\"')}"`);
 			} else if (location === 'header') {
 				const hdrName = category === 'User-Agent' ? 'User-Agent' : 'Authorization';
-				lines.push(`    header_regexp ${hdrName} "(?i)${rawPattern.replace(/"/g, '\\"')}"`);
+				lines.push(`    header_regexp ${hdrName} "${cleanPattern.replace(/"/g, '\\"')}"`);
 			} else {
-				lines.push(`    query_regexp "(?i)${rawPattern.replace(/"/g, '\\"')}"`);
+				const celPattern = cleanPattern.replace(/"/g, '\\x22');
+				lines.push(`    expression {http.request.uri.query}.matches(r"${celPattern}")`);
 			}
 
 			lines.push(`}`);

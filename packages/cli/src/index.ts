@@ -254,7 +254,7 @@ checkCmd
 
 				if (options.patchOutput && patchReport.patches.length > 0) {
 					const outPath = path.resolve(options.patchOutput);
-					if (outPath.endsWith('.tf') || outPath.endsWith('.conf') || outPath.endsWith('.json') || outPath.endsWith('.txt')) {
+					if (outPath.endsWith('.tf') || outPath.endsWith('.conf') || outPath.endsWith('.json') || outPath.endsWith('.txt') || outPath.endsWith('.caddyfile') || outPath.endsWith('.cfg') || outPath.endsWith('.yaml')) {
 						const dir = path.dirname(outPath);
 						if (dir && !fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 						const bundledContent = Object.values(patchReport.bundles)

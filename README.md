@@ -4,7 +4,7 @@
 [![GitHub Action](https://img.shields.io/badge/action-v1-blue?logo=githubactions&logoColor=white)](https://github.com/SecH0us3/waf-checker/releases)
 [![Coverage: Core](https://img.shields.io/badge/coverage%3A%20core-93.0%25-brightgreen)](packages/core)
 [![Coverage: CLI](https://img.shields.io/badge/coverage%3A%20cli-93.5%25-brightgreen)](packages/cli)
-[![Tests](https://img.shields.io/badge/tests-300%20passed-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-362%20passed-brightgreen)]()
 
 This project helps you check how well your Web Application Firewall (WAF) protects your product against common web attacks. It can be run as a Cloudflare Worker (with a built-in interactive Web UI) or as a standalone Node.js CLI tool.
 
@@ -14,10 +14,10 @@ All packages are thoroughly tested with automated unit, integration, property-ba
 
 | Package | Line Coverage | Statements | Functions | Test Suite |
 | :--- | :---: | :---: | :---: | :---: |
-| [**`@waf-checker/core`**](packages/core) | `93.0%` 🟢 | `92.6%` | `96.4%` | 🟢 221 passing |
-| [**`@waf-checker/cli`**](packages/cli) | `93.5%` 🟢 | `92.8%` | `96.7%` | 🟢 49 passing |
+| [**`@waf-checker/core`**](packages/core) | `93.0%` 🟢 | `92.6%` | `96.4%` | 🟢 278 passing |
+| [**`@waf-checker/cli`**](packages/cli) | `93.5%` 🟢 | `92.8%` | `96.7%` | 🟢 54 passing |
 | [**`@waf-checker/worker`**](packages/worker) | `Passing` 🟢 | — | — | 🟢 30 passing |
-| **Total Monorepo Suite** | **`93.2%`** | **`92.7%`** | **`96.6%`** | **🟢 300 tests passing** |
+| **Total Monorepo Suite** | **`93.2%`** | **`92.7%`** | **`96.6%`** | **🟢 362 tests passing** |
 
 ## Features
 
@@ -34,16 +34,21 @@ All packages are thoroughly tested with automated unit, integration, property-ba
 - **Safe Rate Limit Probing**: Safe ramp-up up to 30 req/s with immediate early termination upon HTTP 429 and `Retry-After` extraction.
 
 ### 🛡️ WAF Virtual Patching & Auto-Remediation (`--patch` / `patch` command)
-- **Instant Mitigation**: Automatically transforms detected WAF bypasses (HTTP 200) into ready-to-deploy firewall rules and Infrastructure-as-Code (Terraform HCL).
-- **Supported Dialects**:
+- **Instant Mitigation**: Automatically transforms detected WAF bypasses (HTTP 200) into ready-to-deploy firewall rules, reverse proxy configurations, and Infrastructure-as-Code (Terraform HCL / Cloud CLI).
+- **Supported Platforms (9 Engines)**:
   - **Cloudflare WAF**: Wirefilter expressions (`http.request.uri.query contains ...` / `matches ...`) & `cloudflare_ruleset` Terraform HCL.
   - **AWS WAF v2**: Native JSON Rule Statements (`ByteMatchStatement`, `RegexPatternSet`, `OrStatement`) & `aws_wafv2_rule_group` Terraform HCL.
-  - **ModSecurity**: OWASP CRS-compatible `SecRule` directives with automatic phase, action, and ID management.
-  - **NGINX**: Native drop-in `if ($...) { return 403; }` and high-performance `map` configuration snippets.
+  - **Google Cloud Armor**: CEL expressions (`request.path.matches(...)`, `request.headers[...]`), `gcloud compute security-policies` CLI commands, & Terraform `google_compute_security_policy`.
+  - **Azure WAF (Front Door & App Gateway)**: Custom Rule JSON definitions, `az network front-door waf-policy` CLI commands, & Terraform `azurerm_cdn_frontdoor_firewall_policy`.
+  - **ModSecurity**: OWASP CRS-compatible `SecRule` directives with high-performance `@pm` (Parallel Match) token collapsing.
+  - **NGINX**: Native `location ~* \.(ext)$ { return 403; }`, `location ~ /\.(git|svn)`, and `map` configuration blocks.
+  - **HAProxy**: High-performance native ACLs (`path_end -i`, `path_beg -i`, `query -m sub -i`, `req.hdr()`) with `http-request deny deny_status 403`.
+  - **Caddy Server**: Idiomatic Caddyfile named matchers (`@waf_patch_*`) with CEL expressions (`expression {http.request.uri.query}.matches(...)`) and `respond 403`.
+  - **Kubernetes Ingress (K8s)**: Production-ready `kind: Ingress` YAML manifests with `nginx.ingress.kubernetes.io/server-snippet` annotations.
 - **Dual-Tier Defense**:
   - **Strict Hotfix**: Exact token signatures with **0% false positive risk** for immediate zero-day incident response.
   - **Heuristic Pattern**: Generalized regular expressions covering the entire vulnerability class structure.
-- **Web UI Remediation Studio**: Interactive dashboard modal with live previews, 1-click clipboard copy, and file export.
+- **Web UI Remediation Studio**: Interactive dashboard modal with live previews across all 9 vendors, 1-click clipboard copy, format toggles, and file export.
 
 ### Attack Categories (25 total)
 SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusion, Sensitive Files, Open Redirect, SSTI, XXE, NoSQL Injection, GraphQL Injection, JWT Attack (Header), JWT Attack (Param), Prototype Pollution (JSON Body), Prototype Pollution (URL/Param), LDAP Injection, CRLF Injection, HTTP Parameter Pollution, User-Agent, IP Bypass, HTTP Request Smuggling, Web Cache Poisoning, UTF8/Unicode Bypass, WAF Inspection Limit Bypass (Padding).
@@ -170,16 +175,38 @@ node packages/cli/dist/index.js check https://example.com --fail-on-bypass -q
 ```
 
 #### 🛡️ Virtual Patching & Auto-Remediation
-Automatically generate ready-to-deploy firewall rules (Cloudflare, AWS WAF, ModSecurity, NGINX) to remediate discovered bypasses:
+Automatically generate ready-to-deploy firewall rules across all 9 supported platforms (`cloudflare`, `aws`, `gcp`, `azure`, `modsecurity`, `nginx`, `haproxy`, `caddy`, `k8s`, or `all`):
 ```bash
 # Generate and save Cloudflare Terraform rules during audit
 node packages/cli/dist/index.js check https://example.com --patch cloudflare --patch-output ./cloudflare-patch.tf
 
-# Generate AWS WAF rules with simulation (Count) mode
-node packages/cli/dist/index.js check https://example.com --patch aws --patch-action simulate --patch-output ./aws-rules.json
+# Generate GCP Cloud Armor gcloud commands and Terraform
+node packages/cli/dist/index.js check https://example.com --patch gcp --patch-output ./cloud-armor.sh
 
-# Generate patches from a previously saved JSON audit report file
+# Generate Azure WAF rules with simulation (Log) mode
+node packages/cli/dist/index.js check https://example.com --patch azure --patch-action simulate --patch-output ./azure-rules.json
+
+# Generate HAProxy ACLs for haproxy.cfg
+node packages/cli/dist/index.js check https://example.com --patch haproxy --patch-output ./haproxy-patches.cfg
+
+# Generate Caddyfile named matchers
+node packages/cli/dist/index.js check https://example.com --patch caddy --patch-output ./patches.caddyfile
+
+# Generate Kubernetes Ingress YAML manifests
+node packages/cli/dist/index.js check https://example.com --patch k8s --patch-output ./ingress-patch.yaml
+
+# Generate patches for all vendors from a saved JSON audit report file
 node packages/cli/dist/index.js patch audit-report.json --waf all --output ./patches/
+```
+
+#### 🐳 Local Docker & Staging Environment Testing (`--allow-local`)
+By default, `waf-checker` strictly blocks private IP ranges (`127.0.0.1`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) to prevent Server-Side Request Forgery (SSRF). When testing your own local Docker containers or staging servers, use `--allow-local`:
+```bash
+# Audit a local OWASP ModSecurity Docker container and run reverse engineering
+node packages/cli/dist/index.js check http://127.0.0.1:8088/ --allow-local --reverse
+
+# Audit a local Caddy or HAProxy reverse proxy and generate patches
+node packages/cli/dist/index.js check http://127.0.0.1:8089/ --allow-local --patch caddy
 ```
 
 ---
