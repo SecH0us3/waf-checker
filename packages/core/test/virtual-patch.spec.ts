@@ -590,4 +590,13 @@ describe('Virtual Patching & Rule Generator', () => {
 			expect(k8sBundle.native).toContain('\n---\n');
 		});
 	});
+
+	describe('Coraza WAF Support', () => {
+		it('should generate SecRule directives when vendor is coraza', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'coraza', tier: 'strict' });
+			expect(report.patches.length).toBeGreaterThan(0);
+			expect(report.bundles.coraza).toBeDefined();
+			expect(report.bundles.coraza.native).toContain('SecRule');
+		});
+	});
 });

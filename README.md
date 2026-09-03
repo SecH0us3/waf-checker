@@ -4,7 +4,7 @@
 [![GitHub Action](https://img.shields.io/badge/action-v1-blue?logo=githubactions&logoColor=white)](https://github.com/SecH0us3/waf-checker/releases)
 [![Coverage: Core](https://img.shields.io/badge/coverage%3A%20core-93.0%25-brightgreen)](packages/core)
 [![Coverage: CLI](https://img.shields.io/badge/coverage%3A%20cli-93.5%25-brightgreen)](packages/cli)
-[![Tests](https://img.shields.io/badge/tests-362%20passed-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-366%20passed-brightgreen)]()
 
 This project helps you check how well your Web Application Firewall (WAF) protects your product against common web attacks. It can be run as a Cloudflare Worker (with a built-in interactive Web UI) or as a standalone Node.js CLI tool.
 
@@ -14,10 +14,10 @@ All packages are thoroughly tested with automated unit, integration, property-ba
 
 | Package | Line Coverage | Statements | Functions | Test Suite |
 | :--- | :---: | :---: | :---: | :---: |
-| [**`@waf-checker/core`**](packages/core) | `93.0%` 🟢 | `92.6%` | `96.4%` | 🟢 278 passing |
+| [**`@waf-checker/core`**](packages/core) | `93.0%` 🟢 | `92.6%` | `96.4%` | 🟢 282 passing |
 | [**`@waf-checker/cli`**](packages/cli) | `93.5%` 🟢 | `92.8%` | `96.7%` | 🟢 54 passing |
 | [**`@waf-checker/worker`**](packages/worker) | `Passing` 🟢 | — | — | 🟢 30 passing |
-| **Total Monorepo Suite** | **`93.2%`** | **`92.7%`** | **`96.6%`** | **🟢 362 tests passing** |
+| **Total Monorepo Suite** | **`93.2%`** | **`92.7%`** | **`96.6%`** | **🟢 366 tests passing** |
 
 ## Features
 
@@ -35,12 +35,12 @@ All packages are thoroughly tested with automated unit, integration, property-ba
 
 ### 🛡️ WAF Virtual Patching & Auto-Remediation (`--patch` / `patch` command)
 - **Instant Mitigation**: Automatically transforms detected WAF bypasses (HTTP 200) into ready-to-deploy firewall rules, reverse proxy configurations, and Infrastructure-as-Code (Terraform HCL / Cloud CLI).
-- **Supported Platforms (9 Engines)**:
+- **Supported Platforms (10 Dialects)**:
   - **Cloudflare WAF**: Wirefilter expressions (`http.request.uri.query contains ...` / `matches ...`) & `cloudflare_ruleset` Terraform HCL.
   - **AWS WAF v2**: Native JSON Rule Statements (`ByteMatchStatement`, `RegexPatternSet`, `OrStatement`) & `aws_wafv2_rule_group` Terraform HCL.
   - **Google Cloud Armor**: CEL expressions (`request.path.matches(...)`, `request.headers[...]`), `gcloud compute security-policies` CLI commands, & Terraform `google_compute_security_policy`.
   - **Azure WAF (Front Door & App Gateway)**: Custom Rule JSON definitions, `az network front-door waf-policy` CLI commands, & Terraform `azurerm_cdn_frontdoor_firewall_policy`.
-  - **ModSecurity**: OWASP CRS-compatible `SecRule` directives with high-performance `@pm` (Parallel Match) token collapsing.
+  - **ModSecurity & OWASP Coraza**: OWASP CRS-compatible `SecRule` directives (SecLang) with `@pm` token collapsing. Supported via `--patch modsecurity` or `--patch coraza`.
   - **NGINX**: Native `location ~* \.(ext)$ { return 403; }`, `location ~ /\.(git|svn)`, and `map` configuration blocks.
   - **HAProxy**: High-performance native ACLs (`path_end -i`, `path_beg -i`, `query -m sub -i`, `req.hdr()`) with `http-request deny deny_status 403`.
   - **Caddy Server**: Idiomatic Caddyfile named matchers (`@waf_patch_*`) with CEL expressions (`expression {http.request.uri.query}.matches(...)`) and `respond 403`.
@@ -48,13 +48,13 @@ All packages are thoroughly tested with automated unit, integration, property-ba
 - **Dual-Tier Defense**:
   - **Strict Hotfix**: Exact token signatures with **0% false positive risk** for immediate zero-day incident response.
   - **Heuristic Pattern**: Generalized regular expressions covering the entire vulnerability class structure.
-- **Web UI Remediation Studio**: Interactive dashboard modal with live previews across all 9 vendors, 1-click clipboard copy, format toggles, and file export.
+- **Web UI Remediation Studio**: Interactive dashboard modal with live previews across all vendors, 1-click clipboard copy, format toggles, and file export.
 
 ### Attack Categories (25 total)
 SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusion, Sensitive Files, Open Redirect, SSTI, XXE, NoSQL Injection, GraphQL Injection, JWT Attack (Header), JWT Attack (Param), Prototype Pollution (JSON Body), Prototype Pollution (URL/Param), LDAP Injection, CRLF Injection, HTTP Parameter Pollution, User-Agent, IP Bypass, HTTP Request Smuggling, Web Cache Poisoning, UTF8/Unicode Bypass, WAF Inspection Limit Bypass (Padding).
 
 ### WAF Detection
-- Auto-detect WAF type before testing (Cloudflare, AWS WAF, ModSecurity, Akamai, Imperva, F5 BIG-IP, etc.).
+- Auto-detect WAF type before testing (Cloudflare, AWS WAF, OWASP Coraza, BunkerWeb, ModSecurity, Akamai, Imperva, F5 BIG-IP, etc.).
 - Suggests specific bypass techniques based on detected WAF.
 - Can auto-switch to WAF-specific advanced payloads.
 

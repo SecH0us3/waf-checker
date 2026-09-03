@@ -15,6 +15,8 @@ describe('WAFDetector', () => {
 		expect(wafs).toContain('LiteSpeed');
 		expect(wafs).toContain('PT Application Firewall');
 		expect(wafs).toContain('Signal Sciences');
+		expect(wafs).toContain('BunkerWeb');
+		expect(wafs).toContain('OWASP Coraza');
 		expect(wafs).not.toContain('Generic WAF'); // Generic should be filtered out
 	});
 
@@ -176,6 +178,38 @@ describe('WAFDetector', () => {
 		const result = await WAFDetector.detectFromResponse(mockResponse);
 		expect(result.detected).toBe(true);
 		expect(result.wafType).toBe('PT Application Firewall');
+	});
+
+	it('should detect BunkerWeb from server header and body patterns', async () => {
+		const mockResponse = {
+			status: 403,
+			headers: {
+				get: (name: string) => {
+					if (name.toLowerCase() === 'server') return 'BunkerWeb';
+					return null;
+				},
+			},
+		} as unknown as Response;
+
+		const result = await WAFDetector.detectFromResponse(mockResponse, 'This website is protected with BunkerWeb');
+		expect(result.detected).toBe(true);
+		expect(result.wafType).toBe('BunkerWeb');
+	});
+
+	it('should detect OWASP Coraza from headers and body pattern', async () => {
+		const mockResponse = {
+			status: 403,
+			headers: {
+				get: (name: string) => {
+					if (name.toLowerCase() === 'x-coraza-waf') return '1';
+					return null;
+				},
+			},
+		} as unknown as Response;
+
+		const result = await WAFDetector.detectFromResponse(mockResponse, 'blocked by OWASP Coraza');
+		expect(result.detected).toBe(true);
+		expect(result.wafType).toBe('OWASP Coraza');
 	});
 
 	it('should detect Imperva from new cookies and incident ID body', async () => {
