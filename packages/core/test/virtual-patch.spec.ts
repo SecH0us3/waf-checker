@@ -307,4 +307,47 @@ describe('Virtual Patching & Rule Generator', () => {
 			expect(patch.nativeRule).toContain('id:1000000');
 		});
 	});
+
+	describe('WAF Misses & 404 Remediation', () => {
+		const mixedResults: AuditResultItem[] = [
+			{ category: 'SQL Injection', method: 'GET', payload: "' OR 1=1--", status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/.git/config', status: 404, responseTime: 25 },
+			{ category: 'Path Traversal', method: 'GET', payload: '/../../etc/passwd', status: 404, responseTime: 28 },
+			{ category: 'XXE', method: 'POST', payload: '<!ENTITY xxe ...>', status: 500, responseTime: 40 },
+			{ category: 'XSS', method: 'GET', payload: '<script>alert(1)</script>', status: 403, responseTime: 15 },
+		];
+
+		it('filterBypasses should return only 200 OK by default', () => {
+			const filtered = filterBypasses(mixedResults);
+			expect(filtered.length).toBe(1);
+			expect(filtered[0].status).toBe(200);
+		});
+
+		it('filterBypasses should return 200, 404, and 500 when includeMisses is true', () => {
+			const filtered = filterBypasses(mixedResults, { includeMisses: true });
+			expect(filtered.length).toBe(4);
+			const statuses = filtered.map((f) => f.status);
+			expect(statuses).toContain(200);
+			expect(statuses).toContain(404);
+			expect(statuses).toContain(500);
+			expect(statuses).not.toContain(403);
+		});
+
+		it('filterBypasses should filter by explicit statusCodes', () => {
+			const filtered = filterBypasses(mixedResults, { statusCodes: [404] });
+			expect(filtered.length).toBe(2);
+			expect(filtered.every((f) => f.status === 404)).toBe(true);
+		});
+
+		it('generateVirtualPatches should generate perimeter rules for /.git/config when includeMisses is true', () => {
+			const report = generateVirtualPatches(mixedResults, {
+				vendor: 'cloudflare',
+				includeMisses: true,
+			});
+			expect(report.totalBypasses).toBe(4);
+			const gitPatch = report.patches.find((p) => p.category === 'Sensitive Files');
+			expect(gitPatch).toBeDefined();
+			expect(gitPatch?.nativeRule).toContain('.git');
+		});
+	});
 });

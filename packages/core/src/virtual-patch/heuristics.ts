@@ -120,7 +120,7 @@ export const CATEGORY_HEURISTICS: Record<string, CategoryHeuristic> = {
 		defaultLocation: 'query',
 	},
 	'Sensitive Files': {
-		pattern: `(?i)(?:\\.(?:env|git|svn|hg|ds_store|bak|old|swp|config|yml|yaml|sql|tar\\.gz|zip)$)`,
+		pattern: `(?i)(?:\\.(?:env|git|svn|hg|ds_store|bak|old|swp|config|yml|yaml|sql|tar\\.gz|zip)(?:$|[/?#])|/\\.(?:git|env|svn|hg)(?:/|$|\\w))`,
 		description: 'Detects path requests probing for exposed source repositories, environment files, and backups',
 		defaultLocation: 'uri',
 	},

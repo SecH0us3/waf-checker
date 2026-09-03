@@ -50,6 +50,18 @@ export interface VirtualPatchOptions {
 	 * Default: true.
 	 */
 	includeTerraform?: boolean;
+
+	/**
+	 * Include WAF misses (e.g. 404 Not Found, 5xx Server Errors) where attack vectors
+	 * reached origin unprotected without being blocked by WAF (403).
+	 * Default: false.
+	 */
+	includeMisses?: boolean;
+
+	/**
+	 * Explicit status codes to include in virtual patch generation (e.g. [200, 404]).
+	 */
+	statusCodes?: number[];
 }
 
 export interface GeneratedPatch {

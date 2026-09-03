@@ -780,5 +780,34 @@ describe('CLI Argument Processing', () => {
 
 			expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('No bypasses detected'));
 		});
+
+		it('should generate patches for 404 responses when --include-misses is specified in patch command', async () => {
+			vi.mocked(fs.existsSync).mockReturnValueOnce(true);
+			vi.mocked(fs.readFileSync).mockReturnValueOnce(
+				JSON.stringify([
+					{
+						category: 'Sensitive Files',
+						method: 'GET',
+						payload: '/.git/config',
+						status: 404,
+						responseTime: 40,
+					},
+				])
+			);
+
+			await expect(
+				program.parseAsync([
+					'node',
+					'index.js',
+					'patch',
+					'report.json',
+					'--include-misses',
+					'--waf',
+					'cloudflare',
+				])
+			).resolves.toBeDefined();
+
+			expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('CLOUDFLARE'));
+		});
 	});
 });

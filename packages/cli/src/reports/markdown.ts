@@ -9,6 +9,7 @@ export function generateMarkdownReport(
 ): string {
 	let blocked = 0;
 	let bypassed = 0;
+	let misses = 0;
 	let errors = 0;
 	let other = 0;
 	let detectedWAF = 'Unknown';
@@ -21,6 +22,8 @@ export function generateMarkdownReport(
 			blocked++;
 		} else if (r.status === 200 || r.status === '200') {
 			bypassed++;
+		} else if (r.status === 404 || r.status === '404') {
+			misses++;
 		} else if (r.status === 'ERR' || r.status === 500 || r.status === '500') {
 			errors++;
 		} else {
@@ -32,15 +35,17 @@ export function generateMarkdownReport(
 	const protectionScore = total > 0 ? Math.round((blocked / total) * 100) : 100;
 
 	// Calculate per-category stats
-	const categoryMap = new Map<string, { total: number; blocked: number; bypassed: number; errors: number }>();
+	const categoryMap = new Map<string, { total: number; blocked: number; bypassed: number; misses: number; errors: number }>();
 
 	for (const r of results) {
-		const entry = categoryMap.get(r.category) || { total: 0, blocked: 0, bypassed: 0, errors: 0 };
+		const entry = categoryMap.get(r.category) || { total: 0, blocked: 0, bypassed: 0, misses: 0, errors: 0 };
 		entry.total++;
 		if (r.status === 403 || r.status === '403' || r.status === 'BLOCKED') {
 			entry.blocked++;
 		} else if (r.status === 200 || r.status === '200') {
 			entry.bypassed++;
+		} else if (r.status === 404 || r.status === '404') {
+			entry.misses++;
 		} else {
 			entry.errors++;
 		}
@@ -48,6 +53,7 @@ export function generateMarkdownReport(
 	}
 
 	const bypassedItems = results.filter((r) => r.status === 200 || r.status === '200');
+	const missedItems = results.filter((r) => r.status === 404 || r.status === '404');
 
 	// Status badge
 	const scoreEmoji = protectionScore >= 90 ? '🟢' : protectionScore >= 70 ? '🟡' : '🔴';
@@ -73,25 +79,26 @@ export function generateMarkdownReport(
 		`| :--- | :--- | :--- |`,
 		`| 🎯 **Total Tests** | \`${total}\` | \`100%\` |`,
 		`| 🛡️ **Blocked (Protected)** | \`${blocked}\` | \`${total > 0 ? Math.round((blocked / total) * 100) : 0}%\` |`,
-		`| ⚠️ **Bypassed (Vulnerable)** | \`${bypassed}\` | \`${total > 0 ? Math.round((bypassed / total) * 100) : 0}%\` |`,
+		`| 🔴 **Critical Bypasses (200 OK)** | \`${bypassed}\` | \`${total > 0 ? Math.round((bypassed / total) * 100) : 0}%\` |`,
+		`| ⚠️ **WAF Misses (Unprotected 404)** | \`${misses}\` | \`${total > 0 ? Math.round((misses / total) * 100) : 0}%\` |`,
 		`| ❓ **Errors / Other** | \`${errors + other}\` | \`${total > 0 ? Math.round(((errors + other) / total) * 100) : 0}%\` |`,
 		``,
 		`### 📊 Attack Category Breakdown`,
 		``,
-		`| Attack Category | Total | Blocked | Bypassed | Protection Rate |`,
-		`| :--- | :--- | :--- | :--- | :--- |`,
+		`| Attack Category | Total | Blocked | Bypasses (200) | Misses (404) | Protection Rate |`,
+		`| :--- | :--- | :--- | :--- | :--- | :--- |`,
 	];
 
 	for (const [cat, data] of categoryMap.entries()) {
 		const rate = data.total > 0 ? Math.round((data.blocked / data.total) * 100) : 100;
 		const catEmoji = rate >= 90 ? '🟢' : rate >= 70 ? '🟡' : '🔴';
-		lines.push(`| **${cat}** | \`${data.total}\` | \`${data.blocked}\` | \`${data.bypassed}\` | ${catEmoji} \`${rate}%\` |`);
+		lines.push(`| **${cat}** | \`${data.total}\` | \`${data.blocked}\` | \`${data.bypassed}\` | \`${data.misses}\` | ${catEmoji} \`${rate}%\` |`);
 	}
 
 	lines.push(``);
 
 	if (bypassedItems.length > 0) {
-		lines.push(`### ⚠️ Bypassed Payloads (${bypassedItems.length})`);
+		lines.push(`### 🔴 Critical Bypassed Payloads (200 OK) (${bypassedItems.length})`);
 		lines.push(``);
 		lines.push(`<details>`);
 		lines.push(`<summary><b>Click to inspect ${bypassedItems.length} bypassed attack vectors</b></summary>`);
@@ -117,7 +124,37 @@ export function generateMarkdownReport(
 		lines.push(`</details>`);
 	} else {
 		lines.push(`### ✅ No Bypasses Detected`);
-		lines.push(`All executed attack payloads were successfully blocked by the WAF.`);
+		lines.push(`No attack payloads yielded active 200 OK responses.`);
+	}
+
+	if (missedItems.length > 0) {
+		lines.push(``);
+		lines.push(`### ⚠️ WAF Misses / Origin Responses (404 Not Found) (${missedItems.length})`);
+		lines.push(``);
+		lines.push(`<details>`);
+		lines.push(`<summary><b>Click to inspect ${missedItems.length} unprotected vectors (Status 404)</b></summary>`);
+		lines.push(``);
+		lines.push(`> **Note:** These requests bypassed perimeter WAF inspection and reached the origin server (returning 404 Not Found). Consider adding virtual patches to block these attack patterns on the WAF level.`);
+		lines.push(``);
+		lines.push(`| Category | Method | Status | Time | Payload |`);
+		lines.push(`| :--- | :--- | :--- | :--- | :--- |`);
+
+		for (const item of missedItems) {
+			const safePayload = item.payload
+				.replace(/&/g, '&amp;')
+				.replace(/</g, '&lt;')
+				.replace(/>/g, '&gt;')
+				.replace(/"/g, '&quot;')
+				.replace(/'/g, '&#39;')
+				.replace(/\|/g, '&#124;')
+				.replace(/\r?\n/g, ' ');
+			lines.push(
+				`| \`${item.category}\` | \`${item.method}\` | \`${item.status}\` | \`${item.responseTime}ms\` | <code>${safePayload}</code> |`,
+			);
+		}
+
+		lines.push(``);
+		lines.push(`</details>`);
 	}
 
 	if (reverseEngineering) {
