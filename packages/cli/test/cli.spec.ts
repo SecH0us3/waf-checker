@@ -809,5 +809,33 @@ describe('CLI Argument Processing', () => {
 
 			expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('CLOUDFLARE'));
 		});
+
+		it('should generate GCP Cloud Armor patches when --waf gcp is specified', async () => {
+			vi.mocked(fs.existsSync).mockReturnValueOnce(true);
+			vi.mocked(fs.readFileSync).mockReturnValueOnce(
+				JSON.stringify([
+					{
+						category: 'Sensitive Files',
+						method: 'GET',
+						payload: '/dump.sql',
+						status: 200,
+						responseTime: 40,
+					},
+				])
+			);
+
+			await expect(
+				program.parseAsync([
+					'node',
+					'index.js',
+					'patch',
+					'report.json',
+					'--waf',
+					'gcp',
+				])
+			).resolves.toBeDefined();
+
+			expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('GCP'));
+		});
 	});
 });

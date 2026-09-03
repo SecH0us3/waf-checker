@@ -10,6 +10,7 @@ import { generateCloudflarePatches } from './generators/cloudflare';
 import { generateAwsPatches } from './generators/aws';
 import { generateModSecurityPatches } from './generators/modsecurity';
 import { generateNginxPatches } from './generators/nginx';
+import { generateGcpPatches } from './generators/gcp';
 
 export * from './types';
 export * from './heuristics';
@@ -17,6 +18,7 @@ export * from './generators/cloudflare';
 export * from './generators/aws';
 export * from './generators/modsecurity';
 export * from './generators/nginx';
+export * from './generators/gcp';
 
 /**
  * Filters audit results to isolate confirmed WAF bypasses (HTTP 200)
@@ -64,13 +66,16 @@ export function generateVirtualPatches(
 		if (targetVendor === 'all' || targetVendor === 'nginx') {
 			allPatches.push(...generateNginxPatches(bypasses, options));
 		}
+		if (targetVendor === 'all' || targetVendor === 'gcp') {
+			allPatches.push(...generateGcpPatches(bypasses, options));
+		}
 	}
 
 	// Build vendor-level bundle strings for easy 1-click copy / download
 	const bundles: Record<string, VendorPatchBundle> = {};
 	const vendorsToBundle: PatchVendor[] =
 		targetVendor === 'all'
-			? ['cloudflare', 'aws', 'modsecurity', 'nginx']
+			? ['cloudflare', 'aws', 'modsecurity', 'nginx', 'gcp']
 			: [targetVendor];
 
 	for (const v of vendorsToBundle) {
@@ -79,6 +84,9 @@ export function generateVirtualPatches(
 		const tfParts = vendorPatches
 			.filter((p) => p.terraformHcl)
 			.map((p) => p.terraformHcl!);
+		const gcloudParts = vendorPatches
+			.filter((p) => p.gcloudCommand)
+			.map((p) => p.gcloudCommand!);
 
 		let nativeJoined = '';
 		if (v === 'cloudflare') {
@@ -88,6 +96,12 @@ export function generateVirtualPatches(
 				nativeParts.length <= 1
 					? nativeParts[0] || ''
 					: nativeParts.join(' or\n\n');
+		} else if (v === 'gcp') {
+			// In Cloud Armor CEL, join expressions with boolean '||'
+			nativeJoined =
+				nativeParts.length <= 1
+					? nativeParts[0] || ''
+					: nativeParts.join(' ||\n\n');
 		} else if (v === 'aws') {
 			// Format multiple AWS WAF rules as a valid JSON array for AWS CLI / CloudFormation
 			if (nativeParts.length <= 1) {
@@ -108,6 +122,7 @@ export function generateVirtualPatches(
 			vendor: v,
 			native: nativeJoined,
 			terraform: tfParts.length > 0 ? tfParts.join('\n\n') : undefined,
+			gcloud: gcloudParts.length > 0 ? gcloudParts.join('\n\n') : undefined,
 			ruleCount: vendorPatches.length,
 		};
 	}

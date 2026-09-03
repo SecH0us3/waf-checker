@@ -123,11 +123,13 @@ describe('Virtual Patching & Rule Generator', () => {
 			expect(report.bundles.aws).toBeDefined();
 			expect(report.bundles.modsecurity).toBeDefined();
 			expect(report.bundles.nginx).toBeDefined();
+			expect(report.bundles.gcp).toBeDefined();
 
 			expect(report.bundles.cloudflare.ruleCount).toBeGreaterThan(0);
 			expect(report.bundles.aws.ruleCount).toBeGreaterThan(0);
 			expect(report.bundles.modsecurity.ruleCount).toBeGreaterThan(0);
 			expect(report.bundles.nginx.ruleCount).toBeGreaterThan(0);
+			expect(report.bundles.gcp.ruleCount).toBeGreaterThan(0);
 		});
 
 		it('should filter by specific vendor when requested', () => {
@@ -425,6 +427,55 @@ describe('Virtual Patching & Rule Generator', () => {
 			const parsed = JSON.parse(awsBundle.native);
 			expect(Array.isArray(parsed)).toBe(true);
 			expect(parsed[0].Name).toBeDefined();
+		});
+	});
+
+	describe('Google Cloud Armor Generator', () => {
+		const sensitiveFiles: AuditResultItem[] = [
+			{ category: 'Sensitive Files', method: 'GET', payload: '/dump.sql', status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/backup.zip', status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/.git/config', status: 200, responseTime: 20 },
+			{ category: 'Sensitive Files', method: 'GET', payload: '/wp-config.php', status: 200, responseTime: 20 },
+		];
+
+		it('should generate valid CEL expressions for sensitive files and attack vectors', () => {
+			const report = generateVirtualPatches(sensitiveFiles, { vendor: 'gcp', tier: 'strict' });
+			const patch = report.patches[0];
+			expect(patch.vendor).toBe('gcp');
+			expect(patch.nativeRule).toContain("request.path.lower().endsWith('.sql')");
+			expect(patch.nativeRule).toContain("request.path.lower().endsWith('.zip')");
+			expect(patch.nativeRule).toContain("request.path.matches('/\\\\.(?:git)')");
+			expect(patch.nativeRule).toContain("request.path.lower().endsWith('/wp-config.php')");
+			expect(patch.terraformHcl).toContain('google_compute_security_policy');
+			expect(patch.terraformHcl).toContain('action      = "deny(403)"');
+			expect(patch.gcloudCommand).toContain('gcloud compute security-policies rules create');
+		});
+
+		it('should support simulation mode (preview = true) in Cloud Armor', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'gcp', action: 'simulate' });
+			const patch = report.patches[0];
+			expect(patch.terraformHcl).toContain('preview     = true');
+			expect(patch.gcloudCommand).toContain('--preview');
+		});
+
+		it('should scope Cloud Armor rules to URL path when requested', () => {
+			const report = generateVirtualPatches(mockBypasses, {
+				vendor: 'gcp',
+				scopeToPath: true,
+				targetUrl: 'https://example.com/api/v1',
+			});
+			const patch = report.patches[0];
+			expect(patch.nativeRule).toContain("request.path == '/api/v1' &&");
+		});
+
+		it('should join multiple CEL rules with || in bundle', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'gcp', tier: 'both' });
+			const gcpBundle = report.bundles.gcp;
+			expect(gcpBundle).toBeDefined();
+			expect(gcpBundle.ruleCount).toBeGreaterThan(1);
+			expect(gcpBundle.native).toContain(' ||\n\n');
+			expect(gcpBundle.terraform).toContain('google_compute_security_policy');
+			expect(gcpBundle.gcloud).toContain('gcloud compute security-policies');
 		});
 	});
 });

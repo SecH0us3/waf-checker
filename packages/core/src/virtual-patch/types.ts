@@ -1,6 +1,6 @@
 import { AuditResultItem } from '../reports/types';
 
-export type PatchVendor = 'cloudflare' | 'aws' | 'modsecurity' | 'nginx' | 'all';
+export type PatchVendor = 'cloudflare' | 'aws' | 'modsecurity' | 'nginx' | 'gcp' | 'all';
 export type PatchTier = 'strict' | 'heuristic' | 'both';
 export type PatchAction = 'block' | 'simulate';
 
@@ -46,7 +46,7 @@ export interface VirtualPatchOptions {
 	ruleIdPrefix?: number;
 
 	/**
-	 * Include Terraform HCL snippets where supported (Cloudflare & AWS WAF).
+	 * Include Terraform HCL snippets where supported (Cloudflare, AWS WAF & GCP Cloud Armor).
 	 * Default: true.
 	 */
 	includeTerraform?: boolean;
@@ -71,6 +71,7 @@ export interface GeneratedPatch {
 	tier: 'strict' | 'heuristic';
 	nativeRule: string;
 	terraformHcl?: string;
+	gcloudCommand?: string;
 	description: string;
 }
 
@@ -78,6 +79,7 @@ export interface VendorPatchBundle {
 	vendor: PatchVendor;
 	native: string;
 	terraform?: string;
+	gcloud?: string;
 	ruleCount: number;
 }
 
