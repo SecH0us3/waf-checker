@@ -191,7 +191,7 @@ describe('WAF Checker API', () => {
 		expect(data.bundles.cloudflare.native).toContain('.git');
 	});
 
-	it('returns 422 with SELF_SCAN_REFUSED when targeting secmy.org or subdomains', async () => {
+	it('returns 422 with SELF_SCAN_REFUSED when targeting secmy.org, secmy.app, or subdomains', async () => {
 		const resApex = await SELF.fetch('https://example.com/api/check?url=https://secmy.org/');
 		expect(resApex.status).toBe(422);
 		const dataApex: any = await resApex.json();
@@ -201,12 +201,20 @@ describe('WAF Checker API', () => {
 		expect(resSub.status).toBe(422);
 		const dataSub: any = await resSub.json();
 		expect(dataSub.code).toBe('SELF_SCAN_REFUSED');
+
+		const resApp = await SELF.fetch('https://example.com/api/check?url=https://waf.secmy.app/');
+		expect(resApp.status).toBe(422);
+		const dataApp: any = await resApp.json();
+		expect(dataApp.code).toBe('SELF_SCAN_REFUSED');
 	});
 
 	it('does NOT refuse URLs merely containing secmy in path or unrelated domain', async () => {
 		const res = await SELF.fetch('https://example.com/api/check?url=https://example.com/secmy-test');
 		// Should not be 422
 		expect(res.status).not.toBe(422);
+
+		const resIo = await SELF.fetch('https://example.com/api/check?url=https://secmyapp.io/');
+		expect(resIo.status).not.toBe(422);
 	});
 
 	it('returns a pagination envelope for /api/check when ?envelope=1 is provided', async () => {

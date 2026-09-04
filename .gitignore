@@ -23,3 +23,6 @@ yarn-error.log*
 .dev.vars
 worker-configuration.d.ts
 coverage/
+
+# Local planning artifacts
+docs/superpowers/

@@ -226,24 +226,39 @@ export function evaluateWAFVerdict(
 		status === 'BLOCKED'
 	) {
 		isBlocked = true;
-	} else if (detection?.detected) {
-		// If WAF was detected, check if this response matches block/challenge indicators
-		if (detection.captchaDetected) {
-			isBlocked = true;
-		} else if (
-			detection.evidence &&
-			detection.evidence.some((e) => e.startsWith('Body pattern match:') || e.startsWith('Status code:'))
-		) {
-			isBlocked = true;
-		} else if (status === 503 || status === '503' || status === 400 || status === '400') {
+	}
+
+	// Response-level headers check
+	if (!isBlocked && headers) {
+		const cfMitigated = headers.get('cf-mitigated');
+		if (cfMitigated && (cfMitigated === 'challenge' || cfMitigated === 'block')) {
 			isBlocked = true;
 		}
 	}
 
-	// Also check general block markers in response body
+	// Response-level body markers check
 	if (!isBlocked && bodyText) {
+		// Captcha challenges in this response's body
 		if (
-			/incident id/i.test(bodyText) ||
+			bodyText.includes('cf-turnstile') ||
+			bodyText.includes('challenges.cloudflare.com/turnstile') ||
+			bodyText.includes('google.com/recaptcha') ||
+			bodyText.includes('g-recaptcha') ||
+			bodyText.includes('hcaptcha.com') ||
+			bodyText.includes('h-captcha')
+		) {
+			isBlocked = true;
+		} else if (
+			// Imperva / Incapsula block markers anchored to vendor context or fuller block page phrasing
+			((detection?.wafType === 'Imperva' ||
+				detection?.wafType === 'Incapsula' ||
+				/incapsula|imperva/i.test(bodyText)) &&
+				/incident id/i.test(bodyText)) ||
+			/request unsuccessful\. incapsula incident id/i.test(bodyText)
+		) {
+			isBlocked = true;
+		} else if (
+			// General WAF block markers
 			/waf-block|blocked by.*waf|request blocked|access denied.*firewall|security incident/i.test(bodyText) ||
 			/powered by.*imperva|protected with.*bunkerweb/i.test(bodyText)
 		) {
@@ -436,7 +451,7 @@ export async function handleApiCheckWithEnvelope(
 							const bodyText = res?.bodyText || '';
 							const itemStatus = res ? res.status : 'ERR';
 							const itemError = res?.error || null;
-							const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult);
+							const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers);
 
 							results.push({
 								category,
@@ -488,7 +503,7 @@ export async function handleApiCheckWithEnvelope(
 					const bodyText = res?.bodyText || '';
 					const itemStatus = res ? res.status : 'ERR';
 					const itemError = res?.error || null;
-					const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult);
+					const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers);
 
 					results.push({
 						category,
@@ -552,7 +567,7 @@ export async function handleApiCheckWithEnvelope(
 						const bodyText = res?.bodyText || '';
 						const itemStatus = res ? res.status : 'ERR';
 						const itemError = res?.error || null;
-						const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult);
+						const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers);
 
 						results.push({
 							category,
