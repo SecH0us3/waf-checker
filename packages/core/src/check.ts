@@ -201,17 +201,178 @@ export async function sendRequest(
 }
 
 /**
+ * Checks whether a response body plausibly matches the expected content of a requested artifact.
+ * Prevents SPAs and frameworks that return 200 with an HTML shell for unknown paths from being
+ * falsely classified as 'exposed'.
+ */
+export function isPlausibleArtifactContent(bodyText: string, probedPayload?: string): boolean {
+	if (!bodyText || bodyText.trim().length === 0) {
+		return false;
+	}
+
+	const trimmed = bodyText.trimStart();
+	const isHtml = /^(?:<!doctype\s+html|<html[\s>])/i.test(trimmed);
+
+	const cleanTarget = probedPayload ? probedPayload.split(/[?#]/)[0].trim().toLowerCase() : '';
+	const filename = cleanTarget.split('/').pop() || cleanTarget;
+	const isHtmlTarget = filename.endsWith('.html') || filename.endsWith('.htm');
+
+	// If the response is an HTML document but the requested artifact is not an HTML file,
+	// it's an SPA shell, custom 404-as-200 page, or generic application HTML — not a leak.
+	if (isHtml && !isHtmlTarget) {
+		return false;
+	}
+
+	// 1. .env files
+	if (filename === '.env' || filename.startsWith('.env.') || filename.endsWith('.env')) {
+		return !isHtml && /^[A-Z_][A-Z0-9_]*=/m.test(bodyText);
+	}
+
+	// 2. .git/config
+	if (cleanTarget.endsWith('.git/config') || (filename === 'config' && cleanTarget.includes('.git'))) {
+		return !isHtml && bodyText.includes('[core]');
+	}
+
+	// 3. .git/HEAD
+	if (cleanTarget.endsWith('.git/head') || (filename === 'head' && cleanTarget.includes('.git'))) {
+		return !isHtml && /^ref:\s*refs\//m.test(bodyText);
+	}
+
+	// 4. Other .git paths (.git directory, .git/index, etc.)
+	if (cleanTarget === '.git' || cleanTarget.endsWith('/.git')) {
+		return !isHtml && (bodyText.includes('[core]') || /^ref:\s*refs\//m.test(bodyText) || bodyText.startsWith('DIRC'));
+	}
+
+	// 5. composer.json / package.json and lockfiles
+	if (filename === 'package.json') {
+		if (isHtml) return false;
+		try {
+			const parsed = JSON.parse(bodyText);
+			if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+				const expectedKeys = [
+					'name',
+					'version',
+					'dependencies',
+					'devDependencies',
+					'scripts',
+					'main',
+					'description',
+					'author',
+					'license',
+					'repository',
+				];
+				return expectedKeys.some((k) => k in parsed);
+			}
+		} catch {
+			return false;
+		}
+		return false;
+	}
+
+	if (filename === 'composer.json') {
+		if (isHtml) return false;
+		try {
+			const parsed = JSON.parse(bodyText);
+			if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+				const expectedKeys = ['name', 'require', 'require-dev', 'description', 'autoload', 'type', 'license', 'authors'];
+				return expectedKeys.some((k) => k in parsed);
+			}
+		} catch {
+			return false;
+		}
+		return false;
+	}
+
+	if (filename === 'package-lock.json' || filename === 'composer.lock') {
+		if (isHtml) return false;
+		try {
+			const parsed = JSON.parse(bodyText);
+			if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+				return 'packages' in parsed || 'dependencies' in parsed || 'lockfileVersion' in parsed;
+			}
+		} catch {
+			return false;
+		}
+		return false;
+	}
+
+	// 6. .sql dumps
+	if (filename.endsWith('.sql')) {
+		return !isHtml && /(?:CREATE\s+TABLE|INSERT\s+INTO)/i.test(bodyText);
+	}
+
+	// 7. Archives (.zip, .tar.gz, .tgz, .tar, .gz, .7z, .rar, .bz2, .xz, .bak)
+	if (filename.endsWith('.zip') || filename.endsWith('.war')) {
+		return !isHtml && (bodyText.includes('PK\x03\x04') || bodyText.includes('PK\x05\x06') || bodyText.includes('PK\x07\x08'));
+	}
+	if (filename.endsWith('.tar.gz') || filename.endsWith('.tgz') || filename.endsWith('.gz')) {
+		return !isHtml && bodyText.includes('\x1f\x8b');
+	}
+	if (filename.endsWith('.7z')) {
+		return !isHtml && bodyText.includes('7z\xbc\xaf\x27\x1c');
+	}
+	if (filename.endsWith('.tar')) {
+		return !isHtml && bodyText.includes('ustar');
+	}
+	if (filename.endsWith('.bak')) {
+		return (
+			!isHtml &&
+			(bodyText.includes('PK\x03\x04') ||
+				bodyText.includes('\x1f\x8b') ||
+				/(?:CREATE\s+TABLE|INSERT\s+INTO)/i.test(bodyText) ||
+				/^[A-Z_][A-Z0-9_]*=/m.test(bodyText) ||
+				bodyText.includes('[core]'))
+		);
+	}
+
+	// 8. .htaccess / .htpasswd
+	if (filename === '.htaccess') {
+		return (
+			!isHtml &&
+			/(?:RewriteEngine|RewriteRule|RewriteCond|Options|AuthType|Require|Order\s+(?:allow,deny|deny,allow)|Deny\s+from|Allow\s+from)/i.test(
+				bodyText
+			)
+		);
+	}
+	if (filename === '.htpasswd') {
+		return !isHtml && /^[a-zA-Z0-9_.-]+:(?:\$|\{SHA\}|[a-zA-Z0-9./]{13})/m.test(bodyText);
+	}
+
+	// 9. Crypto keys / certs
+	if (filename === 'id_rsa' || filename.endsWith('.pem') || filename.endsWith('.key') || filename.endsWith('.crt')) {
+		return !isHtml && /-----BEGIN [A-Z0-9 ]+-----/.test(bodyText);
+	}
+	if (filename === 'id_rsa.pub') {
+		return !isHtml && /^ssh-(?:rsa|ed25519|dss)\s+/m.test(bodyText);
+	}
+
+	// 10. PHP configs
+	if (filename === 'wp-config.php') {
+		return !isHtml && /(?:DB_NAME|DB_USER|DB_PASSWORD|table_prefix|AUTH_KEY|SECURE_AUTH_KEY)/i.test(bodyText);
+	}
+	if (filename === 'config.php') {
+		return !isHtml && /(?:<\?php|\$config|\$_CONFIG|db_password|database)/i.test(bodyText);
+	}
+
+	// Generic fallback:
+	// If the body is HTML while the requested artifact is not HTML, it's not a leak.
+	// Otherwise, non-empty non-HTML body matches the generic non-HTML probe.
+	return !isHtml || isHtmlTarget;
+}
+
+/**
  * Evaluates whether a request response represents a WAF block and derives
  * a coarse verdict:
  * - 'blocked': WAF stopped the request before reaching origin.
- * - 'exposed': not blocked AND origin returned resource (2xx with non-empty body).
- * - 'passed': not blocked, but origin did not serve resource (404, 5xx, or empty 2xx).
+ * - 'exposed': not blocked AND origin returned resource matching the probed artifact.
+ * - 'passed': not blocked, but origin did not serve resource (404, 5xx, empty 2xx, or SPA HTML shell).
  */
 export function evaluateWAFVerdict(
 	status: number | string,
 	bodyText: string = '',
 	detection?: WAFDetectionResult,
-	headers?: Headers
+	headers?: Headers,
+	probedPayload?: string
 ): { blocked: boolean; verdict: 'blocked' | 'passed' | 'exposed' } {
 	let isBlocked = false;
 
@@ -273,7 +434,7 @@ export function evaluateWAFVerdict(
 
 	const numStatus = typeof status === 'number' ? status : parseInt(status, 10);
 	if (!isNaN(numStatus) && numStatus >= 200 && numStatus < 300) {
-		if (bodyText && bodyText.trim().length > 0) {
+		if (bodyText && bodyText.trim().length > 0 && isPlausibleArtifactContent(bodyText, probedPayload)) {
 			return { blocked: false, verdict: 'exposed' };
 		}
 		return { blocked: false, verdict: 'passed' };
@@ -451,7 +612,7 @@ export async function handleApiCheckWithEnvelope(
 							const bodyText = res?.bodyText || '';
 							const itemStatus = res ? res.status : 'ERR';
 							const itemError = res?.error || null;
-							const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers);
+							const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers, currentPayload);
 
 							results.push({
 								category,
@@ -503,7 +664,7 @@ export async function handleApiCheckWithEnvelope(
 					const bodyText = res?.bodyText || '';
 					const itemStatus = res ? res.status : 'ERR';
 					const itemError = res?.error || null;
-					const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers);
+					const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers, payload);
 
 					results.push({
 						category,
@@ -567,7 +728,7 @@ export async function handleApiCheckWithEnvelope(
 						const bodyText = res?.bodyText || '';
 						const itemStatus = res ? res.status : 'ERR';
 						const itemError = res?.error || null;
-						const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers);
+						const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers, payload);
 
 						results.push({
 							category,

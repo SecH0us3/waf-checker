@@ -119,7 +119,7 @@ describe('WAF Verdict Evaluation', () => {
 		const verdict = evaluateWAFVerdict(200, body);
 
 		expect(verdict.blocked).toBe(false);
-		expect(verdict.verdict).toBe('exposed');
+		expect(verdict.verdict).toBe('passed');
 	});
 
 	describe('Domain-level detection object reuse (regression test for false-negative leaks)', () => {
@@ -161,6 +161,40 @@ describe('WAF Verdict Evaluation', () => {
 
 		it('should not mark 400 Bad Request as blocked even when domain has WAF detected', () => {
 			const verdict = evaluateWAFVerdict(400, '400 Bad Request: malformed syntax', domainDetection);
+
+			expect(verdict.blocked).toBe(false);
+			expect(verdict.verdict).toBe('passed');
+		});
+	});
+
+	describe('Content-shape verification for sensitive files (preventing SPA false positives)', () => {
+		const spaHtmlShell = '<!doctype html><html lang="en"><head><title>App Shell</title></head><body><div id="root"></div><script src="/app.js"></script></body></html>';
+
+		it('should mark 200 + SPA HTML shell for payload .env as passed (not exposed)', () => {
+			const verdict = evaluateWAFVerdict(200, spaHtmlShell, undefined, undefined, '.env');
+
+			expect(verdict.blocked).toBe(false);
+			expect(verdict.verdict).toBe('passed');
+		});
+
+		it('should mark 200 + real KEY=VALUE lines for payload .env as exposed', () => {
+			const envBody = 'DB_PASSWORD=secret\nAPI_KEY=abc';
+			const verdict = evaluateWAFVerdict(200, envBody, undefined, undefined, '.env');
+
+			expect(verdict.blocked).toBe(false);
+			expect(verdict.verdict).toBe('exposed');
+		});
+
+		it('should mark 200 + [core] config for payload .git/config as exposed', () => {
+			const gitConfigBody = '[core]\n\trepositoryformatversion = 0\n\tfilemode = true';
+			const verdict = evaluateWAFVerdict(200, gitConfigBody, undefined, undefined, '.git/config');
+
+			expect(verdict.blocked).toBe(false);
+			expect(verdict.verdict).toBe('exposed');
+		});
+
+		it('should mark 200 + SPA HTML shell for payload .git/config as passed (not exposed)', () => {
+			const verdict = evaluateWAFVerdict(200, spaHtmlShell, undefined, undefined, '.git/config');
 
 			expect(verdict.blocked).toBe(false);
 			expect(verdict.verdict).toBe('passed');
