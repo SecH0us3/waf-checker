@@ -1,1 +1,1 @@
-export { handleApiCheckFiltered } from '@waf-checker/core';
+export { handleApiCheckFiltered, handleApiCheckWithEnvelope } from '@waf-checker/core';

@@ -10,6 +10,7 @@ import {
 import { HTTPManipulationOptions, HTTPManipulator } from './http-manipulation';
 import { isValidTargetUrl } from './utils/security';
 import { substitutePayload, processCustomHeaders, randomUppercase, redactHeaders, redactUrl } from './utils/payload-utils';
+import { AuditResultItem, CheckResultEnvelope } from './reports/types';
 
 // Вспомогательная функция для отправки запроса с нужным методом и payload
 export async function sendRequest(
@@ -58,7 +59,7 @@ export async function sendRequest(
 		// Validate finalUrl after substitution to prevent SSRF
 		if (!isValidTargetUrl(finalUrl, { allowLocal: options?.allowLocal })) {
 			console.error(`Blocked SSRF attempt to: ${redactUrl(finalUrl)}`);
-			return { status: 'BLOCKED', is_redirect: false, responseTime: 0 };
+			return { status: 'BLOCKED', is_redirect: false, responseTime: 0, error: 'ssrf_blocked', bodyText: '' };
 		}
 
 		const controller = new AbortController();
@@ -117,7 +118,7 @@ export async function sendRequest(
 					const nextUrl = new URL(location, currentUrl).toString();
 					if (!isValidTargetUrl(nextUrl, { allowLocal: options?.allowLocal })) {
 						console.error(`Blocked SSRF redirect attempt to: ${redactUrl(nextUrl)}`);
-						return { status: 'BLOCKED', is_redirect: true, responseTime: Date.now() - startTime };
+						return { status: 'BLOCKED', is_redirect: true, responseTime: Date.now() - startTime, error: 'ssrf_blocked', bodyText: '' };
 					}
 
 					const status = resp.status;
@@ -171,19 +172,102 @@ export async function sendRequest(
 			console.log(logMsg);
 		}
 
+		let bodyText = '';
+		try {
+			const clone = resp.clone();
+			bodyText = await clone.text();
+		} catch {}
+
 		return {
 			status: resp.status,
 			is_redirect: resp.status >= 300 && resp.status < 400,
 			responseTime,
 			response: resp,
+			bodyText,
+			error: null,
 		};
-	} catch (e) {
+	} catch (e: any) {
 		console.error(`Request error for ${redactUrl(url)}:`, e);
-		return { status: 'ERR', is_redirect: false, responseTime: 0 };
+		let errorType = 'network_error';
+		if (e && (e.name === 'AbortError' || e.message?.toLowerCase().includes('aborted') || e.message?.toLowerCase().includes('timeout'))) {
+			errorType = 'timeout';
+		} else if (e && (e.code === 'ENOTFOUND' || e.message?.toLowerCase().includes('dns') || e.message?.toLowerCase().includes('getaddrinfo'))) {
+			errorType = 'dns';
+		} else if (e && (e.code === 'ECONNRESET' || e.message?.toLowerCase().includes('reset'))) {
+			errorType = 'connection_reset';
+		}
+		return { status: 'ERR', is_redirect: false, responseTime: 0, error: errorType, bodyText: '' };
 	}
 }
 
-export async function handleApiCheckFiltered(
+/**
+ * Evaluates whether a request response represents a WAF block and derives
+ * a coarse verdict:
+ * - 'blocked': WAF stopped the request before reaching origin.
+ * - 'exposed': not blocked AND origin returned resource (2xx with non-empty body).
+ * - 'passed': not blocked, but origin did not serve resource (404, 5xx, or empty 2xx).
+ */
+export function evaluateWAFVerdict(
+	status: number | string,
+	bodyText: string = '',
+	detection?: WAFDetectionResult,
+	headers?: Headers
+): { blocked: boolean; verdict: 'blocked' | 'passed' | 'exposed' } {
+	let isBlocked = false;
+
+	// Characteristic WAF block status codes
+	if (
+		status === 403 ||
+		status === '403' ||
+		status === 406 ||
+		status === '406' ||
+		status === 429 ||
+		status === '429' ||
+		status === 'BLOCKED'
+	) {
+		isBlocked = true;
+	} else if (detection?.detected) {
+		// If WAF was detected, check if this response matches block/challenge indicators
+		if (detection.captchaDetected) {
+			isBlocked = true;
+		} else if (
+			detection.evidence &&
+			detection.evidence.some((e) => e.startsWith('Body pattern match:') || e.startsWith('Status code:'))
+		) {
+			isBlocked = true;
+		} else if (status === 503 || status === '503' || status === 400 || status === '400') {
+			isBlocked = true;
+		}
+	}
+
+	// Also check general block markers in response body
+	if (!isBlocked && bodyText) {
+		if (
+			/incident id/i.test(bodyText) ||
+			/waf-block|blocked by.*waf|request blocked|access denied.*firewall|security incident/i.test(bodyText) ||
+			/powered by.*imperva|protected with.*bunkerweb/i.test(bodyText)
+		) {
+			isBlocked = true;
+		}
+	}
+
+	// 2. Derive verdict
+	if (isBlocked) {
+		return { blocked: true, verdict: 'blocked' };
+	}
+
+	const numStatus = typeof status === 'number' ? status : parseInt(status, 10);
+	if (!isNaN(numStatus) && numStatus >= 200 && numStatus < 300) {
+		if (bodyText && bodyText.trim().length > 0) {
+			return { blocked: false, verdict: 'exposed' };
+		}
+		return { blocked: false, verdict: 'passed' };
+	}
+
+	return { blocked: false, verdict: 'passed' };
+}
+
+export async function handleApiCheckWithEnvelope(
 	url: string,
 	page: number,
 	methods: string[],
@@ -199,12 +283,12 @@ export async function handleApiCheckFiltered(
 	useEncodingVariations: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; isWorker?: boolean; allowLocal?: boolean },
-): Promise<any[]> {
+	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; isWorker?: boolean; allowLocal?: boolean; pageSize?: number },
+): Promise<CheckResultEnvelope> {
 	const METHODS = methods && methods.length ? methods : ['GET'];
-	const results: any[] = [];
+	const results: AuditResultItem[] = [];
 	let baseUrl: string;
-	const limit = 50;
+	const limit = options?.pageSize && options.pageSize > 0 ? options.pageSize : 50;
 	const start = page * limit;
 	const end = start + limit;
 	let offset = 0;
@@ -216,7 +300,6 @@ export async function handleApiCheckFiltered(
 	}
 
 	// Case sensitive test: Modify URL hostname if flag is set
-
 	if (caseSensitiveTest) {
 		try {
 			const u = new URL(url);
@@ -261,16 +344,25 @@ export async function handleApiCheckFiltered(
 		payloadSource = { ...payloadSource, ...ADVANCED_PAYLOADS };
 	}
 
-	// Generate encoded payload variations if requested
-	if (useEncodingVariations) {
-		const encodedPayloads = generateEncodedPayloads(payloadSource);
-		payloadSource = { ...payloadSource, ...encodedPayloads };
-	}
-
 	const payloadEntries =
 		(categories && categories.length
 			? Object.entries(payloadSource).filter(([cat]) => categories.includes(cat))
 			: Object.entries(payloadSource)) as [string, any][];
+
+	// Calculate total items matching category/method filters
+	let totalItems = 0;
+	for (const [_, info] of payloadEntries) {
+		const checkType = info.type || 'ParamCheck';
+		const payloads = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
+		if (checkType === 'ParamCheck') {
+			totalItems += payloads.length * METHODS.length;
+		} else if (checkType === 'FileCheck') {
+			totalItems += payloads.length;
+		} else if (checkType === 'Header') {
+			totalItems += payloads.length * METHODS.length;
+		}
+	}
+
 	for (const [category, info] of payloadEntries) {
 		const checkType = info.type || 'ParamCheck';
 		const payloads = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
@@ -281,7 +373,7 @@ export async function handleApiCheckFiltered(
 					payload = randomUppercase(payload); // Modify payload
 				}
 
-				// Generate payload variations — WAF-specific and encoding are additive
+				// Generate payload variations
 				let payloadVariations = [payload];
 
 				// Add WAF-specific bypass variations if WAF is detected
@@ -289,7 +381,7 @@ export async function handleApiCheckFiltered(
 				if (wafType) {
 					const wafSpecificPayloads = generateWAFSpecificPayloads(wafType, payload);
 					if (wafSpecificPayloads.length > 1) {
-						payloadVariations.push(...wafSpecificPayloads);
+						payloadVariations.push(...wafSpecificPayloads.slice(1));
 					}
 				}
 
@@ -302,17 +394,21 @@ export async function handleApiCheckFiltered(
 				// Deduplicate
 				payloadVariations = [...new Set(payloadVariations)];
 
-				// Test each payload variation
 				for (const currentPayload of payloadVariations) {
 					for (const method of METHODS) {
-						if (offset >= end) return results;
+						if (offset >= end) {
+							return { results, page, pageSize: limit, total: totalItems, hasMore: true };
+						}
 						if (offset >= start) {
-							// Process custom headers if provided
-							let headersObj = customHeaders ? processCustomHeaders(customHeaders, currentPayload) : undefined;
-
-							// Apply HTTP manipulation if enabled
+							// Check if detected WAF is CloudFront
+							const detectedWAFType = detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined);
 							let finalPayload = currentPayload;
 							let finalMethod = method;
+
+							// Process custom headers if provided
+							const headersObj = customHeaders ? processCustomHeaders(customHeaders, currentPayload) : undefined;
+
+							// Apply HTTP manipulation if enabled
 							if (httpManipulation?.enableParameterPollution) {
 								const pollutedPayloads = generateHTTPManipulationPayloads(currentPayload, 'pollution');
 								if (pollutedPayloads.length > 1) {
@@ -323,8 +419,6 @@ export async function handleApiCheckFiltered(
 								const variations = HTTPManipulator.generatePaddingVariations('test', currentPayload, paddingSize);
 								finalPayload = variations.queryPadding;
 							}
-
-							const detectedWAFType = detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined);
 
 							const res = await sendRequest(
 								url,
@@ -338,17 +432,26 @@ export async function handleApiCheckFiltered(
 								undefined,
 								options,
 							);
+
+							const bodyText = res?.bodyText || '';
+							const itemStatus = res ? res.status : 'ERR';
+							const itemError = res?.error || null;
+							const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult);
+
 							results.push({
 								category,
 								payload: currentPayload,
 								originalPayload: payload, // Keep track of original
 								method,
-								status: res ? res.status : 'ERR',
+								status: itemStatus,
 								is_redirect: res ? res.is_redirect : false,
 								responseTime: res ? res.responseTime : 0,
 								wafDetected: wafDetectionResult?.detected || false,
 								wafType: detectedWAFType || 'Unknown',
 								bypassTechnique: currentPayload !== payload ? 'Advanced' : 'Standard',
+								blocked,
+								verdict,
+								error: itemError,
 							});
 						}
 						offset++;
@@ -361,7 +464,9 @@ export async function handleApiCheckFiltered(
 				if (caseSensitiveTest) {
 					payload = randomUppercase(payload); // Modify payload
 				}
-				if (offset >= end) return results;
+				if (offset >= end) {
+					return { results, page, pageSize: limit, total: totalItems, hasMore: true };
+				}
 				if (offset >= start) {
 					// Use potentially modified baseUrl for the base, and modified payload for the file path
 					const fileUrl = baseUrl.replace(/\/$/, '') + '/' + payload.replace(/^\//, '');
@@ -379,15 +484,24 @@ export async function handleApiCheckFiltered(
 						undefined,
 						options,
 					);
+
+					const bodyText = res?.bodyText || '';
+					const itemStatus = res ? res.status : 'ERR';
+					const itemError = res?.error || null;
+					const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult);
+
 					results.push({
 						category,
 						payload,
 						method: 'GET',
-						status: res ? res.status : 'ERR',
+						status: itemStatus,
 						is_redirect: res ? res.is_redirect : false,
 						responseTime: res ? res.responseTime : 0,
 						wafDetected: wafDetectionResult?.detected || false,
 						wafType: detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : 'Unknown'),
+						blocked,
+						verdict,
+						error: itemError,
 					});
 				}
 				offset++;
@@ -418,7 +532,9 @@ export async function handleApiCheckFiltered(
 				}
 
 				for (const method of METHODS) {
-					if (offset >= end) return results;
+					if (offset >= end) {
+						return { results, page, pageSize: limit, total: totalItems, hasMore: true };
+					}
 					if (offset >= start) {
 						const res = await sendRequest(
 							url,
@@ -432,15 +548,24 @@ export async function handleApiCheckFiltered(
 							undefined,
 							options,
 						);
+
+						const bodyText = res?.bodyText || '';
+						const itemStatus = res ? res.status : 'ERR';
+						const itemError = res?.error || null;
+						const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult);
+
 						results.push({
 							category,
 							payload,
 							method,
-							status: res ? res.status : 'ERR',
+							status: itemStatus,
 							is_redirect: res ? res.is_redirect : false,
 							responseTime: res ? res.responseTime : 0,
 							wafDetected: wafDetectionResult?.detected || false,
 							wafType: detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : 'Unknown'),
+							blocked,
+							verdict,
+							error: itemError,
 						});
 					}
 					offset++;
@@ -448,5 +573,44 @@ export async function handleApiCheckFiltered(
 			}
 		}
 	}
-	return results;
+	return { results, page, pageSize: limit, total: totalItems, hasMore: end < totalItems };
+}
+
+export async function handleApiCheckFiltered(
+	url: string,
+	page: number,
+	methods: string[],
+	categories?: string[],
+	payloadTemplate?: string,
+	followRedirect: boolean = false,
+	customHeaders?: string,
+	falsePositiveTest: boolean = false,
+	caseSensitiveTest: boolean = false,
+	useEnhancedPayloads: boolean = false,
+	useAdvancedPayloads: boolean = false,
+	autoDetectWAF: boolean = false,
+	useEncodingVariations: boolean = false,
+	detectedWAF?: string,
+	httpManipulation?: HTTPManipulationOptions,
+	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; isWorker?: boolean; allowLocal?: boolean; pageSize?: number },
+): Promise<AuditResultItem[]> {
+	const envelope = await handleApiCheckWithEnvelope(
+		url,
+		page,
+		methods,
+		categories,
+		payloadTemplate,
+		followRedirect,
+		customHeaders,
+		falsePositiveTest,
+		caseSensitiveTest,
+		useEnhancedPayloads,
+		useAdvancedPayloads,
+		autoDetectWAF,
+		useEncodingVariations,
+		detectedWAF,
+		httpManipulation,
+		options,
+	);
+	return envelope.results;
 }

@@ -1,0 +1,437 @@
+openapi: 3.1.0
+info:
+  title: WAF Checker API
+  version: 1.2.0
+  description: |
+    REST API for Web Application Firewall (WAF) detection, vulnerability coverage auditing,
+    reverse engineering of OWASP Core Rule Set (CRS) inspection thresholds, and automated virtual patch generation.
+servers:
+  - url: https://waf-checker.secmy.org
+    description: Production Cloudflare Worker
+  - url: http://127.0.0.1:8787
+    description: Local development worker
+
+paths:
+  /api/waf-detect:
+    get:
+      summary: Detect and fingerprint WAF provider
+      description: Sends active probes against the target domain to fingerprint the active WAF vendor, confidence score, and suggested bypass techniques.
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+          example: https://example.com
+      responses:
+        '200':
+          description: Fingerprint and bypass opportunities
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - detection
+                  - timestamp
+                properties:
+                  detection:
+                    $ref: '#/components/schemas/WAFDetectionResult'
+                  bypassOpportunities:
+                    type: array
+                    items:
+                      type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/check:
+    get:
+      summary: Run security payload check
+      description: Probes target with attack payloads to evaluate WAF filtering capability.
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+        - name: categories
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Comma-separated list of categories (e.g. "SQL Injection,XSS,Sensitive Files")
+        - name: methods
+          in: query
+          required: false
+          schema:
+            type: string
+            default: GET
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+        - name: envelope
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ["0", "1", "true", "false"]
+            default: "0"
+          description: When set to 1 or true, wraps results in a pagination envelope
+      responses:
+        '200':
+          description: Audit results (bare array by default, or envelope if ?envelope=1)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/CheckResultEnvelope'
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/AuditResultItem'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '422':
+          $ref: '#/components/responses/SelfScanRefusedError'
+    post:
+      summary: Run security payload check with request body configuration
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                payloadTemplate:
+                  type: string
+                customHeaders:
+                  type: string
+                detectedWAF:
+                  type: string
+      responses:
+        '200':
+          description: Audit results
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/CheckResultEnvelope'
+                  - type: array
+                    items:
+                      $ref: '#/components/schemas/AuditResultItem'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '422':
+          $ref: '#/components/responses/SelfScanRefusedError'
+
+  /api/virtual-patch:
+    post:
+      summary: Generate virtual firewall rules
+      description: Analyzes audit findings and produces actionable virtual patch rules for Cloudflare, AWS WAF, ModSecurity, NGINX, Caddy, HAProxy, and Coraza.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - results
+              properties:
+                results:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/AuditResultItem'
+                options:
+                  $ref: '#/components/schemas/VirtualPatchOptions'
+      responses:
+        '200':
+          description: Generated virtual patch bundles
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VirtualPatchReport'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+
+  /api/audit:
+    get:
+      summary: Single-step unified audit
+      description: Executes WAF fingerprinting, payload testing, and virtual patch generation in a single call.
+      parameters:
+        - name: url
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uri
+        - name: categories
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Complete audit report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnifiedAuditReport'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '422':
+          $ref: '#/components/responses/SelfScanRefusedError'
+    post:
+      summary: Single-step unified audit with JSON payload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - url
+              properties:
+                url:
+                  type: string
+                  format: uri
+                categories:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Complete audit report
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnifiedAuditReport'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '422':
+          $ref: '#/components/responses/SelfScanRefusedError'
+
+components:
+  schemas:
+    WAFDetectionResult:
+      type: object
+      required:
+        - detected
+        - wafType
+        - confidence
+        - confidencePercent
+        - confidenceThreshold
+        - evidence
+        - suggestedBypassTechniques
+      properties:
+        detected:
+          type: boolean
+        wafType:
+          type: string
+          example: Cloudflare
+        confidence:
+          type: number
+          description: Raw accumulated detection score
+        confidencePercent:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Normalized 0-100 confidence percentage for display
+          example: 95
+        confidenceThreshold:
+          type: number
+          description: Score threshold above which detected flips to true (40)
+          example: 40
+        evidence:
+          type: array
+          items:
+            type: string
+        suggestedBypassTechniques:
+          type: array
+          items:
+            type: string
+        captchaDetected:
+          type: string
+          nullable: true
+
+    AuditResultItem:
+      type: object
+      required:
+        - category
+        - payload
+        - method
+        - status
+        - responseTime
+      properties:
+        category:
+          type: string
+          example: SQL Injection
+        payload:
+          type: string
+          example: "' OR 1=1--"
+        originalPayload:
+          type: string
+        method:
+          type: string
+          example: GET
+        status:
+          oneOf:
+            - type: integer
+            - type: string
+          description: HTTP status code or string 'ERR' on network failure
+          example: 403
+        is_redirect:
+          type: boolean
+        responseTime:
+          type: number
+          description: Response latency in milliseconds
+          example: 45
+        wafDetected:
+          type: boolean
+        wafType:
+          type: string
+        bypassTechnique:
+          type: string
+        blocked:
+          type: boolean
+          description: True if the WAF stopped this request before reaching origin
+          example: true
+        verdict:
+          type: string
+          enum: [blocked, passed, exposed]
+          description: Coarse outcome ('blocked' by WAF, 'passed' without leak, or 'exposed' resource leak)
+          example: blocked
+        error:
+          type: string
+          nullable: true
+          description: Error reason if status is 'ERR' (e.g. 'timeout', 'dns', 'connection_reset')
+          example: timeout
+
+    CheckResultEnvelope:
+      type: object
+      required:
+        - results
+        - page
+        - pageSize
+        - total
+        - hasMore
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditResultItem'
+        page:
+          type: integer
+          example: 0
+        pageSize:
+          type: integer
+          example: 50
+        total:
+          type: integer
+          description: Total number of payloads matching selected categories and methods
+          example: 72
+        hasMore:
+          type: boolean
+          description: True if more result pages exist
+          example: true
+
+    VirtualPatchOptions:
+      type: object
+      properties:
+        vendor:
+          type: string
+          enum: [all, cloudflare, aws, modsecurity, nginx, caddy, haproxy, coraza]
+          default: all
+        tier:
+          type: string
+          enum: [both, strict, heuristic]
+          default: both
+        action:
+          type: string
+          enum: [block, simulate]
+          default: block
+        targetUrl:
+          type: string
+        includeMisses:
+          type: boolean
+          default: false
+
+    VirtualPatchReport:
+      type: object
+      required:
+        - totalBypasses
+        - bundles
+      properties:
+        totalBypasses:
+          type: integer
+        targetUrl:
+          type: string
+        bundles:
+          type: object
+          additionalProperties: true
+
+    UnifiedAuditReport:
+      type: object
+      required:
+        - detection
+        - results
+        - patches
+      properties:
+        detection:
+          $ref: '#/components/schemas/WAFDetectionResult'
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditResultItem'
+        patches:
+          $ref: '#/components/schemas/VirtualPatchReport'
+
+  responses:
+    BadRequestError:
+      description: Invalid request parameters or SSRF restricted target
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Invalid URL or restricted IP
+    SelfScanRefusedError:
+      description: Self-scan targeting service domains refused
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+              - error
+              - code
+            properties:
+              error:
+                type: string
+                example: self-scan refused
+              code:
+                type: string
+                example: SELF_SCAN_REFUSED
+    InternalServerError:
+      description: Server error during probe execution
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string

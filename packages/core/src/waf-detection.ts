@@ -8,6 +8,10 @@ export interface WAFDetectionResult {
 	detected: boolean;
 	wafType: string;
 	confidence: number;
+	/** `confidence` normalized to 0-100 for display */
+	confidencePercent: number;
+	/** The score above which `detected` flips to true (40) */
+	confidenceThreshold: number;
 	evidence: string[];
 	suggestedBypassTechniques: string[];
 	captchaDetected?: string;
@@ -122,12 +126,16 @@ export class WAFDetector {
 		}
 
 		const detected = bestMatch.confidence > 40;
+		const confidencePercent = Math.max(0, Math.min(100, Math.round(bestMatch.confidence)));
+		const confidenceThreshold = 40;
 		const suggestedBypassTechniques = this.getSuggestedBypassTechniques(bestMatch.name);
 
 		return {
 			detected,
 			wafType: detected ? bestMatch.name : 'Unknown',
 			confidence: bestMatch.confidence,
+			confidencePercent,
+			confidenceThreshold,
 			evidence: bestMatch.evidence,
 			suggestedBypassTechniques,
 			captchaDetected
@@ -195,6 +203,8 @@ export class WAFDetector {
 			detected: false,
 			wafType: 'Unknown',
 			confidence: 0,
+			confidencePercent: 0,
+			confidenceThreshold: 40,
 			evidence: [],
 			suggestedBypassTechniques: [],
 		};

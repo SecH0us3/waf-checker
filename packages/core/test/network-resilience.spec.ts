@@ -25,6 +25,8 @@ describe('Network Resilience & Failure Scenarios', () => {
 				status: 'ERR',
 				is_redirect: false,
 				responseTime: 0,
+				error: 'connection_reset',
+				bodyText: '',
 			});
 		});
 

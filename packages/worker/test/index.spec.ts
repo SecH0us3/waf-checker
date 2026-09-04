@@ -190,4 +190,63 @@ describe('WAF Checker API', () => {
 		expect(data.bundles.cloudflare.ruleCount).toBeGreaterThan(0);
 		expect(data.bundles.cloudflare.native).toContain('.git');
 	});
+
+	it('returns 422 with SELF_SCAN_REFUSED when targeting secmy.org or subdomains', async () => {
+		const resApex = await SELF.fetch('https://example.com/api/check?url=https://secmy.org/');
+		expect(resApex.status).toBe(422);
+		const dataApex: any = await resApex.json();
+		expect(dataApex.code).toBe('SELF_SCAN_REFUSED');
+
+		const resSub = await SELF.fetch('https://example.com/api/check?url=https://waf-checker.secmy.org/api');
+		expect(resSub.status).toBe(422);
+		const dataSub: any = await resSub.json();
+		expect(dataSub.code).toBe('SELF_SCAN_REFUSED');
+	});
+
+	it('does NOT refuse URLs merely containing secmy in path or unrelated domain', async () => {
+		const res = await SELF.fetch('https://example.com/api/check?url=https://example.com/secmy-test');
+		// Should not be 422
+		expect(res.status).not.toBe(422);
+	});
+
+	it('returns a pagination envelope for /api/check when ?envelope=1 is provided', async () => {
+		const response = await SELF.fetch('https://example.com/api/check?url=https://example.com&categories=User-Agent&envelope=1&pageSize=5');
+		expect(response.status).toBe(200);
+		const data: any = await response.json();
+		expect(data).toHaveProperty('results');
+		expect(data).toHaveProperty('page', 0);
+		expect(data).toHaveProperty('pageSize', 5);
+		expect(data).toHaveProperty('total');
+		expect(data).toHaveProperty('hasMore');
+		expect(Array.isArray(data.results)).toBe(true);
+		expect(data.results.length).toBeLessThanOrEqual(5);
+
+		if (data.results.length > 0) {
+			expect(data.results[0]).toHaveProperty('blocked');
+			expect(data.results[0]).toHaveProperty('verdict');
+		}
+	});
+
+	it('exposes confidencePercent and confidenceThreshold on /api/waf-detect', async () => {
+		const response = await SELF.fetch('https://example.com/api/waf-detect?url=https://example.com');
+		expect(response.status).toBe(200);
+		const data: any = await response.json();
+		expect(data).toHaveProperty('detection');
+		expect(data.detection).toHaveProperty('confidence');
+		expect(data.detection).toHaveProperty('confidencePercent');
+		expect(data.detection).toHaveProperty('confidenceThreshold', 40);
+		expect(data.detection.confidencePercent).toBeGreaterThanOrEqual(0);
+		expect(data.detection.confidencePercent).toBeLessThanOrEqual(100);
+	});
+
+	it('handles /api/audit single-step audit endpoint and returns detection, results, and patches', async () => {
+		const response = await SELF.fetch('https://example.com/api/audit?url=https://example.com&categories=SQL Injection');
+		expect(response.status).toBe(200);
+		const data: any = await response.json();
+		expect(data).toHaveProperty('detection');
+		expect(data).toHaveProperty('results');
+		expect(data).toHaveProperty('patches');
+		expect(Array.isArray(data.results)).toBe(true);
+		expect(data.patches).toHaveProperty('bundles');
+	});
 });

@@ -9,6 +9,20 @@ export interface AuditResultItem {
 	wafDetected?: boolean;
 	wafType?: string;
 	bypassTechnique?: string;
+	/** Did the WAF stop this request before it reached the origin? */
+	blocked?: boolean;
+	/** Coarse outcome: 'blocked' by WAF, 'passed' without leak (404/5xx), or 'exposed' with resource leak */
+	verdict?: 'blocked' | 'passed' | 'exposed';
+	/** Error category if request failed (e.g. 'timeout', 'network_error') */
+	error?: string | null;
+}
+
+export interface CheckResultEnvelope {
+	results: AuditResultItem[];
+	page: number;
+	pageSize: number;
+	total: number;
+	hasMore: boolean;
 }
 
 import { ReverseEngineeringReport } from '../reverse-engineering/types';

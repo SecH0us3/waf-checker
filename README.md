@@ -317,6 +317,49 @@ docker run --rm -it -v "$(pwd):/data" waf-checker-cli batch /data/targets.txt --
 
 ---
 
+## 🔌 API & Integration (for External Consumers & Fuzzers)
+
+The Cloudflare Worker exposes a public REST API consumed by scanners and fuzzers (including [swazz](https://github.com/SecH0us3/swazz)). Full OpenAPI 3.1 specification is available in [`docs/openapi.yaml`](docs/openapi.yaml).
+
+### Endpoints Overview
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/waf-detect` | `GET` | Fingerprints WAF vendor, confidence score, and suggested bypasses. |
+| `/api/check` | `GET`, `POST` | Probes target with attack payloads. Supports pagination & category filtering. |
+| `/api/virtual-patch` | `POST` | Generates remediation rules for Cloudflare, AWS, ModSec, NGINX, Caddy, HAProxy, Coraza. |
+| `/api/reverse-engineer` | `GET`, `POST` | Reverse engineers OWASP CRS rules, anomaly thresholds, and body limits. |
+| `/api/audit` | `GET`, `POST` | **Unified 1-request audit**: executes detection, security checks, and virtual patches. |
+
+### Key Integration Features
+
+- **Pagination Envelope (`?envelope=1` or `?envelope=true`)**:
+  Wrap results in a structured envelope with pagination metadata:
+  ```json
+  {
+    "results": [...],
+    "page": 0,
+    "pageSize": 50,
+    "total": 72,
+    "hasMore": true
+  }
+  ```
+  *(Omit `?envelope=1` to receive the default bare JSON array for backwards compatibility).*
+
+- **Normalized Confidence (`/api/waf-detect`)**:
+  Provides `confidencePercent` (0–100) alongside raw `confidence` and `confidenceThreshold` (`40`).
+
+- **Per-Result Verdict & Block Flags**:
+  Every `AuditResultItem` includes:
+  - `blocked: boolean` — Whether the WAF intervened before reaching the origin.
+  - `verdict: 'blocked' | 'passed' | 'exposed'` — Distinct outcome differentiating between leaks (`exposed`) and coverage gaps (`passed`).
+  - `error: string | null` — Explicit error category on network drop (e.g. `'timeout'`, `'dns'`, `'connection_reset'`).
+
+- **Self-Scan Refusal (HTTP 422)**:
+  Refuses accidental self-scans targeting the service infrastructure with `{ "error": "self-scan refused", "code": "SELF_SCAN_REFUSED" }`.
+
+---
+
 ## Testing
 
 To run the workspace-wide test suite (utilizing Vitest):
