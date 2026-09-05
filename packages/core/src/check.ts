@@ -402,10 +402,10 @@ export function evaluateWAFVerdict(
 		// Captcha challenges in this response's body
 		if (
 			bodyText.includes('cf-turnstile') ||
-			bodyText.includes('challenges.cloudflare.com/turnstile') ||
-			bodyText.includes('google.com/recaptcha') ||
+			/https?:\/\/challenges\.cloudflare\.com\/turnstile\//.test(bodyText) ||
+			/https?:\/\/(?:www\.)?google\.com\/recaptcha\//.test(bodyText) ||
 			bodyText.includes('g-recaptcha') ||
-			bodyText.includes('hcaptcha.com') ||
+			/https?:\/\/(?:www\.)?hcaptcha\.com\//.test(bodyText) ||
 			bodyText.includes('h-captcha')
 		) {
 			isBlocked = true;
@@ -420,8 +420,8 @@ export function evaluateWAFVerdict(
 			isBlocked = true;
 		} else if (
 			// General WAF block markers
-			/waf-block|blocked by.*waf|request blocked|access denied.*firewall|security incident/i.test(bodyText) ||
-			/powered by.*imperva|protected with.*bunkerweb/i.test(bodyText)
+			/waf-block|blocked by[^\n]{0,100}waf|request blocked|access denied[^\n]{0,100}firewall|security incident/i.test(bodyText) ||
+			/powered by[^\n]{0,100}imperva|protected with[^\n]{0,100}bunkerweb/i.test(bodyText)
 		) {
 			isBlocked = true;
 		}
