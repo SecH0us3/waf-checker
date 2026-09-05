@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { evaluateWAFVerdict, handleApiCheckWithEnvelope } from '../src/check';
-import { WAFDetector } from '../src/waf-detection';
+import { WAFDetector, WAFDetectionResult } from '../src/waf-detection';
 
 describe('WAF Verdict Evaluation', () => {
 	it('should mark Cloudflare 403 block page as blocked', async () => {
@@ -113,4 +113,154 @@ describe('WAF Verdict Evaluation', () => {
 			expect(item.error).toBeNull();
 		}
 	});
+
+	it('should not mark ordinary application status/error page mentioning incident id as blocked without WAF context', () => {
+		const body = '<html><h1>Service Status</h1><p>Incident ID: INC-98765. Our team is investigating.</p></html>';
+		const verdict = evaluateWAFVerdict(200, body);
+
+		expect(verdict.blocked).toBe(false);
+		expect(verdict.verdict).toBe('passed');
+	});
+
+	describe('Domain-level detection object reuse (regression test for false-negative leaks)', () => {
+		// Real evidence array returned by live service for https://x.com
+		const domainDetection: WAFDetectionResult = {
+			detected: true,
+			wafType: 'Cloudflare',
+			confidence: 100,
+			evidence: [
+				'Status code: 403',
+				'Cookie pattern match: /__cf_bm/i',
+				'Body pattern match: /attention required! | cloudflare/i',
+				'Body pattern match: /Cloudflare Ray ID:/i',
+			],
+		};
+
+		it('should mark genuinely leaked sensitive file (200 with content) as exposed even when domain has WAF detected', () => {
+			const leakContent = 'DB_PASSWORD=hunter2\nAWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE';
+			const verdict = evaluateWAFVerdict(200, leakContent, domainDetection);
+
+			expect(verdict.blocked).toBe(false);
+			expect(verdict.verdict).toBe('exposed');
+		});
+
+		it('should mark clean 404 Not Found as passed even when domain has WAF detected', () => {
+			const verdict = evaluateWAFVerdict(404, '404 Not Found', domainDetection);
+
+			expect(verdict.blocked).toBe(false);
+			expect(verdict.verdict).toBe('passed');
+		});
+
+		it('should mark 403 block page as blocked when domain has WAF detected', () => {
+			const blockHtml = '<html><title>Attention Required! | Cloudflare</title><body>Cloudflare Ray ID: 123456</body></html>';
+			const verdict = evaluateWAFVerdict(403, blockHtml, domainDetection);
+
+			expect(verdict.blocked).toBe(true);
+			expect(verdict.verdict).toBe('blocked');
+		});
+
+		it('should not mark 400 Bad Request as blocked even when domain has WAF detected', () => {
+			const verdict = evaluateWAFVerdict(400, '400 Bad Request: malformed syntax', domainDetection);
+
+			expect(verdict.blocked).toBe(false);
+			expect(verdict.verdict).toBe('passed');
+		});
+	});
+
+	describe('Content-shape verification for sensitive files (preventing SPA false positives)', () => {
+		const spaHtmlShell = '<!doctype html><html lang="en"><head><title>App Shell</title></head><body><div id="root"></div><script src="/app.js"></script></body></html>';
+
+		it('should mark 200 + SPA HTML shell for payload .env as passed (not exposed)', () => {
+			const verdict = evaluateWAFVerdict(200, spaHtmlShell, undefined, undefined, '.env');
+
+			expect(verdict.blocked).toBe(false);
+			expect(verdict.verdict).toBe('passed');
+		});
+
+		it('should mark 200 + real KEY=VALUE lines for payload .env as exposed', () => {
+			const envBody = 'DB_PASSWORD=secret\nAPI_KEY=abc';
+			const verdict = evaluateWAFVerdict(200, envBody, undefined, undefined, '.env');
+
+			expect(verdict.blocked).toBe(false);
+			expect(verdict.verdict).toBe('exposed');
+		});
+
+		it('should mark 200 + [core] config for payload .git/config as exposed', () => {
+			const gitConfigBody = '[core]\n\trepositoryformatversion = 0\n\tfilemode = true';
+			const verdict = evaluateWAFVerdict(200, gitConfigBody, undefined, undefined, '.git/config');
+
+			expect(verdict.blocked).toBe(false);
+			expect(verdict.verdict).toBe('exposed');
+		});
+
+		it('should mark 200 + SPA HTML shell for payload .git/config as passed (not exposed)', () => {
+			const verdict = evaluateWAFVerdict(200, spaHtmlShell, undefined, undefined, '.git/config');
+
+			expect(verdict.blocked).toBe(false);
+			expect(verdict.verdict).toBe('passed');
+		});
+	});
+
+	describe('Captcha URL regexes and bounded block page regexes', () => {
+		it('should mark realistic generic and vendor block pages as blocked under bounded regexes', () => {
+			const genericWaf = '<html><body><h1>Access Denied</h1><p>Request blocked by our WAF</p></body></html>';
+			expect(evaluateWAFVerdict(403, genericWaf).verdict).toBe('blocked');
+
+			const firewallBlock = '<html><body>Access denied by corporate firewall. Security incident reported.</body></html>';
+			expect(evaluateWAFVerdict(403, firewallBlock).verdict).toBe('blocked');
+
+			const impervaBlock = '<html><body>Protected and powered by Imperva Incapsula</body></html>';
+			expect(evaluateWAFVerdict(403, impervaBlock).verdict).toBe('blocked');
+
+			const bunkerwebBlock = '<html><body>Protected with BunkerWeb WAF</body></html>';
+			expect(evaluateWAFVerdict(403, bunkerwebBlock).verdict).toBe('blocked');
+		});
+
+		it('should mark captcha challenges as blocked with precise URL regexes and class markers', () => {
+			const cfTurnstile = '<html><script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script></html>';
+			expect(evaluateWAFVerdict(200, cfTurnstile).verdict).toBe('blocked');
+
+			const recaptcha = '<html><script src="https://www.google.com/recaptcha/api.js"></script></html>';
+			expect(evaluateWAFVerdict(200, recaptcha).verdict).toBe('blocked');
+
+			const hcaptcha = '<html><script src="https://hcaptcha.com/1/api.js"></script></html>';
+			expect(evaluateWAFVerdict(200, hcaptcha).verdict).toBe('blocked');
+
+			const hcaptchaWww = '<html><script src="https://www.hcaptcha.com/1/api.js"></script></html>';
+			expect(evaluateWAFVerdict(200, hcaptchaWww).verdict).toBe('blocked');
+
+			const cfClass = '<div class="cf-turnstile" data-sitekey="xxx"></div>';
+			expect(evaluateWAFVerdict(200, cfClass).verdict).toBe('blocked');
+
+			const gClass = '<div class="g-recaptcha" data-sitekey="xxx"></div>';
+			expect(evaluateWAFVerdict(200, gClass).verdict).toBe('blocked');
+
+			const hClass = '<div class="h-captcha" data-sitekey="xxx"></div>';
+			expect(evaluateWAFVerdict(200, hClass).verdict).toBe('blocked');
+		});
+
+		it('should not mark benign mentions or spoofed domains as blocked', () => {
+			const benignText = '<html><body><p>Visit hcaptcha.com or google.com/recaptcha documentation to learn more.</p></body></html>';
+			const benignVerdict = evaluateWAFVerdict(200, benignText, undefined, undefined, '.env');
+			expect(benignVerdict.blocked).toBe(false);
+			expect(benignVerdict.verdict).toBe('passed');
+
+			const spoofedHost = '<html><body><script src="https://evilhcaptcha.com/api.js"></script></body></html>';
+			const spoofedVerdict = evaluateWAFVerdict(200, spoofedHost, undefined, undefined, '.env');
+			expect(spoofedVerdict.blocked).toBe(false);
+			expect(spoofedVerdict.verdict).toBe('passed');
+
+			const spoofedRecaptcha = '<html><body><script src="https://fake-google.com/recaptcha/api.js"></script></body></html>';
+			const spoofedRecaptchaVerdict = evaluateWAFVerdict(200, spoofedRecaptcha, undefined, undefined, '.env');
+			expect(spoofedRecaptchaVerdict.blocked).toBe(false);
+			expect(spoofedRecaptchaVerdict.verdict).toBe('passed');
+
+			const notFoundVerdict = evaluateWAFVerdict(404, benignText);
+			expect(notFoundVerdict.blocked).toBe(false);
+			expect(notFoundVerdict.verdict).toBe('passed');
+		});
+	});
 });
+
+
+

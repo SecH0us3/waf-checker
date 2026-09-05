@@ -4,11 +4,16 @@ import { handleHTTPManipulation } from './handlers/http-manip';
 import { handleBatchStart, handleBatchStatus, handleBatchStop } from './handlers/batch';
 import { isValidTargetUrl, runReverseEngineeringAudit, generateVirtualPatches, WAFDetector } from '@waf-checker/core';
 
-function isSelfScan(targetUrl: string): boolean {
+export const SELF_HOSTS = ['secmy.org', 'secmy.app'];
+
+export function isSelfScan(targetUrlOrHost: string): boolean {
 	try {
-		const u = new URL(targetUrl.replace(/\{PAYLOAD\}/g, 'test-payload'));
-		const host = u.hostname.toLowerCase();
-		return host === 'secmy.org' || host.endsWith('.secmy.org');
+		let host = targetUrlOrHost.toLowerCase();
+		if (host.includes('://')) {
+			const u = new URL(targetUrlOrHost.replace(/\{PAYLOAD\}/g, 'test-payload'));
+			host = u.hostname.toLowerCase();
+		}
+		return SELF_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
 	} catch {
 		return false;
 	}

@@ -6,8 +6,10 @@ info:
     REST API for Web Application Firewall (WAF) detection, vulnerability coverage auditing,
     reverse engineering of OWASP Core Rule Set (CRS) inspection thresholds, and automated virtual patch generation.
 servers:
+  - url: https://waf.secmy.app
+    description: Production Cloudflare Worker (default)
   - url: https://waf-checker.secmy.org
-    description: Production Cloudflare Worker
+    description: Production Cloudflare Worker (alternative)
   - url: http://127.0.0.1:8787
     description: Local development worker
 
