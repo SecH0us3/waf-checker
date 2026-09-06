@@ -298,6 +298,71 @@ describe('check.ts', () => {
 		expect(redirectCount).toBe(3);
 	});
 
+	it('should follow an http->https redirect on the same host', async () => {
+		const mockFetch = vi.fn().mockImplementation((url: string) => {
+			if (url.startsWith('http://')) {
+				return Promise.resolve({
+					status: 301,
+					headers: new Headers({ location: 'https://www.example.com/.env' }),
+					clone: () => ({ text: async () => '' }),
+					text: async () => '',
+				});
+			}
+			return Promise.resolve({
+				status: 200,
+				headers: new Headers(),
+				clone: () => ({ text: async () => 'DB_PASSWORD=hunter2' }),
+				text: async () => 'DB_PASSWORD=hunter2',
+			});
+		});
+
+		const res = await sendRequest(
+			'http://example.com/.env',
+			'GET',
+			undefined,
+			undefined,
+			undefined,
+			true, // followRedirect
+			false,
+			undefined,
+			undefined,
+			{ fetch: mockFetch as any, quiet: true }
+		);
+
+		// Without following the redirect this would be a meaningless 301
+		expect(res.status).toBe(200);
+		expect(res.bodyText).toContain('DB_PASSWORD');
+		expect(mockFetch).toHaveBeenCalledTimes(2);
+	});
+
+	it('should stop at an out-of-scope redirect and report the 3xx itself', async () => {
+		const mockFetch = vi.fn().mockImplementation(() => {
+			return Promise.resolve({
+				status: 302,
+				headers: new Headers({ location: 'https://cdn.othervendor.net/.env' }),
+				clone: () => ({ text: async () => '' }),
+				text: async () => '',
+			});
+		});
+
+		const res = await sendRequest(
+			'https://example.com/.env',
+			'GET',
+			undefined,
+			undefined,
+			undefined,
+			true, // followRedirect
+			false,
+			undefined,
+			undefined,
+			{ fetch: mockFetch as any, quiet: true }
+		);
+
+		expect(res.status).toBe(302);
+		expect(res.is_redirect).toBe(true);
+		expect(mockFetch).toHaveBeenCalledTimes(1);
+	});
+
 	it('should handle payload templates for JSON POST requests', async () => {
 		const mockFetch = vi.fn().mockResolvedValue({
 			status: 200,

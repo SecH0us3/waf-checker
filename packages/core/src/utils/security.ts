@@ -144,3 +144,26 @@ const match = hex.match(/^ac1[0-9a-f]/);
 		return false;
 	}
 }
+
+/**
+ * Decides whether a redirect stays within the scanned target's scope.
+ *
+ * A scan must not silently follow a redirect off to a CDN, a partner domain or an
+ * SSO provider and then report that host's response as the target's. We accept only
+ * the same host or a parent/child of it (example.com <-> www.example.com), which
+ * covers the http->https and canonical-host redirects that dominate real scans
+ * without needing a public-suffix list.
+ */
+export function isInScopeRedirect(fromUrl: string, toUrl: string): boolean {
+	try {
+		const from = new URL(fromUrl).hostname.toLowerCase().replace(/\.$/, '');
+		const to = new URL(toUrl).hostname.toLowerCase().replace(/\.$/, '');
+
+		if (!from || !to) return false;
+		if (from === to) return true;
+
+		return from.endsWith('.' + to) || to.endsWith('.' + from);
+	} catch {
+		return false;
+	}
+}

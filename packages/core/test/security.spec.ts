@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isValidTargetUrl } from '../src/utils/security';
+import { isValidTargetUrl, isInScopeRedirect } from '../src/utils/security';
 
 describe('isValidTargetUrl', () => {
     describe('Valid URLs', () => {
@@ -180,5 +180,37 @@ describe('isValidTargetUrl', () => {
         it('should handle URLs that throw during parsing', () => {
             expect(isValidTargetUrl('http://[::1')).toBe(false);
         });
+    });
+
+});
+
+
+describe('isInScopeRedirect', () => {
+    it('should allow the same host and protocol upgrades', () => {
+        expect(isInScopeRedirect('http://example.com/.env', 'https://example.com/.env')).toBe(true);
+        expect(isInScopeRedirect('https://example.com/a', 'https://example.com/b')).toBe(true);
+    });
+
+    it('should allow canonical host redirects between parent and subdomain', () => {
+        expect(isInScopeRedirect('http://example.com/.env', 'https://www.example.com/.env')).toBe(true);
+        expect(isInScopeRedirect('https://www.example.com/.env', 'https://example.com/.env')).toBe(true);
+    });
+
+    it('should reject redirects to an unrelated host', () => {
+        expect(isInScopeRedirect('https://example.com/.env', 'https://cdn.othervendor.net/.env')).toBe(false);
+        expect(isInScopeRedirect('https://example.com/.env', 'https://login.microsoftonline.com/')).toBe(false);
+    });
+
+    it('should not treat a suffix-matching host as in scope', () => {
+        expect(isInScopeRedirect('https://example.com/', 'https://notexample.com/')).toBe(false);
+        expect(isInScopeRedirect('https://example.com/', 'https://example.com.evil.net/')).toBe(false);
+    });
+
+    it('should be case-insensitive and tolerate a trailing dot', () => {
+        expect(isInScopeRedirect('https://EXAMPLE.com/', 'https://example.com./')).toBe(true);
+    });
+
+    it('should reject malformed URLs', () => {
+        expect(isInScopeRedirect('not-a-url', 'https://example.com/')).toBe(false);
     });
 });
