@@ -236,7 +236,10 @@ export default {
 				['GET'],
 				categories,
 				bodyPayloadTemplate,
-				false,
+				// Follow redirects: an unfollowed 3xx (http->https, canonical host) tells us
+				// nothing about whether the file is exposed, and would be reported as a
+				// checked-but-not-exposed path. In-scope only, enforced in sendRequest.
+				true,
 				bodyCustomHeaders,
 				false,
 				false,

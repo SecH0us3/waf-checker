@@ -8,7 +8,7 @@ import {
 	generateEncodedPayloads,
 } from './advanced-payloads';
 import { HTTPManipulationOptions, HTTPManipulator } from './http-manipulation';
-import { isValidTargetUrl } from './utils/security';
+import { isValidTargetUrl, isInScopeRedirect } from './utils/security';
 import { substitutePayload, processCustomHeaders, randomUppercase, redactHeaders, redactUrl } from './utils/payload-utils';
 import { AuditResultItem, CheckResultEnvelope } from './reports/types';
 
@@ -119,6 +119,11 @@ export async function sendRequest(
 					if (!isValidTargetUrl(nextUrl, { allowLocal: options?.allowLocal })) {
 						console.error(`Blocked SSRF redirect attempt to: ${redactUrl(nextUrl)}`);
 						return { status: 'BLOCKED', is_redirect: true, responseTime: Date.now() - startTime, error: 'ssrf_blocked', bodyText: '' };
+					}
+					// Leaving the target's own domain means the response would describe some
+					// other host, so stop here and report the redirect itself.
+					if (!isInScopeRedirect(currentUrl, nextUrl)) {
+						break;
 					}
 
 					const status = resp.status;
