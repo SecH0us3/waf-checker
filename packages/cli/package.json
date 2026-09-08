@@ -10,7 +10,7 @@
   "dependencies": {
     "@waf-checker/core": "*",
     "commander": "^15.0.0",
-    "undici": "^8.7.0"
+    "undici": "^8.10.2"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",
