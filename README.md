@@ -152,10 +152,13 @@ node packages/cli/dist/index.js batch targets.txt --concurrency 3
 ```
 
 #### Generating Reports
-Save audit results in **SARIF**, **HTML**, **Markdown**, **CSV**, or **JSON** format:
+Save audit results in **SARIF**, **JUnit XML**, **HTML**, **Markdown**, **CSV**, or **JSON** format:
 ```bash
 # Generate SARIF report for GitHub Code Scanning
 node packages/cli/dist/index.js check https://example.com -o results.sarif
+
+# Generate JUnit XML for CI test reporting (GitHub Actions, GitLab CI, Jenkins)
+node packages/cli/dist/index.js check https://example.com -o results.xml
 
 # Generate interactive HTML report
 node packages/cli/dist/index.js check https://example.com -o report.html
@@ -163,6 +166,7 @@ node packages/cli/dist/index.js check https://example.com -o report.html
 # Generate Markdown summary for CI
 node packages/cli/dist/index.js check https://example.com -o summary.md
 ```
+> The report format is deduced from the output file extension, or set explicitly with `-f, --format` (`json`, `csv`, `html`, `sarif`, `markdown`, `junit`). Each attack payload becomes a JUnit `<testcase>`; WAF bypasses are reported as `failure`s and transport/server errors as `error`s, so CI runners surface them directly.
 
 #### CI/CD Integration & Protection Thresholds
 Fail CI/CD pipelines when protection rate is below required threshold or when bypasses are detected:

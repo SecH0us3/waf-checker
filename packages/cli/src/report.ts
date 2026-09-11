@@ -1,10 +1,10 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { generateSARIFReport } from '@waf-checker/core';
+import { generateSARIFReport, generateJUnitReport } from '@waf-checker/core';
 import { generateCheckHtml, generateBatchHtml } from './reports/html';
 import { generateMarkdownReport, generateBatchMarkdown } from './reports/markdown';
 
-export type ReportFormat = 'json' | 'csv' | 'html' | 'sarif' | 'markdown' | 'md';
+export type ReportFormat = 'json' | 'csv' | 'html' | 'sarif' | 'markdown' | 'md' | 'junit';
 
 export interface CheckResult {
 	status: number | string;
@@ -36,6 +36,7 @@ export interface BatchResult {
 export function deduceFormat(outputPath: string): ReportFormat {
 	const ext = path.extname(outputPath).toLowerCase();
 	if (ext === '.sarif') return 'sarif';
+	if (ext === '.junit' || ext === '.xml') return 'junit';
 	if (ext === '.md' || ext === '.markdown') return 'markdown';
 	if (ext === '.json') return 'json';
 	if (ext === '.csv') return 'csv';
@@ -128,6 +129,11 @@ export function writeReport(
 			throw new Error('SARIF report format is only supported for single target audits (check command), not batch audits.');
 		}
 		outputContent = generateSARIFReport(results, urlOrFile, reverseEngineering);
+	} else if (format === 'junit') {
+		if (type === 'batch') {
+			throw new Error('JUnit report format is only supported for single target audits (check command), not batch audits.');
+		}
+		outputContent = generateJUnitReport(results, urlOrFile);
 	} else if (format === 'markdown' || format === 'md') {
 		if (type === 'check') {
 			outputContent = generateMarkdownReport(results as CheckResult[], urlOrFile, reverseEngineering, virtualPatches);

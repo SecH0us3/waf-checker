@@ -173,7 +173,7 @@ checkCmd
 	.option('--padding <size>', 'Enable WAF inspection buffer padding evasion (e.g. 8kb, 16kb, 64kb, 128kb)')
 	.option('--no-spoof-user-agent', 'Disable the legitimate User-Agent bypass test (replays blocked 403 requests as Googlebot, Slackbot, etc.)')
 	.option('--json', 'Output results in JSON format')
-	.option('-f, --format <format>', 'Output format for report: json, csv, html, sarif, markdown')
+	.option('-f, --format <format>', 'Output format for report: json, csv, html, sarif, markdown, junit')
 	.option('-o, --output <path>', 'File path to save the report to')
 	.option('--sarif-output <path>', 'File path to save SARIF report to')
 	.option('--markdown-output <path>', 'File path to save Markdown report to')
