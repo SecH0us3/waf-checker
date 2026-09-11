@@ -5,6 +5,7 @@ import {
 	detectInspectionLocation,
 	escapeRegex,
 	sanitizeStrictToken,
+	escapeDoubleQuotes,
 } from '../heuristics';
 
 function getUrlPath(targetUrl?: string): string | null {
@@ -79,11 +80,11 @@ export function generateCaddyPatches(
 			} else if (location === 'header') {
 				const hdrName = category === 'User-Agent' ? 'User-Agent' : 'Authorization';
 				for (const tok of tokens) {
-					lines.push(`    header ${hdrName} "*${tok.replace(/"/g, '\\"')}*"`);
+					lines.push(`    header ${hdrName} "*${escapeDoubleQuotes(tok)}*"`);
 				}
 			} else {
 				for (const tok of tokens) {
-					lines.push(`    query "*=*${tok.replace(/"/g, '\\"')}*"`);
+					lines.push(`    query "*=*${escapeDoubleQuotes(tok)}*"`);
 				}
 			}
 
@@ -122,10 +123,10 @@ export function generateCaddyPatches(
 
 			const cleanPattern = rawPattern.startsWith('(?i)') ? rawPattern : `(?i)${rawPattern}`;
 			if (location === 'uri') {
-				lines.push(`    path_regexp "${cleanPattern.replace(/"/g, '\\"')}"`);
+				lines.push(`    path_regexp "${escapeDoubleQuotes(cleanPattern)}"`);
 			} else if (location === 'header') {
 				const hdrName = category === 'User-Agent' ? 'User-Agent' : 'Authorization';
-				lines.push(`    header_regexp ${hdrName} "${cleanPattern.replace(/"/g, '\\"')}"`);
+				lines.push(`    header_regexp ${hdrName} "${escapeDoubleQuotes(cleanPattern)}"`);
 			} else {
 				const celPattern = cleanPattern.replace(/"/g, '\\x22');
 				lines.push(`    expression {http.request.uri.query}.matches(r"${celPattern}")`);

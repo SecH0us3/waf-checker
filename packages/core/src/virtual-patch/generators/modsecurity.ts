@@ -1,6 +1,6 @@
 import { AuditResultItem } from '../../reports/types';
 import { VirtualPatchOptions, GeneratedPatch } from '../types';
-import { CATEGORY_HEURISTICS, detectInspectionLocation, escapeRegex, sanitizeStrictToken } from '../heuristics';
+import { CATEGORY_HEURISTICS, detectInspectionLocation, escapeRegex, sanitizeStrictToken, escapeDoubleQuotes } from '../heuristics';
 
 function getUrlPath(targetUrl?: string): string | null {
 	if (!targetUrl) return null;
@@ -68,7 +68,7 @@ export function generateModSecurityPatches(
 
 			const allTokensSingleWord = tokens.length > 1 && tokens.every((t) => !/\s/.test(t));
 			if (allTokensSingleWord) {
-				const pmTokens = tokens.map((t) => t.replace(/"/g, '\\"')).join(' ');
+				const pmTokens = tokens.map((t) => escapeDoubleQuotes(t)).join(' ');
 				if (urlPath) {
 					lines.push(
 						`SecRule REQUEST_URI "@beginsWith ${urlPath}" \\`,
@@ -84,7 +84,7 @@ export function generateModSecurityPatches(
 				currentId++;
 			} else {
 				tokens.forEach((token) => {
-					const escapedToken = token.replace(/"/g, '\\"');
+					const escapedToken = escapeDoubleQuotes(token);
 					if (urlPath) {
 						lines.push(
 							`SecRule REQUEST_URI "@beginsWith ${urlPath}" \\`,
@@ -116,7 +116,7 @@ export function generateModSecurityPatches(
 		if (options.tier !== 'strict') {
 			const heuristic = CATEGORY_HEURISTICS[category];
 			const pattern = heuristic ? heuristic.pattern : escapeRegex(items[0].payload);
-			const escapedPattern = pattern.replace(/"/g, '\\"');
+			const escapedPattern = escapeDoubleQuotes(pattern);
 
 			const lines: string[] = [
 				`# ------------------------------------------------------------------------`,

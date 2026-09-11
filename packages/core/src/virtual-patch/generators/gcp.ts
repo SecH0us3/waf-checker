@@ -6,6 +6,7 @@ import {
 	escapeRegex,
 	sanitizeStrictToken,
 	escapeHclString,
+	escapeDoubleQuotes,
 } from '../heuristics';
 
 function getUrlPath(targetUrl?: string): string | null {
@@ -124,7 +125,7 @@ export function generateGcpPatches(
 
 			const gcloudCmd = `gcloud compute security-policies rules create ${currentPriority} \\
     --security-policy="waf-checker-policy" \\
-    --expression="${fullExpression.replace(/"/g, '\\"')}" \\
+    --expression="${escapeDoubleQuotes(fullExpression)}" \\
     --action="deny-403" \\
     --description="Block verified ${category} bypass tokens"${gcloudPreviewFlag}`;
 
@@ -167,7 +168,7 @@ export function generateGcpPatches(
 
 			const gcloudCmd = `gcloud compute security-policies rules create ${currentPriority} \\
     --security-policy="waf-checker-policy" \\
-    --expression="${fullExpression.replace(/"/g, '\\"')}" \\
+    --expression="${escapeDoubleQuotes(fullExpression)}" \\
     --action="deny-403" \\
     --description="Heuristic regex defense for ${category}"${gcloudPreviewFlag}`;
 
