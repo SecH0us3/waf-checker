@@ -1101,53 +1101,37 @@ body[data-theme='dark'] .form-select {
 	}
 
 	#resultsTable td {
-		display: flex;
-		justify-content: space-between;
-		align-items: baseline;
-		gap: 1rem;
+		display: block;
 		width: auto !important;
 		border: 0 !important;
-		padding: 0.22rem 0 !important;
-		text-align: right !important;
+		padding: 0.18rem 0 !important;
+		text-align: left !important;
 		font-size: 0.9em !important;
 		word-break: normal;
 	}
 
+	/* Labels dropped on phones — the values are self-explanatory. */
 	#resultsTable td::before {
-		content: attr(data-label);
-		font-weight: 600;
-		color: var(--text-muted);
-		text-align: left;
-		flex: 0 0 auto;
+		content: none;
 	}
 
-	/* Status becomes a coloured pill at the top of the card (keeps its
-	   status-* background), not a full-width band. */
+	/* Category reads as the card title. */
+	#resultsTable td[data-label='Category'] {
+		font-weight: 600;
+	}
+
+	/* Status stays a coloured pill (keeps its status-* background). */
 	#resultsTable td[data-label='Status'] {
 		display: inline-block;
 		width: auto !important;
 		padding: 0.15rem 0.7rem !important;
-		margin-bottom: 0.35rem;
+		margin: 0.15rem 0 0.35rem;
 		border-radius: 999px;
 		font-weight: 700;
 		text-align: center !important;
 	}
 
-	#resultsTable td[data-label='Status']::before {
-		display: none;
-	}
-
-	/* Payload: label above, code wraps freely below (full width). */
-	#resultsTable td[data-label='Payload'] {
-		display: block;
-		text-align: left !important;
-	}
-
-	#resultsTable td[data-label='Payload']::before {
-		display: block;
-		margin-bottom: 0.2rem;
-	}
-
+	/* Payload: code wraps freely, full width. */
 	#resultsTable td[data-label='Payload'] code {
 		white-space: pre-wrap;
 		word-break: break-word;
