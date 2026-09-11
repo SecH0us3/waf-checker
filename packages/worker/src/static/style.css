@@ -1000,12 +1000,24 @@ body[data-theme='dark'] .form-select {
 		justify-content: center;
 	}
 
+	/* Secondary actions as a compact 2-column grid instead of a full-width
+	   stack (6 stacked rows used to eat ~half the mobile viewport). */
 	.action-buttons-row {
-		flex-direction: column;
+		display: grid;
+		/* minmax(0, 1fr) — not plain 1fr — so long labels wrap inside the cell
+		   instead of forcing the column past its share of the row. */
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.5rem;
 	}
 
 	.action-buttons-row .btn {
 		width: 100%;
+		margin: 0;
+		font-size: 0.8rem;
+		padding: 0.5rem 0.4rem;
+		white-space: normal;
+		line-height: 1.15;
+		min-height: 2.6rem;
 	}
 
 	.category-grid {
