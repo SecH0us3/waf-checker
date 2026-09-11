@@ -51,4 +51,26 @@ describe('Payload registry integrity', () => {
 			}
 		});
 	});
+
+	describe('Log4Shell (JNDI)', () => {
+		const cat = PAYLOADS['Log4Shell (JNDI)'];
+		it('is registered as a ParamCheck', () => {
+			expect(cat).toBeDefined();
+			expect(cat.type).toBe('ParamCheck');
+		});
+		it('covers multiple JNDI protocols', () => {
+			const joined = cat.payloads.join(' ');
+			for (const proto of ['ldap:', 'rmi:', 'dns:']) {
+				expect(joined).toContain(proto);
+			}
+		});
+		it('includes lookup-based obfuscation variants for filter evasion', () => {
+			expect(cat.payloads.some((p) => p.includes('${lower:') || p.includes('${::-') || p.includes('${upper:'))).toBe(true);
+		});
+		it('benign templating strings are not literal JNDI lookups', () => {
+			for (const p of cat.falsePayloads) {
+				expect(p.toLowerCase()).not.toContain('jndi:');
+			}
+		});
+	});
 });
