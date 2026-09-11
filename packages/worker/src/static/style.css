@@ -313,6 +313,12 @@ body[data-theme='light'] .hero-header h1 {
 	transform: translateY(-1px);
 }
 
+/* The "more actions" toggle only exists on phones (see the mobile query),
+   where the secondary actions are collapsed behind it. */
+#moreActionsToggle {
+	display: none;
+}
+
 /* --- HTTP Method Chips --- */
 .method-chip {
 	cursor: pointer;
@@ -991,26 +997,52 @@ body[data-theme='dark'] .form-select {
 		font-size: 1.3rem !important;
 	}
 
+	/* Keep the input row horizontal: the URL field grows and the Check button
+	   stays small on the right, next to the "more actions" toggle. */
 	.url-input-group {
-		flex-direction: column;
+		flex-wrap: nowrap;
+	}
+
+	.url-input-group .form-control {
+		min-width: 0; /* allow the field to shrink so the buttons fit on one line */
 	}
 
 	.url-input-group .btn-primary {
-		width: 100%;
-		justify-content: center;
+		padding: 0.5rem 0.7rem;
+		font-size: 0.85rem;
 	}
 
-	/* Secondary actions as a compact 2-column grid instead of a full-width
-	   stack (6 stacked rows used to eat ~half the mobile viewport). */
+	.url-input-group .btn-primary .check-label {
+		display: none; /* icon-only Check on phones to keep it compact */
+	}
+
+	/* The secondary actions are collapsed behind the ⋯ toggle on phones. */
+	#moreActionsToggle {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex-shrink: 0;
+		padding: 0.5rem 0.7rem;
+		font-size: 1rem;
+		line-height: 1;
+	}
+
 	.action-buttons-row {
+		display: none;
+	}
+
+	/* Revealed by the toggle: a compact 2-column grid instead of a full-width
+	   stack (6 stacked rows used to eat ~half the mobile viewport). */
+	.action-buttons-row.expanded {
 		display: grid;
 		/* minmax(0, 1fr) — not plain 1fr — so long labels wrap inside the cell
 		   instead of forcing the column past its share of the row. */
 		grid-template-columns: repeat(2, minmax(0, 1fr));
 		gap: 0.5rem;
+		margin-top: 0.6rem;
 	}
 
-	.action-buttons-row .btn {
+	.action-buttons-row.expanded .btn {
 		width: 100%;
 		margin: 0;
 		font-size: 0.8rem;

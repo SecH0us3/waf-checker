@@ -329,6 +329,21 @@ function togglePaddingSizeSelect() {
 	}
 }
 
+// Show/hide the secondary action buttons on mobile (they are collapsed behind
+// the ⋯ toggle to keep the header compact). On desktop the row is always shown
+// and the toggle is hidden via CSS, so this is a no-op there.
+function toggleActionButtons() {
+	const row = document.getElementById('actionButtonsRow');
+	const btn = document.getElementById('moreActionsToggle');
+	if (!row) return;
+	const expanded = row.classList.toggle('expanded');
+	if (btn) {
+		btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+		btn.textContent = expanded ? '✕' : '⋯';
+		btn.title = expanded ? 'Hide actions' : 'More actions';
+	}
+}
+
 async function fetchResults() {
 	const btn = document.getElementById('checkBtn');
 	btn.disabled = true;

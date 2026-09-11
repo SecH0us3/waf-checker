@@ -85,15 +85,16 @@
 						placeholder="https://example.com/api/endpoint/{PAYLOAD}" required
 						style="color: var(--bs-body-color); background-color: var(--bs-body-bg)" />
 					<button type="button" id="checkBtn" class="btn btn-primary" onclick="fetchResults()">
-						<span class="btn-icon">▶</span> Check
+						<span class="btn-icon">▶</span> <span class="check-label">Check</span>
 					</button>
                     <button type="button" id="cancelBtn" class="btn btn-danger" onclick="cancelCurrentScan()" style="display: none;" title="Cancel Scan">
                         ❌
                     </button>
+					<button type="button" id="moreActionsToggle" class="btn btn-outline-secondary" onclick="toggleActionButtons()" title="More actions" aria-expanded="false" aria-controls="actionButtonsRow">⋯</button>
 				</div>
 
 				<!-- Action buttons row -->
-				<div class="action-buttons-row justify-content-center">
+				<div id="actionButtonsRow" class="action-buttons-row justify-content-center">
 					<button type="button" id="detectWafBtn" class="btn btn-outline-info btn-sm" onclick="detectWAF()">
 						🛡️ Detect WAF
 					</button>
