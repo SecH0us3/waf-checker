@@ -4,6 +4,7 @@ import {
 	filterBypasses,
 	sanitizeStrictToken,
 	escapeRegex,
+	escapeDoubleQuotes,
 	detectInspectionLocation,
 	CATEGORY_HEURISTICS,
 } from '../src/virtual-patch';
@@ -75,6 +76,13 @@ describe('Virtual Patching & Rule Generator', () => {
 		it('should escape regex special characters correctly', () => {
 			expect(escapeRegex('test.com?id=1&name=a')).toBe('test\\.com\\?id=1&name=a');
 			expect(escapeRegex('127.0.0.1')).toBe('127\\.0\\.0\\.1');
+		});
+
+		it('should escape double quotes and backslashes correctly for config embedding', () => {
+			expect(escapeDoubleQuotes('plain-text')).toBe('plain-text');
+			expect(escapeDoubleQuotes('"quoted"')).toBe('\\"quoted\\"');
+			expect(escapeDoubleQuotes('path\\with\\slash')).toBe('path\\\\with\\\\slash');
+			expect(escapeDoubleQuotes('mixed\\"quote')).toBe('mixed\\\\\\"quote');
 		});
 
 		it('should sanitize strict tokens properly and consolidate sensitive extensions', () => {
@@ -597,6 +605,41 @@ describe('Virtual Patching & Rule Generator', () => {
 			expect(report.patches.length).toBeGreaterThan(0);
 			expect(report.bundles.coraza).toBeDefined();
 			expect(report.bundles.coraza.native).toContain('SecRule');
+		});
+	});
+
+	describe('String Escaping in Virtual Patch Generators', () => {
+		const bypassWithQuotesAndBackslashes: AuditResultItem[] = [
+			{
+				category: 'XSS',
+				payload: '<script>alert(\\"xss\\")</script>',
+				method: 'GET',
+				status: 200,
+				responseTime: 30,
+			},
+		];
+
+		it('should properly escape backslashes before quotes across all generators', () => {
+			const report = generateVirtualPatches(bypassWithQuotesAndBackslashes, {
+				targetUrl: 'https://example.com/search',
+				tier: 'both',
+			});
+
+			// ModSecurity
+			const modsecBundle = report.bundles.modsecurity.native;
+			expect(modsecBundle).toContain('\\\\\\"xss\\\\\\"');
+
+			// Caddy
+			const caddyBundle = report.bundles.caddy.native;
+			expect(caddyBundle).toContain('\\\\\\"xss\\\\\\"');
+
+			// GCP
+			const gcpPatch = report.patches.find((p) => p.vendor === 'gcp');
+			expect(gcpPatch?.gcloudCommand).toContain('\\\\\\"');
+
+			// Azure
+			const azurePatch = report.patches.find((p) => p.vendor === 'azure');
+			expect(azurePatch?.azureCliCommand).toContain('\\\\\\"');
 		});
 	});
 });

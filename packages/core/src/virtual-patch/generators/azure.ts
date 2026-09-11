@@ -6,6 +6,7 @@ import {
 	escapeRegex,
 	sanitizeStrictToken,
 	escapeHclString,
+	escapeDoubleQuotes,
 } from '../heuristics';
 
 function getAzureMatchVariable(location: 'query' | 'body' | 'header' | 'uri') {
@@ -147,7 +148,7 @@ export function generateAzurePatches(
 						`    --rule-name="VirtualPatch${sanitizedCat}Strict" \\`,
 						`    --match-variable="RequestUri" \\`,
 						`    --operator="EndsWith" \\`,
-						`    --values ${files.map((f) => `"${f}"`).join(' ')}`
+						`    --values ${files.map((f) => `"${escapeDoubleQuotes(f)}"`).join(' ')}`
 					);
 				}
 			} else {
@@ -172,7 +173,7 @@ export function generateAzurePatches(
 					`    --match-variable="${matchVariable}" \\`,
 					selector ? `    --selector="${selector}" \\\n` : '',
 					`    --operator="Contains" \\`,
-					`    --values ${tokens.map((t) => `"${t}"`).join(' ')}`
+					`    --values ${tokens.map((t) => `"${escapeDoubleQuotes(t)}"`).join(' ')}`
 				);
 			}
 
@@ -257,7 +258,7 @@ ${tfMatchBlocks.join('\n\n')}
 				`    --match-variable="${matchVariable}" \\`,
 				selector ? `    --selector="${selector}" \\\n` : '',
 				`    --operator="RegEx" \\`,
-				`    --values "${rawPattern.replace(/"/g, '\\"')}"`,
+				`    --values "${escapeDoubleQuotes(rawPattern)}"`,
 			];
 
 			patches.push({

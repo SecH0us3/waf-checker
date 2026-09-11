@@ -155,10 +155,18 @@ export function escapeHclString(str: string): string {
 }
 
 /**
+ * Escapes characters for embedding inside double-quoted configuration string literals and regexes.
+ * Escapes backslashes first, then double quotes.
+ */
+export function escapeDoubleQuotes(str: string): string {
+	return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/**
  * Escapes strings for embedding inside NGINX configuration double-quoted regexes.
  */
 export function escapeNginxString(str: string): string {
-	return str.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+	return escapeDoubleQuotes(str);
 }
 
 /**

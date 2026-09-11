@@ -5,6 +5,7 @@ import {
 	detectInspectionLocation,
 	escapeRegex,
 	sanitizeStrictToken,
+	escapeDoubleQuotes,
 } from '../heuristics';
 
 function getHostname(targetUrl?: string): string {
@@ -17,7 +18,7 @@ function getHostname(targetUrl?: string): string {
 }
 
 function escapeNginxRegex(str: string): string {
-	return str.replace(/"/g, '\\"');
+	return escapeDoubleQuotes(str);
 }
 
 /**
