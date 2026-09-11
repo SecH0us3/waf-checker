@@ -26,3 +26,14 @@ coverage/
 
 # Local planning artifacts
 docs/superpowers/
+
+# Diffs & patches
+*.patch
+*.diff
+
+# Temporary files & folders
+tmp/
+temp/
+
+# IDE & Editor caches
+.continue/
