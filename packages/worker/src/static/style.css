@@ -1074,16 +1074,88 @@ body[data-theme='dark'] .form-select {
 		font-size: 0.78rem;
 	}
 
-	#results th,
-	#results td {
-		font-size: 0.85em !important;
-		padding: 0.3em !important;
+	/* Card layout for the results table on phones: a 5-column table can't fit
+	   ~390px without the header wrapping one letter per line and the payload
+	   overflowing. Turn each row into a labelled card instead. */
+	#resultsTable {
+		display: block;
+		width: 100% !important;
+		border: 0 !important;
 	}
 
-	#results table {
+	#resultsTable tbody {
 		display: block;
-		overflow-x: auto;
-		width: 100% !important;
+	}
+
+	/* Hide the header row (first row); each cell carries its own label. */
+	#resultsTable tr:first-child {
+		display: none;
+	}
+
+	#resultsTable tr {
+		display: block;
+		border: 1px solid var(--section-border);
+		border-radius: 10px;
+		padding: 0.6rem 0.8rem;
+		margin-bottom: 0.6rem;
+	}
+
+	#resultsTable td {
+		display: flex;
+		justify-content: space-between;
+		align-items: baseline;
+		gap: 1rem;
+		width: auto !important;
+		border: 0 !important;
+		padding: 0.22rem 0 !important;
+		text-align: right !important;
+		font-size: 0.9em !important;
+		word-break: normal;
+	}
+
+	#resultsTable td::before {
+		content: attr(data-label);
+		font-weight: 600;
+		color: var(--text-muted);
+		text-align: left;
+		flex: 0 0 auto;
+	}
+
+	/* Status becomes a coloured pill at the top of the card (keeps its
+	   status-* background), not a full-width band. */
+	#resultsTable td[data-label='Status'] {
+		display: inline-block;
+		width: auto !important;
+		padding: 0.15rem 0.7rem !important;
+		margin-bottom: 0.35rem;
+		border-radius: 999px;
+		font-weight: 700;
+		text-align: center !important;
+	}
+
+	#resultsTable td[data-label='Status']::before {
+		display: none;
+	}
+
+	/* Payload: label above, code wraps freely below (full width). */
+	#resultsTable td[data-label='Payload'] {
+		display: block;
+		text-align: left !important;
+	}
+
+	#resultsTable td[data-label='Payload']::before {
+		display: block;
+		margin-bottom: 0.2rem;
+	}
+
+	#resultsTable td[data-label='Payload'] code {
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+
+	/* Keep the UA-bypass highlight readable as a card (red outline). */
+	#resultsTable tr.ua-bypass-row {
+		border: 2px solid #dc3545;
 	}
 
 	.theme-toggle {
@@ -1112,12 +1184,6 @@ body[data-theme='dark'] .form-select {
 		margin-bottom: 1em !important;
 	}
 
-	#results td:nth-child(4),
-	#results th:nth-child(4) {
-		word-break: break-all !important;
-		white-space: normal !important;
-		font-size: 0.9em !important;
-	}
 
 	.settings-panel-inner {
 		padding: 0.75rem;

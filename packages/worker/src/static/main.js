@@ -155,11 +155,11 @@ function renderReport(results, falsePositiveMode = false) {
 		const rowClass = uaBadge ? ' class="ua-bypass-row"' : '';
 		html +=
 			`<tr data-status='${r.status}'${uaAttr}${rowClass}>` +
-			`<td>${r.category}</td>` +
-			`<td class='text-center'>${r.method}</td>` +
-			`<td class='${status_class} text-center'>${r.status}</td>` +
-			`<td class='text-center'>${responseTime}ms</td>` +
-			`<td><code class='${codeClass}'>${escapeHtml(r.payload)}</code>${patchBtn}${uaBadge}</td>` +
+			`<td data-label='Category'>${r.category}</td>` +
+			`<td class='text-center' data-label='Method'>${r.method}</td>` +
+			`<td class='${status_class} text-center' data-label='Status'>${r.status}</td>` +
+			`<td class='text-center' data-label='Response Time'>${responseTime}ms</td>` +
+			`<td data-label='Payload'><code class='${codeClass}'>${escapeHtml(r.payload)}</code>${patchBtn}${uaBadge}</td>` +
 			`</tr>`;
 	}
 	html += `</table>`;
