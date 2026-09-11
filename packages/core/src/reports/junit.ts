@@ -16,6 +16,16 @@ function escapeXml(value: unknown): string {
 		.replace(/'/g, '&apos;');
 }
 
+/**
+ * Escape a string for an XML attribute value. Same as {@link escapeXml} but
+ * also encodes tab/newline/carriage-return as numeric entities: parsers
+ * normalize raw line breaks in attribute values to spaces, so payloads that
+ * carry CRLF (e.g. HTTP request smuggling) must not embed them verbatim.
+ */
+function escapeXmlAttr(value: unknown): string {
+	return escapeXml(value).replace(/\t/g, '&#9;').replace(/\n/g, '&#10;').replace(/\r/g, '&#13;');
+}
+
 /** Response times are reported in milliseconds; JUnit expects seconds. */
 function toSeconds(ms: number): string {
 	return (Math.max(0, ms || 0) / 1000).toFixed(3);
@@ -80,7 +90,7 @@ export function generateJUnitReport(results: AuditResultItem[], targetUrl?: stri
 			const caseName = `${r.method} ${r.payload}`.slice(0, 250) || `case-${idx + 1}`;
 			const classname = `WAF.${category}`;
 			const attrs =
-				`name="${escapeXml(caseName)}" classname="${escapeXml(classname)}" ` +
+				`name="${escapeXmlAttr(caseName)}" classname="${escapeXmlAttr(classname)}" ` +
 				`time="${toSeconds(r.responseTime)}"`;
 
 			if (outcome === 'pass') {
@@ -111,7 +121,7 @@ export function generateJUnitReport(results: AuditResultItem[], targetUrl?: stri
 
 			caseXml.push(
 				`\t\t<testcase ${attrs}>`,
-				`\t\t\t<${tag} message="${escapeXml(message)}" type="${type}">${escapeXml(body)}</${tag}>`,
+				`\t\t\t<${tag} message="${escapeXmlAttr(message)}" type="${type}">${escapeXml(body)}</${tag}>`,
 				`\t\t</testcase>`,
 			);
 		});
@@ -121,7 +131,7 @@ export function generateJUnitReport(results: AuditResultItem[], targetUrl?: stri
 		totalTimeMs += suiteTimeMs;
 
 		suiteXml.push(
-			`\t<testsuite name="${escapeXml(category)}" tests="${items.length}" ` +
+			`\t<testsuite name="${escapeXmlAttr(category)}" tests="${items.length}" ` +
 				`failures="${suiteFailures}" errors="${suiteErrors}" skipped="0" ` +
 				`time="${toSeconds(suiteTimeMs)}">`,
 			...caseXml,
@@ -132,7 +142,7 @@ export function generateJUnitReport(results: AuditResultItem[], targetUrl?: stri
 	const suitesAttrs =
 		`name="WAF-Checker" tests="${stats.total}" failures="${totalFailures}" ` +
 		`errors="${totalErrors}" time="${toSeconds(totalTimeMs)}"` +
-		(targetUrl ? ` package="${escapeXml(targetUrl)}"` : '');
+		(targetUrl ? ` package="${escapeXmlAttr(targetUrl)}"` : '');
 
 	return [
 		'<?xml version="1.0" encoding="UTF-8"?>',

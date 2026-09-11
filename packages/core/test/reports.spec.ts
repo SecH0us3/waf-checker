@@ -181,6 +181,25 @@ describe('Reports Module', () => {
 			expect(xml).toContain('Googlebot');
 		});
 
+		it('does not embed raw line breaks inside attribute values', () => {
+			const xml = generateJUnitReport([
+				{
+					category: 'HTTP Request Smuggling',
+					payload: 'Transfer-Encoding: chunked\r\n0\r\n\r\nGARBAGE',
+					method: 'POST',
+					status: 200,
+					responseTime: 10,
+				},
+			]);
+			// The name attribute (first line up to its closing quote) must be single-line.
+			const nameAttr = xml.match(/name="([^"]*)"/);
+			expect(nameAttr).not.toBeNull();
+			expect(nameAttr![1]).not.toMatch(/[\r\n]/);
+			// CR/LF were encoded as numeric entities instead.
+			expect(xml).toContain('&#13;');
+			expect(xml).toContain('&#10;');
+		});
+
 		it('handles an empty result set', () => {
 			const xml = generateJUnitReport([]);
 			expect(xml).toContain('tests="0"');
