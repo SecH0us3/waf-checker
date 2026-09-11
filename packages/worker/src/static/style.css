@@ -1016,6 +1016,19 @@ body[data-theme='dark'] .form-select {
 		display: none; /* icon-only Check on phones to keep it compact */
 	}
 
+	/* Stack the virtual-patch banner on phones: the "Remediation Studio" button
+	   drops below the text instead of being squeezed to the right (JS toggles
+	   the banner's display between flex/none, so only flex-direction is set here). */
+	#virtualPatchBanner {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	#virtualPatchBanner .btn {
+		margin-left: 0 !important;
+		margin-top: 0.75rem;
+	}
+
 	/* The secondary actions are collapsed behind the ⋯ toggle on phones. */
 	#moreActionsToggle {
 		display: inline-flex;
