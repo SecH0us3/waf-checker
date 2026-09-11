@@ -10,7 +10,42 @@ import {
 import { HTTPManipulationOptions, HTTPManipulator } from './http-manipulation';
 import { isValidTargetUrl, isInScopeRedirect } from './utils/security';
 import { substitutePayload, processCustomHeaders, randomUppercase, redactHeaders, redactUrl } from './utils/payload-utils';
-import { AuditResultItem, CheckResultEnvelope } from './reports/types';
+import { AuditResultItem, CheckResultEnvelope, UserAgentBypassInfo } from './reports/types';
+import { LegitUserAgent, resolveLegitUserAgents } from './payloads-data/legit-user-agents';
+
+/**
+ * Replays a request that the WAF blocked (403) under a set of legitimate,
+ * commonly allow-listed User-Agents (Googlebot, Slackbot, ...). If any of them
+ * turns the block into a non-blocked response, the WAF is trusting the
+ * User-Agent header — a real bypass worth surfacing.
+ *
+ * `reissue` re-issues the exact same request but with the given User-Agent
+ * header injected/overridden; the caller owns the request shape so this works
+ * uniformly for param, file and header checks.
+ */
+async function probeUserAgentBypass(
+	reissue: (userAgent: string) => Promise<any>,
+	legitUserAgents: LegitUserAgent[],
+	detection: WAFDetectionResult | undefined,
+	probedPayload: string | undefined,
+): Promise<UserAgentBypassInfo> {
+	const info: UserAgentBypassInfo = { bypassed: false, tested: legitUserAgents.length, hits: [] };
+	for (const ua of legitUserAgents) {
+		let res: any;
+		try {
+			res = await reissue(ua.userAgent);
+		} catch {
+			continue;
+		}
+		const status = res ? res.status : 'ERR';
+		const { blocked, verdict } = evaluateWAFVerdict(status, res?.bodyText || '', detection, res?.response?.headers, probedPayload);
+		if (!blocked) {
+			info.bypassed = true;
+			info.hits.push({ name: ua.name, userAgent: ua.userAgent, status, verdict: verdict as 'passed' | 'exposed' });
+		}
+	}
+	return info;
+}
 
 // Вспомогательная функция для отправки запроса с нужным методом и payload
 export async function sendRequest(
@@ -464,10 +499,26 @@ export async function handleApiCheckWithEnvelope(
 	useEncodingVariations: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; isWorker?: boolean; allowLocal?: boolean; pageSize?: number },
+	options?: {
+		fetch?: typeof fetch;
+		color?: boolean;
+		quiet?: boolean;
+		isWorker?: boolean;
+		allowLocal?: boolean;
+		pageSize?: number;
+		/**
+		 * Legitimate-User-Agent bypass test. `true` uses the curated list of
+		 * trusted identities; an array supplies custom ones; falsy disables it.
+		 * Blocked (403) requests are replayed under each identity to detect a
+		 * User-Agent allow-list bypass.
+		 */
+		spoofUserAgents?: boolean | LegitUserAgent[];
+	},
 ): Promise<CheckResultEnvelope> {
 	const METHODS = methods && methods.length ? methods : ['GET'];
 	const results: AuditResultItem[] = [];
+	// Legitimate-User-Agent bypass test: identities to replay blocked requests with.
+	const legitUserAgents = resolveLegitUserAgents(options?.spoofUserAgents);
 	let baseUrl: string;
 	const limit = options?.pageSize && options.pageSize > 0 ? options.pageSize : 50;
 	const start = page * limit;
@@ -619,6 +670,30 @@ export async function handleApiCheckWithEnvelope(
 							const itemError = res?.error || null;
 							const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers, currentPayload);
 
+							// If the WAF blocked this (403), replay it under trusted User-Agents
+							// to see whether a legitimate identity bypasses the block.
+							let userAgentBypass: UserAgentBypassInfo | undefined;
+							if (legitUserAgents.length && (itemStatus === 403 || itemStatus === '403')) {
+								userAgentBypass = await probeUserAgentBypass(
+									(ua) =>
+										sendRequest(
+											url,
+											finalMethod,
+											finalPayload,
+											{ ...(headersObj || {}), 'User-Agent': ua },
+											payloadTemplate,
+											followRedirect,
+											useEnhancedPayloads,
+											detectedWAFType,
+											undefined,
+											options,
+										),
+									legitUserAgents,
+									wafDetectionResult,
+									currentPayload,
+								);
+							}
+
 							results.push({
 								category,
 								payload: currentPayload,
@@ -633,6 +708,7 @@ export async function handleApiCheckWithEnvelope(
 								blocked,
 								verdict,
 								error: itemError,
+								userAgentBypass,
 							});
 						}
 						offset++;
@@ -671,6 +747,28 @@ export async function handleApiCheckWithEnvelope(
 					const itemError = res?.error || null;
 					const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers, payload);
 
+					let userAgentBypass: UserAgentBypassInfo | undefined;
+					if (legitUserAgents.length && (itemStatus === 403 || itemStatus === '403')) {
+						userAgentBypass = await probeUserAgentBypass(
+							(ua) =>
+								sendRequest(
+									fileUrl,
+									'GET',
+									undefined,
+									{ ...(headersObj || {}), 'User-Agent': ua },
+									undefined,
+									followRedirect,
+									useEnhancedPayloads,
+									detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined),
+									undefined,
+									options,
+								),
+							legitUserAgents,
+							wafDetectionResult,
+							payload,
+						);
+					}
+
 					results.push({
 						category,
 						payload,
@@ -683,6 +781,7 @@ export async function handleApiCheckWithEnvelope(
 						blocked,
 						verdict,
 						error: itemError,
+						userAgentBypass,
 					});
 				}
 				offset++;
@@ -735,6 +834,30 @@ export async function handleApiCheckWithEnvelope(
 						const itemError = res?.error || null;
 						const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers, payload);
 
+						// Skip the User-Agent category: its payload IS the UA header, so
+						// swapping in a trusted UA would be a meaningless "bypass".
+						let userAgentBypass: UserAgentBypassInfo | undefined;
+						if (legitUserAgents.length && category !== 'User-Agent' && (itemStatus === 403 || itemStatus === '403')) {
+							userAgentBypass = await probeUserAgentBypass(
+								(ua) =>
+									sendRequest(
+										url,
+										method,
+										undefined,
+										{ ...headersObj, 'User-Agent': ua },
+										payloadTemplate,
+										followRedirect,
+										useEnhancedPayloads,
+										detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined),
+										undefined,
+										options,
+									),
+							legitUserAgents,
+							wafDetectionResult,
+							payload,
+						);
+						}
+
 						results.push({
 							category,
 							payload,
@@ -747,6 +870,7 @@ export async function handleApiCheckWithEnvelope(
 							blocked,
 							verdict,
 							error: itemError,
+							userAgentBypass,
 						});
 					}
 					offset++;
@@ -773,7 +897,21 @@ export async function handleApiCheckFiltered(
 	useEncodingVariations: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; isWorker?: boolean; allowLocal?: boolean; pageSize?: number },
+	options?: {
+		fetch?: typeof fetch;
+		color?: boolean;
+		quiet?: boolean;
+		isWorker?: boolean;
+		allowLocal?: boolean;
+		pageSize?: number;
+		/**
+		 * Legitimate-User-Agent bypass test. `true` uses the curated list of
+		 * trusted identities; an array supplies custom ones; falsy disables it.
+		 * Blocked (403) requests are replayed under each identity to detect a
+		 * User-Agent allow-list bypass.
+		 */
+		spoofUserAgents?: boolean | LegitUserAgent[];
+	},
 ): Promise<AuditResultItem[]> {
 	const envelope = await handleApiCheckWithEnvelope(
 		url,

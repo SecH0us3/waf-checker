@@ -143,6 +143,10 @@ export default {
 			const enableHTTPManipulation = urlObj.searchParams.get('httpManipulation') === '1';
 			const enablePadding = urlObj.searchParams.get('enablePadding') === '1' || Boolean(urlObj.searchParams.get('paddingSize'));
 			const paddingSize = urlObj.searchParams.get('paddingSize') || '16kb';
+			// Legitimate-User-Agent bypass test. Opt-in at the raw API (it can multiply
+			// request volume ~16x per blocked payload); the UI/CLI enable it by default
+			// and send spoofUserAgent=1.
+			const spoofUserAgents = urlObj.searchParams.get('spoofUserAgent') === '1';
 			const detectedWAF = urlObj.searchParams.get('detectedWAF') || bodyDetectedWAF || undefined;
 
 			const wantsEnvelope =
@@ -176,7 +180,7 @@ export default {
 							paddingSize: paddingSize as any,
 						}
 					: undefined,
-				{ isWorker: true, pageSize },
+				{ isWorker: true, pageSize, spoofUserAgents },
 			);
 
 			if (wantsEnvelope) {

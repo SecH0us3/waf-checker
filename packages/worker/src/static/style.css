@@ -1277,3 +1277,19 @@ body[data-theme='dark'] .middle-footer {
 .settings-section:last-child {
 	border-bottom: none;
 }
+/* Legitimate User-Agent allow-list bypass: a request blocked with a normal
+   User-Agent that was let through once it claimed to be a trusted bot. */
+.ua-bypass-row {
+	background-color: rgba(220, 53, 69, 0.08);
+}
+.ua-bypass-row td {
+	border-top: 2px solid #dc3545;
+	border-bottom: 2px solid #dc3545;
+}
+
+/* Summary indicator bar for legitimate User-Agent allow-list bypasses. */
+.status-bar-bypass {
+	background: #dc3545;
+	color: #ffffff;
+	min-width: 24px;
+}

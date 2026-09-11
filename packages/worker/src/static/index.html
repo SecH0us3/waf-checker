@@ -295,6 +295,10 @@
 							<input class="form-check-input" type="checkbox" id="enablePadding" onchange="togglePaddingSizeSelect()" />
 							<label class="form-check-label" for="enablePadding">Buffer Padding Evasion</label>
 						</div>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" id="spoofUserAgent" checked />
+							<label class="form-check-label" for="spoofUserAgent" title="Replays blocked (403) requests as trusted bots (Googlebot, Slackbot, ...) to detect User-Agent allow-list bypasses">Legit User-Agent bypass test</label>
+						</div>
 						<div class="mt-2 w-100" id="paddingSizeWrapper" style="display: none;">
 							<label for="paddingSizeSelect" class="form-label small text-muted mb-1">Padding Size:</label>
 							<select id="paddingSizeSelect" class="form-select form-select-sm">
