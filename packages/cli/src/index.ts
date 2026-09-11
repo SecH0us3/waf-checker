@@ -171,6 +171,7 @@ checkCmd
 	.option('--encoding-variations', 'Use encoding and obfuscation variations', false)
 	.option('--http-manipulation', 'Run HTTP manipulation tests (Verb Tampering, Parameter Pollution, etc.)', false)
 	.option('--padding <size>', 'Enable WAF inspection buffer padding evasion (e.g. 8kb, 16kb, 64kb, 128kb)')
+	.option('--no-spoof-user-agent', 'Disable the legitimate User-Agent bypass test (replays blocked 403 requests as Googlebot, Slackbot, etc.)')
 	.option('--json', 'Output results in JSON format')
 	.option('-f, --format <format>', 'Output format for report: json, csv, html, sarif, markdown')
 	.option('-o, --output <path>', 'File path to save the report to')
@@ -231,7 +232,7 @@ checkCmd
 				options.encodingVariations,
 				options.detectedWaf,
 				httpManipulationOpts,
-				{ fetch: customFetch, color: useColor, quiet: isQuiet, allowLocal }
+				{ fetch: customFetch, color: useColor, quiet: isQuiet, allowLocal, spoofUserAgents: options.spoofUserAgent !== false }
 			);
 
 			let reverseReport: ReverseEngineeringReport | undefined = undefined;
@@ -288,6 +289,11 @@ checkCmd
 			const bypassed = results.filter((r: any) => r.status === 200 || r.status === '200');
 			const redirect = results.filter((r: any) => r.is_redirect);
 			const errors = results.filter((r: any) => r.status === 'ERR');
+			// Legitimate User-Agent bypasses: blocked (403) with a normal UA, but let
+			// through once the request claimed to be a trusted bot. Tracked separately
+			// from `bypassed` (their status is 403) so protectionScore stays honest,
+			// but they still fail CI checks below.
+			const uaBypasses = results.filter((r: any) => r.userAgentBypass?.bypassed);
 
 			const protectionScore = results.length ? Math.round((blocked.length / results.length) * 100) : 100;
 
@@ -313,8 +319,27 @@ checkCmd
 					console.log(`... and ${colors.yellow(String(bypassed.length - 50))} more bypasses.`);
 				}
 				console.log('--------------------------------------------------------------------------------');
-			} else {
+			} else if (uaBypasses.length === 0) {
 				console.log(`\n${colors.green('🛡️ Perfect Score: All attack vectors were successfully blocked.')}`);
+			}
+
+			// Legitimate User-Agent bypasses: requests blocked with a normal UA that
+			// sailed through once the request claimed to be Googlebot, Slackbot, etc.
+			if (uaBypasses.length > 0) {
+				console.log(`\n${colors.red('🕵️ USER-AGENT ALLOW-LIST BYPASSES DETECTED:')}`);
+				console.log(colors.yellow('   (blocked with a normal User-Agent, but let through as a trusted bot)'));
+				console.log('--------------------------------------------------------------------------------');
+				uaBypasses.slice(0, 50).forEach((r: any) => {
+					const identities = r.userAgentBypass.hits.map((h: any) => h.name).join(', ');
+					const cat = colors.cyan(r.category);
+					const pay = colors.bold(String(r.payload).substring(0, 50));
+					console.log(`  • ${cat} [${r.method}] ${colors.green('403')} ${colors.red('→ bypassed')} as ${colors.red(identities)}`);
+					console.log(`      payload: ${pay}`);
+				});
+				if (uaBypasses.length > 50) {
+					console.log(`  ... and ${colors.yellow(String(uaBypasses.length - 50))} more User-Agent bypasses.`);
+				}
+				console.log('--------------------------------------------------------------------------------');
 			}
 
 			if (reverseReport) {
@@ -380,10 +405,18 @@ checkCmd
 					console.error(colors.red(`CI/CD Threshold Failed: Protection score ${protectionScore}% is below required threshold of ${minThreshold}%.`));
 					process.exit(1);
 				}
+				// A User-Agent allow-list bypass defeats the WAF regardless of score.
+				if (uaBypasses.length > 0) {
+					console.error(colors.red(`CI/CD Threshold Failed: ${uaBypasses.length} User-Agent allow-list bypass(es) detected.`));
+					process.exit(1);
+				}
 			}
 
-			if (options.failOnBypass && bypassed.length > 0) {
-				console.error(colors.red(`CI/CD Check Failed: ${bypassed.length} bypasses detected.`));
+			if (options.failOnBypass && (bypassed.length > 0 || uaBypasses.length > 0)) {
+				const parts = [];
+				if (bypassed.length > 0) parts.push(`${bypassed.length} bypass(es)`);
+				if (uaBypasses.length > 0) parts.push(`${uaBypasses.length} User-Agent allow-list bypass(es)`);
+				console.error(colors.red(`CI/CD Check Failed: ${parts.join(' and ')} detected.`));
 				process.exit(1);
 			}
 		} catch (err: any) {

@@ -313,6 +313,12 @@ body[data-theme='light'] .hero-header h1 {
 	transform: translateY(-1px);
 }
 
+/* The "more actions" toggle only exists on phones (see the mobile query),
+   where the secondary actions are collapsed behind it. */
+#moreActionsToggle {
+	display: none;
+}
+
 /* --- HTTP Method Chips --- */
 .method-chip {
 	cursor: pointer;
@@ -991,21 +997,72 @@ body[data-theme='dark'] .form-select {
 		font-size: 1.3rem !important;
 	}
 
+	/* Keep the input row horizontal: the URL field grows and the Check button
+	   stays small on the right, next to the "more actions" toggle. */
 	.url-input-group {
-		flex-direction: column;
+		flex-wrap: nowrap;
+	}
+
+	.url-input-group .form-control {
+		min-width: 0; /* allow the field to shrink so the buttons fit on one line */
 	}
 
 	.url-input-group .btn-primary {
-		width: 100%;
+		padding: 0.5rem 0.7rem;
+		font-size: 0.85rem;
+	}
+
+	.url-input-group .btn-primary .check-label {
+		display: none; /* icon-only Check on phones to keep it compact */
+	}
+
+	/* Stack the virtual-patch banner on phones: the "Remediation Studio" button
+	   drops below the text instead of being squeezed to the right (JS toggles
+	   the banner's display between flex/none, so only flex-direction is set here). */
+	#virtualPatchBanner {
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	#virtualPatchBanner .btn {
+		margin-left: 0 !important;
+		margin-top: 0.75rem;
+	}
+
+	/* The secondary actions are collapsed behind the ⋯ toggle on phones. */
+	#moreActionsToggle {
+		display: inline-flex;
+		align-items: center;
 		justify-content: center;
+		flex-shrink: 0;
+		padding: 0.5rem 0.7rem;
+		font-size: 1rem;
+		line-height: 1;
 	}
 
 	.action-buttons-row {
-		flex-direction: column;
+		display: none;
 	}
 
-	.action-buttons-row .btn {
+	/* Revealed by the toggle: a compact 2-column grid instead of a full-width
+	   stack (6 stacked rows used to eat ~half the mobile viewport). */
+	.action-buttons-row.expanded {
+		display: grid;
+		/* minmax(0, 1fr) — not plain 1fr — so long labels wrap inside the cell
+		   instead of forcing the column past its share of the row. */
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.5rem;
+		margin-top: 0.6rem;
+	}
+
+	.action-buttons-row.expanded .btn {
 		width: 100%;
+		margin: 0;
+		font-size: 0.8rem;
+		padding: 0.5rem 0.4rem;
+		white-space: normal;
+		line-height: 1.15;
+		min-height: 2.6rem;
 	}
 
 	.category-grid {
@@ -1017,16 +1074,99 @@ body[data-theme='dark'] .form-select {
 		font-size: 0.78rem;
 	}
 
-	#results th,
-	#results td {
-		font-size: 0.85em !important;
-		padding: 0.3em !important;
+	/* Card layout for the results table on phones: a 5-column table can't fit
+	   ~390px without the header wrapping one letter per line and the payload
+	   overflowing. Turn each row into a labelled card instead. */
+	#resultsTable {
+		display: block;
+		width: 100% !important;
+		border: 0 !important;
 	}
 
-	#results table {
+	#resultsTable tbody {
 		display: block;
-		overflow-x: auto;
-		width: 100% !important;
+	}
+
+	/* Hide the header row (first row); each cell carries its own label. */
+	#resultsTable tr:first-child {
+		display: none;
+	}
+
+	/* Flex card: the status pill and the Category · Method · Response Time meta
+	   share one line; the payload wraps to its own line below. */
+	#resultsTable tr {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		column-gap: 0.35rem;
+		row-gap: 0.1rem;
+		border: 1px solid var(--section-border);
+		border-radius: 10px;
+		padding: 0.55rem 0.8rem;
+		margin-bottom: 0.6rem;
+	}
+
+	#resultsTable td {
+		width: auto !important;
+		border: 0 !important;
+		padding: 0 !important;
+		text-align: left !important;
+		font-size: 0.9em !important;
+		word-break: normal;
+	}
+
+	/* Labels dropped on phones — the values are self-explanatory. */
+	#resultsTable td::before {
+		content: none;
+	}
+
+	/* One-line meta, ordered: [status pill] Category · Method · Response Time. */
+	#resultsTable td[data-label='Status'] {
+		order: 1;
+		flex: 0 0 auto;
+		padding: 0.1rem 0.6rem !important;
+		border-radius: 999px;
+		font-weight: 700;
+		text-align: center !important;
+	}
+
+	#resultsTable td[data-label='Category'] {
+		order: 2;
+		font-weight: 600;
+	}
+
+	#resultsTable td[data-label='Method'] {
+		order: 3;
+		color: var(--text-muted);
+	}
+
+	#resultsTable td[data-label='Response Time'] {
+		order: 4;
+		color: var(--text-muted);
+	}
+
+	#resultsTable td[data-label='Method']::before,
+	#resultsTable td[data-label='Response Time']::before {
+		content: '·';
+		color: var(--text-muted);
+		margin-right: 0.35rem;
+	}
+
+	/* Payload drops to its own full-width line. */
+	#resultsTable td[data-label='Payload'] {
+		order: 5;
+		flex: 0 0 100%;
+		margin-top: 0.3rem;
+	}
+
+	#resultsTable td[data-label='Payload'] code {
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+
+	/* Keep the UA-bypass highlight readable as a card (red outline). */
+	#resultsTable tr.ua-bypass-row {
+		border: 2px solid #dc3545;
 	}
 
 	.theme-toggle {
@@ -1055,12 +1195,6 @@ body[data-theme='dark'] .form-select {
 		margin-bottom: 1em !important;
 	}
 
-	#results td:nth-child(4),
-	#results th:nth-child(4) {
-		word-break: break-all !important;
-		white-space: normal !important;
-		font-size: 0.9em !important;
-	}
 
 	.settings-panel-inner {
 		padding: 0.75rem;
@@ -1276,4 +1410,20 @@ body[data-theme='dark'] .middle-footer {
 
 .settings-section:last-child {
 	border-bottom: none;
+}
+/* Legitimate User-Agent allow-list bypass: a request blocked with a normal
+   User-Agent that was let through once it claimed to be a trusted bot. */
+.ua-bypass-row {
+	background-color: rgba(220, 53, 69, 0.08);
+}
+.ua-bypass-row td {
+	border-top: 2px solid #dc3545;
+	border-bottom: 2px solid #dc3545;
+}
+
+/* Summary indicator bar for legitimate User-Agent allow-list bypasses. */
+.status-bar-bypass {
+	background: #dc3545;
+	color: #ffffff;
+	min-width: 24px;
 }

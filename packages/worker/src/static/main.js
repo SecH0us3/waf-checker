@@ -44,6 +44,16 @@ function renderSummary(results, falsePositiveMode = false) {
 		const status_class = getStatusClass(code, parseInt(code, 10) >= 300 && parseInt(code, 10) < 400, falsePositiveMode);
 		html += `<div class='d-flex align-items-left mb-1'><div class='min-width-112'><label><input type='checkbox' class='status-filter-checkbox checkbox-align' data-status='${code}' checked> <b>Status ${code}</b></label></div><div class='status-bar ${status_class}' style='width:${percent.toFixed(2)}%;'>${statusCounter[code]}</div></div>`;
 	}
+	// Legitimate User-Agent bypasses are counted separately: their status is 403
+	// (so they hide inside the green "Status 403" bar), but they are a real
+	// bypass — surface them with their own red indicator + filter.
+	if (!falsePositiveMode) {
+		const uaBypassCount = results.filter((r) => r.userAgentBypass && r.userAgentBypass.bypassed).length;
+		if (uaBypassCount > 0) {
+			const percent = totalRequests ? (uaBypassCount / totalRequests) * 100 : 0;
+			html += `<div class='d-flex align-items-left mb-1'><div class='min-width-112'><label><input type='checkbox' id='uaBypassFilter' class='ua-bypass-filter-checkbox checkbox-align' checked> <b title='Requests blocked with a normal User-Agent that reached the origin when spoofing a trusted bot'>🕵️ UA bypass</b></label></div><div class='status-bar status-bar-bypass' style='width:${percent.toFixed(2)}%;'>${uaBypassCount}</div></div>`;
+		}
+	}
 	html += `</div>`;
 	return html;
 }
@@ -77,6 +87,27 @@ function renderReport(results, falsePositiveMode = false) {
     </div>`;
 	}
 
+	// Legitimate User-Agent allow-list bypass alert. Distinct from the virtual-patch
+	// banner: a UA allow-list bypass isn't fixed by a payload regex rule, so it gets
+	// its own call-to-action (stop trusting the User-Agent header).
+	if (!falsePositiveMode) {
+		const uaBypasses = results.filter((r) => r.userAgentBypass && r.userAgentBypass.bypassed);
+		if (uaBypasses.length > 0) {
+			const botSet = new Set();
+			uaBypasses.forEach((r) => (r.userAgentBypass.hits || []).forEach((h) => botSet.add(h.name)));
+			const bots = Array.from(botSet).slice(0, 6).map((n) => escapeHtml(n)).join(', ');
+			const moreBots = botSet.size > 6 ? `, +${botSet.size - 6}` : '';
+			html += `<div class="alert alert-danger d-flex align-items-start gap-2 mb-3" role="alert">
+      <span style="font-size:1.4rem;line-height:1;">🕵️</span>
+      <div>
+        <strong>User-Agent Allow-List Bypass Detected (${uaBypasses.length})</strong>
+        <div class="small mt-1">${uaBypasses.length} attack request(s) were blocked with a normal User-Agent, but reached the origin once the request claimed to be a trusted bot (${bots}${moreBots}). The WAF (or origin) is trusting a spoofable User-Agent header.</div>
+        <div class="small mt-1"><b>Remediation:</b> never allow-list by User-Agent alone — verify legitimate crawlers by reverse-DNS / published IP ranges, and keep WAF rules applied to trusted bots.</div>
+      </div>
+    </div>`;
+		}
+	}
+
 	// Add WAF detection info if available
 	if (results.length > 0 && results[0].wafDetected) {
 		html += `<div class="alert alert-info mb-3">
@@ -105,13 +136,30 @@ function renderReport(results, falsePositiveMode = false) {
 			patchBtn = `<button type="button" class="btn btn-sm btn-outline-warning py-0 px-1 ms-2" style="font-size:0.7rem;" onclick="showVirtualPatchModal('misses')" title="Remediate this unprotected vector (WAF Miss: Status ${r.status})">🛡️ Patch</button>`;
 		}
 		const responseTime = r.responseTime || 0;
+		// Legitimate User-Agent bypass: blocked (403) with a normal UA, but let
+		// through once the request claimed to be a trusted bot. Highlight loudly.
+		let uaBadge = '';
+		let uaAttr = '';
+		if (r.userAgentBypass && r.userAgentBypass.bypassed) {
+			const hits = r.userAgentBypass.hits || [];
+			const names = hits.map((h) => h.name);
+			const shown = names.slice(0, 3).map((n) => escapeHtml(n)).join(', ');
+			const extra = names.length > 3 ? ` (+${names.length - 3})` : '';
+			const originStatus = hits.length ? hits[0].status : '';
+			const title =
+				`Blocked with a normal User-Agent (403), but reached the origin (status ${originStatus}) ` +
+				`when the request claimed to be a trusted bot: ${escapeHtml(names.join(', '))}`;
+			uaBadge = `<span class="badge bg-danger ms-2" title="${title}">🕵️ UA bypass: ${names.length} bot(s): ${shown}${extra}</span>`;
+			uaAttr = " data-ua-bypass='1'";
+		}
+		const rowClass = uaBadge ? ' class="ua-bypass-row"' : '';
 		html +=
-			`<tr data-status='${r.status}'>` +
-			`<td>${r.category}</td>` +
-			`<td class='text-center'>${r.method}</td>` +
-			`<td class='${status_class} text-center'>${r.status}</td>` +
-			`<td class='text-center'>${responseTime}ms</td>` +
-			`<td><code class='${codeClass}'>${escapeHtml(r.payload)}</code>${patchBtn}</td>` +
+			`<tr data-status='${r.status}'${uaAttr}${rowClass}>` +
+			`<td data-label='Category'>${r.category}</td>` +
+			`<td class='text-center' data-label='Method'>${r.method}</td>` +
+			`<td class='${status_class} text-center' data-label='Status'>${r.status}</td>` +
+			`<td class='text-center' data-label='Response Time'>${responseTime}ms</td>` +
+			`<td data-label='Payload'><code class='${codeClass}'>${escapeHtml(r.payload)}</code>${patchBtn}${uaBadge}</td>` +
 			`</tr>`;
 	}
 	html += `</table>`;
@@ -281,6 +329,21 @@ function togglePaddingSizeSelect() {
 	}
 }
 
+// Show/hide the secondary action buttons on mobile (they are collapsed behind
+// the ⋯ toggle to keep the header compact). On desktop the row is always shown
+// and the toggle is hidden via CSS, so this is a no-op there.
+function toggleActionButtons() {
+	const row = document.getElementById('actionButtonsRow');
+	const btn = document.getElementById('moreActionsToggle');
+	if (!row) return;
+	const expanded = row.classList.toggle('expanded');
+	if (btn) {
+		btn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+		btn.textContent = expanded ? '✕' : '⋯';
+		btn.title = expanded ? 'Hide actions' : 'More actions';
+	}
+}
+
 async function fetchResults() {
 	const btn = document.getElementById('checkBtn');
 	btn.disabled = true;
@@ -318,6 +381,10 @@ async function fetchResults() {
 	// Buffer Padding Evasion
 	const enablePadding = document.getElementById('enablePadding')?.checked ? true : false;
 	const paddingSize = document.getElementById('paddingSizeSelect')?.value || '16kb';
+	// Legitimate User-Agent bypass test (on by default). Replays blocked (403)
+	// requests as Googlebot/Slackbot/etc. to catch User-Agent allow-list bypasses.
+	const spoofUserAgentEl = document.getElementById('spoofUserAgent');
+	const spoofUserAgent = spoofUserAgentEl ? spoofUserAgentEl.checked : true;
 	// Collect selected categories
 	const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
 	const selectedCategories = Array.from(categoryCheckboxes)
@@ -337,6 +404,7 @@ async function fetchResults() {
 	localStorage.setItem('wafchecker_httpManipulation', httpManipulation ? '1' : '0');
 	localStorage.setItem('wafchecker_enablePadding', enablePadding ? '1' : '0');
 	localStorage.setItem('wafchecker_paddingSize', paddingSize);
+	localStorage.setItem('wafchecker_spoofUserAgent', spoofUserAgent ? '1' : '0');
 	// --- Получаем шаблон и заголовки ---\n
 	let payloadTemplate = '';
 	const templateEl = document.getElementById('payloadTemplate');
@@ -392,6 +460,7 @@ async function fetchResults() {
 				httpManipulation: httpManipulation ? '1' : '0',
 				enablePadding: enablePadding ? '1' : '0',
 				paddingSize: paddingSize,
+				spoofUserAgent: spoofUserAgent ? '1' : '0',
 				detectedWAF: detectedWAFType || '',
 			});
 			const resp = await fetch(`/api/check?${params.toString()}`, {
@@ -999,6 +1068,15 @@ function restoreStateFromLocalStorage() {
 		}
 	}
 
+	// Legit User-Agent bypass test (defaults to on when never set)
+	const spoofUserAgent = localStorage.getItem('wafchecker_spoofUserAgent');
+	if (spoofUserAgent !== null) {
+		const el = document.getElementById('spoofUserAgent');
+		if (el) {
+			el.checked = spoofUserAgent === '1';
+		}
+	}
+
 	// Categories
 	const categories = localStorage.getItem('wafchecker_categories');
 	if (categories) {
@@ -1411,6 +1489,10 @@ function initApp() {
 				}
 				filterResultsTableByStatus();
 			}
+			// UA-bypass filter toggle
+			if (target && target.classList.contains('ua-bypass-filter-checkbox')) {
+				filterResultsTableByStatus();
+			}
 		});
 	}
 }
@@ -1430,9 +1512,16 @@ function filterResultsTableByStatus() {
 	const checkedStatuses = Array.from(document.querySelectorAll('.status-filter-checkbox:checked')).map((cb) =>
 		cb.getAttribute('data-status'),
 	);
+	// A UA-bypass row's status is 403, so it would vanish when the user unchecks
+	// "Status 403" to focus on problems — exactly when they want to see it. Keep
+	// it visible whenever its own filter is on, regardless of the status filters.
+	const uaFilter = document.getElementById('uaBypassFilter');
+	const uaFilterOn = !uaFilter || uaFilter.checked;
 	const rows = document.querySelectorAll('#resultsTable tr[data-status]');
 	rows.forEach((row) => {
-		if (checkedStatuses.includes(row.getAttribute('data-status'))) {
+		const statusVisible = checkedStatuses.includes(row.getAttribute('data-status'));
+		const isUaBypass = row.getAttribute('data-ua-bypass') === '1';
+		if (statusVisible || (isUaBypass && uaFilterOn)) {
 			row.style.display = '';
 		} else {
 			row.style.display = 'none';

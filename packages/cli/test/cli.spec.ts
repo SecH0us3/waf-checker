@@ -522,6 +522,65 @@ describe('CLI Argument Processing', () => {
 
 			expect(exitCode).toBeNull();
 		});
+
+		it('should exit with 1 on a User-Agent allow-list bypass when --fail-on-bypass is specified', async () => {
+			// Baseline blocked (403), but a trusted UA got through — a real bypass.
+			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
+				{
+					status: 403, method: 'GET', payload: 'test', responseTime: 120, category: 'SQL Injection',
+					userAgentBypass: { bypassed: true, tested: 16, hits: [{ name: 'Googlebot', userAgent: 'ua', status: 200, verdict: 'passed' }] },
+				},
+			]);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--fail-on-bypass'])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('User-Agent allow-list bypass'));
+		});
+
+		it('should fail --threshold on a User-Agent allow-list bypass even when the score is 100%', async () => {
+			// The only result is blocked (403) → protectionScore is 100%, so the score
+			// gate passes; the UA bypass must fail the build on its own.
+			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
+				{
+					status: 403, method: 'GET', payload: 'test', responseTime: 120, category: 'SQL Injection',
+					userAgentBypass: { bypassed: true, tested: 16, hits: [{ name: 'Slackbot', userAgent: 'ua', status: 200, verdict: 'passed' }] },
+				},
+			]);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--threshold', '90'])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('User-Agent allow-list bypass'));
+		});
+
+		it('should report a User-Agent bypass and not print a perfect score', async () => {
+			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
+				{
+					status: 403, method: 'GET', payload: 'test', responseTime: 120, category: 'SQL Injection',
+					userAgentBypass: {
+						bypassed: true, tested: 16,
+						hits: [
+							{ name: 'Googlebot', userAgent: 'ua1', status: 200, verdict: 'passed' },
+							{ name: 'Slackbot', userAgent: 'ua2', status: 200, verdict: 'passed' },
+						],
+					},
+				},
+			]);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com'])
+			).resolves.toBeDefined();
+
+			expect(exitCode).toBeNull();
+			const logged = consoleLogSpy.mock.calls.map((c: any[]) => c.join(' ')).join('\n');
+			expect(logged).toContain('USER-AGENT ALLOW-LIST BYPASSES DETECTED');
+			expect(logged).not.toContain('Perfect Score');
+		});
 	});
 
 	describe('batch command', () => {
