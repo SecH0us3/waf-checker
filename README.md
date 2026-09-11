@@ -128,6 +128,10 @@ node packages/cli/dist/index.js --help
 
 # Print check command help (lists all methods, categories, and WAF vendors)
 node packages/cli/dist/index.js check --help
+
+# Discover detectable WAF vendors and payload categories (JSON for automation)
+node packages/cli/dist/index.js list-wafs --json
+node packages/cli/dist/index.js list-categories --json
 ```
 
 #### WAF Detection

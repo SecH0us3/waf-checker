@@ -107,6 +107,40 @@ describe('CLI Argument Processing', () => {
 		expect(commandNames).toContain('batch');
 	});
 
+	describe('list commands', () => {
+		it('should register list-wafs and list-categories commands', () => {
+			const commandNames = program.commands.map(cmd => cmd.name());
+			expect(commandNames).toContain('list-wafs');
+			expect(commandNames).toContain('list-categories');
+		});
+
+		it('list-wafs --json prints a JSON array of vendors', async () => {
+			await program.parseAsync(['node', 'index.js', 'list-wafs', '--json']);
+			const out = consoleLogSpy.mock.calls.map((c: any[]) => c[0]).join('\n');
+			const parsed = JSON.parse(out);
+			expect(Array.isArray(parsed)).toBe(true);
+			expect(parsed).toContain('Cloudflare');
+			expect(exitCode).toBeNull();
+		});
+
+		it('list-categories --json prints objects with name and type', async () => {
+			await program.parseAsync(['node', 'index.js', 'list-categories', '--json']);
+			const out = consoleLogSpy.mock.calls.map((c: any[]) => c[0]).join('\n');
+			const parsed = JSON.parse(out);
+			expect(Array.isArray(parsed)).toBe(true);
+			expect(parsed.length).toBeGreaterThan(0);
+			expect(parsed.every((c: any) => typeof c.name === 'string' && typeof c.type === 'string')).toBe(true);
+			expect(exitCode).toBeNull();
+		});
+
+		it('list-wafs (text mode) prints a human-readable list', async () => {
+			await program.parseAsync(['node', 'index.js', 'list-wafs']);
+			const out = consoleLogSpy.mock.calls.map((c: any[]) => c[0]).join('\n');
+			expect(out).toContain('Supported WAF vendors');
+			expect(out).toContain('Cloudflare');
+		});
+	});
+
 	describe('detect command', () => {
 		it('should succeed with valid URL and call activeDetection', async () => {
 			await expect(

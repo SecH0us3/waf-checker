@@ -750,6 +750,44 @@ program
 		}
 	});
 
+// Command: list-wafs — enumerate detectable WAF vendors (for automation/discovery)
+program
+	.command('list-wafs')
+	.description('List all WAF vendors this tool can fingerprint')
+	.option('--json', 'Output as a JSON array', false)
+	.action((options: any) => {
+		const wafs = WAFDetector.getSupportedWafs();
+		if (options.json) {
+			console.log(JSON.stringify(wafs, null, 2));
+			return;
+		}
+		console.log(colors.bold(`Supported WAF vendors (${wafs.length}):`));
+		for (const w of wafs) {
+			console.log(`  - ${w}`);
+		}
+	});
+
+// Command: list-categories — enumerate attack payload categories and their injection type
+program
+	.command('list-categories')
+	.description('List all attack payload categories and their injection type')
+	.option('--json', 'Output as a JSON array of {name, type} objects', false)
+	.action((options: any) => {
+		const categories = Object.entries(PAYLOADS).map(([name, cat]: [string, any]) => ({
+			name,
+			type: cat.type,
+			payloads: Array.isArray(cat.payloads) ? cat.payloads.length : 0,
+		}));
+		if (options.json) {
+			console.log(JSON.stringify(categories, null, 2));
+			return;
+		}
+		console.log(colors.bold(`Supported payload categories (${categories.length}):`));
+		for (const c of categories) {
+			console.log(`  - ${c.name} ${colors.dim(`[${c.type}, ${c.payloads} payloads]`)}`);
+		}
+	});
+
 export { program };
 
 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'test' && !process.env.VITEST) {
