@@ -10,6 +10,7 @@ export type PatchVendor =
 	| 'haproxy'
 	| 'caddy'
 	| 'apache'
+	| 'envoy'
 	| 'k8s'
 	| 'coraza'
 	| 'all';

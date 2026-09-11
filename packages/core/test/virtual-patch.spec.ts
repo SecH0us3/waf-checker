@@ -641,6 +641,66 @@ describe('Virtual Patching & Rule Generator', () => {
 		});
 	});
 
+	describe('Envoy Generator', () => {
+		it('should generate a route with safe_regex match and direct_response 403', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'envoy', tier: 'strict' });
+			const patch = report.patches.find((p) => p.category === 'SQL Injection');
+			expect(patch).toBeDefined();
+			expect(patch!.vendor).toBe('envoy');
+			expect(patch!.nativeRule).toContain('- match:');
+			expect(patch!.nativeRule).toContain('safe_regex:');
+			expect(patch!.nativeRule).toContain('regex:');
+			expect(patch!.nativeRule).toContain('direct_response:');
+			expect(patch!.nativeRule).toContain('status: 403');
+			// case-insensitive, substring-matching RE2 wrapper
+			expect(patch!.nativeRule).toContain('(?i)');
+		});
+
+		it('should match a header for User-Agent bypasses', () => {
+			const uaBypasses: AuditResultItem[] = [
+				{ category: 'User-Agent', method: 'GET', payload: 'sqlmap/1.0', status: 200, responseTime: 20 },
+			];
+			const report = generateVirtualPatches(uaBypasses, { vendor: 'envoy', tier: 'strict' });
+			const rule = report.patches[0].nativeRule;
+			expect(rule).toContain('headers:');
+			expect(rule).toContain('name: "user-agent"');
+			expect(rule).toContain('string_match:');
+		});
+
+		it('should forward + tag instead of blocking in simulation mode', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'envoy', action: 'simulate', tier: 'strict' });
+			const rule = report.patches[0].nativeRule;
+			expect(rule).toContain('x-waf-simulation');
+			expect(rule).toContain('REPLACE_WITH_UPSTREAM_CLUSTER');
+			expect(rule).not.toContain('status: 403');
+		});
+
+		it('should anchor the regex to the path when scopeToPath is set', () => {
+			const report = generateVirtualPatches(mockBypasses, {
+				vendor: 'envoy',
+				tier: 'strict',
+				scopeToPath: true,
+				targetUrl: 'https://example.com/api/login',
+			});
+			expect(report.patches[0].nativeRule).toContain('(?i)^/api/login.*');
+		});
+
+		it('should note the body-inspection limitation for body categories', () => {
+			const bodyBypass: AuditResultItem[] = [
+				{ category: 'XXE', method: 'POST', payload: '<!ENTITY xxe SYSTEM "file:///etc/passwd">', status: 200, responseTime: 40 },
+			];
+			const report = generateVirtualPatches(bodyBypass, { vendor: 'envoy', tier: 'strict' });
+			expect(report.patches[0].nativeRule).toContain('cannot read request bodies');
+		});
+
+		it('should be included in the "all" vendor bundle', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'all' });
+			expect(report.bundles.envoy).toBeDefined();
+			expect(report.bundles.envoy.ruleCount).toBeGreaterThan(0);
+			expect(report.bundles.envoy.native).toContain('direct_response:');
+		});
+	});
+
 	describe('Kubernetes Ingress Generator', () => {
 		const sensitiveFiles: AuditResultItem[] = [
 			{ category: 'Sensitive Files', method: 'GET', payload: '/dump.sql', status: 200, responseTime: 20 },

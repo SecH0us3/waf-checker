@@ -35,7 +35,7 @@ All packages are thoroughly tested with automated unit, integration, property-ba
 
 ### 🛡️ WAF Virtual Patching & Auto-Remediation (`--patch` / `patch` command)
 - **Instant Mitigation**: Automatically transforms detected WAF bypasses (HTTP 200) into ready-to-deploy firewall rules, reverse proxy configurations, and Infrastructure-as-Code (Terraform HCL / Cloud CLI).
-- **Supported Platforms (10 Dialects)**:
+- **Supported Platforms (11 Dialects)**:
   - **Cloudflare WAF**: Wirefilter expressions (`http.request.uri.query contains ...` / `matches ...`) & `cloudflare_ruleset` Terraform HCL.
   - **AWS WAF v2**: Native JSON Rule Statements (`ByteMatchStatement`, `RegexPatternSet`, `OrStatement`) & `aws_wafv2_rule_group` Terraform HCL.
   - **Google Cloud Armor**: CEL expressions (`request.path.matches(...)`, `request.headers[...]`), `gcloud compute security-policies` CLI commands, & Terraform `google_compute_security_policy`.
@@ -45,14 +45,15 @@ All packages are thoroughly tested with automated unit, integration, property-ba
   - **HAProxy**: High-performance native ACLs (`path_end -i`, `path_beg -i`, `query -m sub -i`, `req.hdr()`) with `http-request deny deny_status 403`.
   - **Caddy Server**: Idiomatic Caddyfile named matchers (`@waf_patch_*`) with CEL expressions (`expression {http.request.uri.query}.matches(...)`) and `respond 403`.
   - **Apache HTTP Server**: `mod_rewrite` rules (`RewriteCond %{QUERY_STRING}` / `%{REQUEST_URI}` / `%{HTTP_USER_AGENT}` + `RewriteRule ^ - [F,L]`) for `httpd.conf`, `<VirtualHost>`, or `.htaccess`. Supported via `--patch apache`.
+  - **Envoy Proxy**: Route entries matching `:path`/headers via RE2 `safe_regex` with `direct_response: 403` (or forward-and-tag in simulate mode) for a route_configuration virtual_host. Supported via `--patch envoy`.
   - **Kubernetes Ingress (K8s)**: Production-ready `kind: Ingress` YAML manifests with `nginx.ingress.kubernetes.io/server-snippet` annotations.
 - **Dual-Tier Defense**:
   - **Strict Hotfix**: Exact token signatures with **0% false positive risk** for immediate zero-day incident response.
   - **Heuristic Pattern**: Generalized regular expressions covering the entire vulnerability class structure.
 - **Web UI Remediation Studio**: Interactive dashboard modal with live previews across all vendors, 1-click clipboard copy, format toggles, and file export.
 
-### Attack Categories (25 total)
-SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusion, Sensitive Files, Open Redirect, SSTI, XXE, NoSQL Injection, GraphQL Injection, JWT Attack (Header), JWT Attack (Param), Prototype Pollution (JSON Body), Prototype Pollution (URL/Param), LDAP Injection, CRLF Injection, HTTP Parameter Pollution, User-Agent, IP Bypass, HTTP Request Smuggling, Web Cache Poisoning, UTF8/Unicode Bypass, WAF Inspection Limit Bypass (Padding).
+### Attack Categories (28 total)
+SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusion, Sensitive Files, Open Redirect, SSTI, XXE, NoSQL Injection, GraphQL Injection, JWT Attack (Header), JWT Attack (Param), Prototype Pollution (JSON Body), Prototype Pollution (URL/Param), LDAP Injection, XPath Injection, Spreadsheet Formula Injection, Log4Shell (JNDI), CRLF Injection, HTTP Parameter Pollution, User-Agent, IP Bypass, HTTP Request Smuggling, Web Cache Poisoning, UTF8/Unicode Bypass, WAF Inspection Limit Bypass (Padding).
 
 ### WAF Detection
 - Auto-detect WAF type before testing (Cloudflare, AWS WAF, OWASP Coraza, BunkerWeb, ModSecurity, Akamai, Imperva, F5 BIG-IP, etc.).
@@ -184,7 +185,7 @@ node packages/cli/dist/index.js check https://example.com --fail-on-bypass -q
 ```
 
 #### 🛡️ Virtual Patching & Auto-Remediation
-Automatically generate ready-to-deploy firewall rules across all 10 supported platforms (`cloudflare`, `aws`, `gcp`, `azure`, `modsecurity`, `nginx`, `haproxy`, `caddy`, `apache`, `k8s`, or `all`):
+Automatically generate ready-to-deploy firewall rules across all 11 supported platforms (`cloudflare`, `aws`, `gcp`, `azure`, `modsecurity`, `nginx`, `haproxy`, `caddy`, `apache`, `envoy`, `k8s`, or `all`):
 ```bash
 # Generate and save Cloudflare Terraform rules during audit
 node packages/cli/dist/index.js check https://example.com --patch cloudflare --patch-output ./cloudflare-patch.tf
