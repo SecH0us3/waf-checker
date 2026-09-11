@@ -14,6 +14,7 @@ import { generateGcpPatches } from './generators/gcp';
 import { generateAzurePatches } from './generators/azure';
 import { generateHAProxyPatches } from './generators/haproxy';
 import { generateCaddyPatches } from './generators/caddy';
+import { generateApachePatches } from './generators/apache';
 import { generateK8sPatches } from './generators/k8s';
 
 export * from './types';
@@ -26,6 +27,7 @@ export * from './generators/gcp';
 export * from './generators/azure';
 export * from './generators/haproxy';
 export * from './generators/caddy';
+export * from './generators/apache';
 export * from './generators/k8s';
 
 /**
@@ -86,6 +88,9 @@ export function generateVirtualPatches(
 		if (targetVendor === 'all' || targetVendor === 'caddy') {
 			allPatches.push(...generateCaddyPatches(bypasses, options));
 		}
+		if (targetVendor === 'all' || targetVendor === 'apache') {
+			allPatches.push(...generateApachePatches(bypasses, options));
+		}
 		if (targetVendor === 'all' || targetVendor === 'k8s') {
 			allPatches.push(...generateK8sPatches(bypasses, options));
 		}
@@ -95,7 +100,7 @@ export function generateVirtualPatches(
 	const bundles: Record<string, VendorPatchBundle> = {};
 	const vendorsToBundle: PatchVendor[] =
 		targetVendor === 'all'
-			? ['cloudflare', 'aws', 'modsecurity', 'nginx', 'gcp', 'azure', 'haproxy', 'caddy', 'k8s']
+			? ['cloudflare', 'aws', 'modsecurity', 'nginx', 'gcp', 'azure', 'haproxy', 'caddy', 'apache', 'k8s']
 			: [targetVendor];
 
 	for (const v of vendorsToBundle) {

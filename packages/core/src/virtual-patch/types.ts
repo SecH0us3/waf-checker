@@ -9,6 +9,7 @@ export type PatchVendor =
 	| 'azure'
 	| 'haproxy'
 	| 'caddy'
+	| 'apache'
 	| 'k8s'
 	| 'coraza'
 	| 'all';

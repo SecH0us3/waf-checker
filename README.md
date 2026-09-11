@@ -44,6 +44,7 @@ All packages are thoroughly tested with automated unit, integration, property-ba
   - **NGINX**: Native `location ~* \.(ext)$ { return 403; }`, `location ~ /\.(git|svn)`, and `map` configuration blocks.
   - **HAProxy**: High-performance native ACLs (`path_end -i`, `path_beg -i`, `query -m sub -i`, `req.hdr()`) with `http-request deny deny_status 403`.
   - **Caddy Server**: Idiomatic Caddyfile named matchers (`@waf_patch_*`) with CEL expressions (`expression {http.request.uri.query}.matches(...)`) and `respond 403`.
+  - **Apache HTTP Server**: `mod_rewrite` rules (`RewriteCond %{QUERY_STRING}` / `%{REQUEST_URI}` / `%{HTTP_USER_AGENT}` + `RewriteRule ^ - [F,L]`) for `httpd.conf`, `<VirtualHost>`, or `.htaccess`. Supported via `--patch apache`.
   - **Kubernetes Ingress (K8s)**: Production-ready `kind: Ingress` YAML manifests with `nginx.ingress.kubernetes.io/server-snippet` annotations.
 - **Dual-Tier Defense**:
   - **Strict Hotfix**: Exact token signatures with **0% false positive risk** for immediate zero-day incident response.
@@ -179,7 +180,7 @@ node packages/cli/dist/index.js check https://example.com --fail-on-bypass -q
 ```
 
 #### 🛡️ Virtual Patching & Auto-Remediation
-Automatically generate ready-to-deploy firewall rules across all 9 supported platforms (`cloudflare`, `aws`, `gcp`, `azure`, `modsecurity`, `nginx`, `haproxy`, `caddy`, `k8s`, or `all`):
+Automatically generate ready-to-deploy firewall rules across all 10 supported platforms (`cloudflare`, `aws`, `gcp`, `azure`, `modsecurity`, `nginx`, `haproxy`, `caddy`, `apache`, `k8s`, or `all`):
 ```bash
 # Generate and save Cloudflare Terraform rules during audit
 node packages/cli/dist/index.js check https://example.com --patch cloudflare --patch-output ./cloudflare-patch.tf
@@ -195,6 +196,9 @@ node packages/cli/dist/index.js check https://example.com --patch haproxy --patc
 
 # Generate Caddyfile named matchers
 node packages/cli/dist/index.js check https://example.com --patch caddy --patch-output ./patches.caddyfile
+
+# Generate Apache mod_rewrite rules for .htaccess
+node packages/cli/dist/index.js check https://example.com --patch apache --patch-output ./patches.htaccess
 
 # Generate Kubernetes Ingress YAML manifests
 node packages/cli/dist/index.js check https://example.com --patch k8s --patch-output ./ingress-patch.yaml
