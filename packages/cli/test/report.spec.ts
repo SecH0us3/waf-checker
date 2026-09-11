@@ -151,6 +151,28 @@ describe('Report Module', () => {
 			expect(fs.writeFileSync).toHaveBeenCalledWith('report.csv', expect.stringContaining('SQL Injection,GET,403'), 'utf8');
 		});
 
+		it('should include WAF detection columns in CSV check reports', () => {
+			vi.mocked(fs.writeFileSync).mockClear();
+			const enriched = [
+				{
+					status: 200,
+					method: 'GET',
+					payload: 'test-xss',
+					originalPayload: '<script>',
+					responseTime: 120,
+					category: 'XSS',
+					wafType: 'Cloudflare',
+					bypassTechnique: 'Double URL encoding',
+					verdict: 'exposed',
+				},
+			];
+			writeReport('report.csv', 'csv', 'check', 'https://example.com', enriched);
+			const written = vi.mocked(fs.writeFileSync).mock.calls[0][1] as string;
+			expect(written).toContain('WAF Type,Bypass Technique,Verdict');
+			expect(written).toContain('Original Payload');
+			expect(written).toContain('Cloudflare,Double URL encoding,exposed');
+		});
+
 		it('should write HTML check reports with styling and content', () => {
 			vi.mocked(fs.writeFileSync).mockClear();
 			writeReport('report.html', 'html', 'check', 'https://example.com', checkResults);

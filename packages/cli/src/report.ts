@@ -18,6 +18,7 @@ export interface CheckResult {
 	wafType?: string;
 	bypassTechnique?: string;
 	originalPayload?: string;
+	verdict?: 'blocked' | 'passed' | 'exposed';
 }
 
 export interface BatchResult {
@@ -48,7 +49,10 @@ export function deduceFormat(outputPath: string): ReportFormat {
  * Generate a CSV report for CheckResults.
  */
 function generateCheckCsv(results: CheckResult[]): string {
-	const headers = ['Category', 'Method', 'Status', 'Response Time (ms)', 'Is Redirect', 'Payload', 'Error'];
+	const headers = [
+		'Category', 'Method', 'Status', 'Response Time (ms)', 'Is Redirect',
+		'WAF Type', 'Bypass Technique', 'Verdict', 'Payload', 'Original Payload', 'Error',
+	];
 	const escape = (val: any) => {
 		const str = String(val ?? '');
 		if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
@@ -65,7 +69,11 @@ function generateCheckCsv(results: CheckResult[]): string {
 			escape(r.status),
 			escape(r.responseTime),
 			escape(r.is_redirect ? 'Yes' : 'No'),
+			escape(r.wafType),
+			escape(r.bypassTechnique),
+			escape(r.verdict),
 			escape(r.payload),
+			escape(r.originalPayload),
 			escape(r.error)
 		].join(','))
 	];
