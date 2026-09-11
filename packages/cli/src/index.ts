@@ -52,8 +52,8 @@ const program = new Command();
 
 program
 	.name('waf-checker')
-	.description('WAF Security Testing Tool (CLI version)')
-	.version('1.1.0')
+	.description('Automated WAF (Web Application Firewall) Security Auditing & Fingerprinting Tool')
+	.version('1.2.0')
 	.showHelpAfterError()
 	.option('--no-color', 'Disable colored output')
 	.addHelpText('after', detailedHelp);
