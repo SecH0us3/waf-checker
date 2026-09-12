@@ -411,9 +411,33 @@ describe('WAFDetector', () => {
 
 		it('lists the new vendors as supported', () => {
 			const wafs = WAFDetector.getSupportedWafs();
-			for (const name of ['SafeDog', 'Jiasule', 'Yunjiasu', 'NSFOCUS', 'Comodo cWatch', 'Nemesida']) {
+			for (const name of [
+				'SafeDog', 'Jiasule', 'Yunjiasu', 'NSFOCUS', 'Comodo cWatch', 'Nemesida',
+				'Tencent Cloud WAF', 'Anquanbao', 'Yunsuo',
+			]) {
 				expect(wafs).toContain(name);
 			}
+		});
+
+		it('detects Tencent Cloud WAF from server header and body', async () => {
+			const res = mockResponse({ server: 'tencent' });
+			const result = await WAFDetector.detectFromResponse(res, 'Blocked by Tencent Cloud WAF: waf.tencent-cloud.com');
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('Tencent Cloud WAF');
+		});
+
+		it('detects Anquanbao from its X-Powered-By header', async () => {
+			const res = mockResponse({ 'x-powered-by-anquanbao': 'Miejd' });
+			const result = await WAFDetector.detectFromResponse(res, 'aqb_cc/error page from Anquanbao');
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('Anquanbao');
+		});
+
+		it('detects Yunsuo from its session cookie and body', async () => {
+			const res = mockResponse({ 'set-cookie': 'yunsuo_session=abc; Path=/' });
+			const result = await WAFDetector.detectFromResponse(res, 'blocked by _yunsuo_ protection');
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('Yunsuo');
 		});
 
 		it('detects SafeDog from X-Powered-By header and cookie', async () => {

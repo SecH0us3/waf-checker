@@ -529,6 +529,35 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 		bodyPatterns: [/Nemesida WAF/i, /nemesida-security\.com/i, /Suspicious activity detected\. Access to the site is blocked/i],
 	},
 
+	// Tencent Cloud WAF (T-Sec)
+	{
+		name: 'Tencent Cloud WAF',
+		headers: {
+			server: /tencent/i,
+		},
+		statusCodes: [403],
+		bodyPatterns: [/waf\.tencent-cloud\.com/i, /tencent cloud waf/i, /Blocked by Tencent Cloud/i],
+	},
+
+	// Anquanbao (安全宝)
+	{
+		name: 'Anquanbao',
+		headers: {
+			'x-powered-by-anquanbao': /.*/i,
+		},
+		statusCodes: [403, 405],
+		bodyPatterns: [/Anquanbao/i, /aqb_cc\/error/i, /aqb\.html/i],
+	},
+
+	// Yunsuo (云锁)
+	{
+		name: 'Yunsuo',
+		headers: {},
+		cookiePatterns: [/yunsuo_session/i],
+		statusCodes: [403],
+		bodyPatterns: [/_yunsuo_/i, /yunsuo\.com\.cn/i, /security_verify_/i],
+	},
+
 	// Generic detection patterns — require WAF-specific phrases,
 	// not just common HTTP words like "forbidden"
 	{
