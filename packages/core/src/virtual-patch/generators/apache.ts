@@ -5,8 +5,25 @@ import {
 	detectInspectionLocation,
 	escapeRegex,
 	sanitizeStrictToken,
-	escapeDoubleQuotes,
 } from '../heuristics';
+
+/**
+ * Escape a regex for embedding in an Apache RewriteCond double-quoted CondPattern.
+ *
+ * Apache's config tokenizer does NOT collapse `\\` inside a quoted argument the
+ * way nginx does — it passes backslashes straight through to PCRE. So we must
+ * NOT double backslashes (that would turn `\(` into a literal backslash plus an
+ * unbalanced group, and `\s`/`\b` into literal-backslash sequences); the
+ * backslashes produced by escapeRegex are already exactly what PCRE needs.
+ *
+ * A literal double-quote also cannot be embedded: `\"` is not honored as an
+ * escape here, so the bare `"` would close the quoted CondPattern early ("bad
+ * flag delimiters"). We instead emit the PCRE hex escape `\x22`, which matches
+ * a double-quote without placing a literal one in the argument.
+ */
+function escapeApacheArg(str: string): string {
+	return str.replace(/"/g, '\\x22');
+}
 
 function getUrlPath(targetUrl?: string): string | null {
 	if (!targetUrl) return null;
@@ -98,10 +115,10 @@ export function generateApachePatches(
 
 			const lines = headerLines('Strict');
 			if (urlPath) {
-				lines.push(`RewriteCond %{REQUEST_URI} "^${escapeDoubleQuotes(escapeRegex(urlPath))}" [NC]`);
+				lines.push(`RewriteCond %{REQUEST_URI} "^${escapeApacheArg(escapeRegex(urlPath))}" [NC]`);
 			}
 			lines.push(
-				`RewriteCond ${apacheVar} "(${escapeDoubleQuotes(alternation)})" [NC]`,
+				`RewriteCond ${apacheVar} "(${escapeApacheArg(alternation)})" [NC]`,
 				`RewriteRule ^ - ${actionFlag(envKey)}`
 			);
 			if (isSimulate) {
@@ -126,10 +143,10 @@ export function generateApachePatches(
 
 			const lines = headerLines('Heuristic');
 			if (urlPath) {
-				lines.push(`RewriteCond %{REQUEST_URI} "^${escapeDoubleQuotes(escapeRegex(urlPath))}" [NC]`);
+				lines.push(`RewriteCond %{REQUEST_URI} "^${escapeApacheArg(escapeRegex(urlPath))}" [NC]`);
 			}
 			lines.push(
-				`RewriteCond ${apacheVar} "${escapeDoubleQuotes(rawPattern)}" [NC]`,
+				`RewriteCond ${apacheVar} "${escapeApacheArg(rawPattern)}" [NC]`,
 				`RewriteRule ^ - ${actionFlag(envKey)}`
 			);
 			if (isSimulate) {

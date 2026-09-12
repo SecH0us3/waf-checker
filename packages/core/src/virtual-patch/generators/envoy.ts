@@ -18,6 +18,15 @@ function re2Contains(pattern: string, pathPrefix?: string): string {
 	return `(?i)${anchor}(${pattern}).*`;
 }
 
+/**
+ * RE2 program-size ceiling for the generated `safe_regex` matchers. Envoy's
+ * default `re2.max_program_size.error_level` is only 100, which rejects any
+ * non-trivial strict alternation (a ~20-token list compiles to ~400). We set a
+ * generous per-regex ceiling so the emitted config loads out of the box; tune
+ * it down if you prefer stricter limits.
+ */
+const MAX_PROGRAM_SIZE = 1000;
+
 /** Embed a regex as a YAML single-quoted scalar (only single quotes need doubling). */
 function yamlSingleQuote(str: string): string {
 	return `'${str.replace(/'/g, "''")}'`;
@@ -80,21 +89,24 @@ export function generateEnvoyPatches(
 	};
 
 	// Build a route entry for a given RE2 pattern, dispatching on inspection location.
+	//
+	// Everything is matched via a `headers` string_match, never the route-level
+	// `safe_regex` path matcher: the latter matches only the path and DROPS the
+	// query string, so query-borne attacks would slip through. The `:path`
+	// pseudo-header, by contrast, carries the full path + query string.
 	const buildRoute = (category: string, location: string, pattern: string): string[] => {
-		const lines: string[] = [`  - match:`];
-		if (location === 'header') {
-			lines.push(`      prefix: "${urlPath || '/'}"`);
-			lines.push(
-				`      headers:`,
-				`        - name: "${getEnvoyHeader(category)}"`,
-				`          string_match:`,
-				`            safe_regex:`,
-				`              regex: ${yamlSingleQuote(pattern)}`
-			);
-		} else {
-			// query / uri / body all match against :path (body cannot be inspected here)
-			lines.push(`      safe_regex:`, `        regex: ${yamlSingleQuote(pattern)}`);
-		}
+		const headerName = location === 'header' ? getEnvoyHeader(category) : ':path';
+		const prefix = location === 'header' ? urlPath || '/' : '/';
+		const lines: string[] = [
+			`  - match:`,
+			`      prefix: "${prefix}"`,
+			`      headers:`,
+			`        - name: "${headerName}"`,
+			`          string_match:`,
+			`            safe_regex:`,
+			`              google_re2: { max_program_size: ${MAX_PROGRAM_SIZE} }`,
+			`              regex: ${yamlSingleQuote(pattern)}`,
+		];
 		lines.push(...buildAction(category));
 		return lines;
 	};

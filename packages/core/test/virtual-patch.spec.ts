@@ -617,12 +617,27 @@ describe('Virtual Patching & Rule Generator', () => {
 			expect(patch.nativeRule).toContain('RewriteCond %{REQUEST_URI} "^/api/login"');
 		});
 
-		it('should escape double quotes in Apache CondPatterns', () => {
+		it('should encode double quotes as \\x22 (not a literal/escaped quote) in CondPatterns', () => {
 			const quoted: AuditResultItem[] = [
 				{ category: 'SQL Injection', method: 'GET', payload: 'admin" OR "1"="1', status: 200, responseTime: 45 },
 			];
 			const report = generateVirtualPatches(quoted, { vendor: 'apache', tier: 'strict' });
-			expect(report.patches[0].nativeRule).toContain('\\"');
+			const rule = report.patches[0].nativeRule;
+			// Apache does not honor \" inside a quoted CondPattern, so a literal quote
+			// would terminate the argument ("bad flag delimiters"). Must be \x22.
+			expect(rule).toContain('\\x22');
+			// The CondPattern itself must not contain a raw double-quote.
+			const cond = rule.split('\n').find((l) => l.startsWith('RewriteCond'))!;
+			expect(cond.slice(cond.indexOf('"') + 1, cond.lastIndexOf('"'))).not.toContain('"');
+		});
+
+		it('must NOT double backslashes in heuristic CondPatterns (Apache passes \\\\ to PCRE)', () => {
+			// Apache's tokenizer passes \\ straight to PCRE, so a doubled backslash
+			// turns \( into an unbalanced group and \s/\b into literal-backslash runs.
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'apache', tier: 'heuristic' });
+			const sqli = report.patches.find((p) => p.category === 'SQL Injection')!;
+			expect(sqli.nativeRule).toContain('\\b'); // single-backslash word boundary preserved
+			expect(sqli.nativeRule).not.toContain('\\\\'); // no doubled backslashes
 		});
 
 		it('should note the body-inspection limitation for body categories', () => {
@@ -654,6 +669,13 @@ describe('Virtual Patching & Rule Generator', () => {
 			expect(patch!.nativeRule).toContain('status: 403');
 			// case-insensitive, substring-matching RE2 wrapper
 			expect(patch!.nativeRule).toContain('(?i)');
+			// Must raise RE2's default program-size ceiling (100) or Envoy rejects
+			// any non-trivial alternation at config load.
+			expect(patch!.nativeRule).toContain('max_program_size');
+			// Query-borne payloads must match the :path HEADER (which carries the
+			// query string), not the route path matcher (which drops it).
+			expect(patch!.nativeRule).toContain('name: ":path"');
+			expect(patch!.nativeRule).toContain('string_match:');
 		});
 
 		it('should match a header for User-Agent bypasses', () => {
