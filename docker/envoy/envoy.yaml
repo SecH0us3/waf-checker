@@ -1,0 +1,180 @@
+admin:
+  address:
+    socket_address: { address: 0.0.0.0, port_value: 9901 }
+static_resources:
+  listeners:
+  - name: main
+    address:
+      socket_address: { address: 0.0.0.0, port_value: 80 }
+    filter_chains:
+    - filters:
+      - name: envoy.filters.network.http_connection_manager
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+          stat_prefix: ingress
+          http_filters:
+          - name: envoy.filters.http.router
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+          route_config:
+            name: local
+            virtual_hosts:
+            - name: vh
+              domains: ["*"]
+              routes:
+            # --- WAF-Checker Virtual Patch: SQL Injection (Strict) ---
+            # Add to an Envoy route_configuration virtual_host's routes: list, before the catch-all route.
+              - match:
+                  prefix: "/"
+                  headers:
+                    - name: ":path"
+                      string_match:
+                        safe_regex:
+                          google_re2: { max_program_size: 1000 }
+                          regex: '(?i).*('' OR ''1''=''1|1; DROP TABLE notablewaftest17 --|admin'' --|'' OR 1=1--|'' OR ''a''=''a|'' OR 1=1#|'' OR 1=1/\*|'' OR SLEEP\(5\)--|'' OR 1=1 LIMIT 1;--|WAITFOR DELAY ''0:0:5''|\)\) OR EXISTS\(SELECT \* FROM users WHERE username=''admin''\)--|%2553%2527%2520OR%25201%253D1|/\*\*/OR/\*\*/1=1|%2527%2520OR%25201%253D1--|''/\*\*/OR/\*\*/1=1--|''%09OR%091=1--|''\\u0020OR\\u00201=1--|0x27204f52203120314431--|''UNION/\*!50000SELECT\*/1,2,3--).*'
+                direct_response:
+                  status: 403
+                  body:
+                    inline_string: "Request blocked by WAF-Checker virtual patch"
+
+            # --- WAF-Checker Heuristic Defense: SQL Injection ---
+              - match:
+                  prefix: "/"
+                  headers:
+                    - name: ":path"
+                      string_match:
+                        safe_regex:
+                          google_re2: { max_program_size: 1000 }
+                          regex: '(?i).*((?i)(?:\b(?:union\s+(?:all\s+)?select|select\s+.*\bfrom|insert\s+into|delete\s+from|drop\s+table|update\s+.*\bset)\b|\bexec(?:ute)?\s*\(|''\s*(?:or|and)\s+[''\d]=[''\d]|--\s*$|;\s*--)).*'
+                direct_response:
+                  status: 403
+                  body:
+                    inline_string: "Request blocked by WAF-Checker virtual patch"
+
+            # --- WAF-Checker Virtual Patch: XSS (Strict) ---
+            # Add to an Envoy route_configuration virtual_host's routes: list, before the catch-all route.
+              - match:
+                  prefix: "/"
+                  headers:
+                    - name: ":path"
+                      string_match:
+                        safe_regex:
+                          google_re2: { max_program_size: 1000 }
+                          regex: '(?i).*(<script>alert\(''xss''\)</script>|<img src=x onerror=alert\(''xss''\)>|<iframe src="javascript:alert\(''XSS''\)"></iframe>|<svg/onload=alert\(''xss''\)>|<body onload=alert\(''xss''\)>|<a href=javascript:alert\(''xss''\)>click</a>|<math href=javascript:alert\(1\)>|javascript:/\*--></title></style></textarea></script></xmp><svg/onload=''\+/"/\+/onmouseover=1/\+/\[\*/\[\]/\+alert\(1\)//''|<marquee onstart=alert\(1\)>|'';alert\(String\.fromCharCode\(88,83,83\)\)//'';alert\(String\.fromCharCode\(88,83,83\)\)//"|<input onfocus=alert\(1\) autofocus>|%253Cscript%253Ealert%25281%2529%253C%252Fscript%253E|<img src=x onerror=\\u0061\\u006c\\u0065\\u0072\\u0074\\u0028\\u0031\\u0029>|&#60;script&#62;alert&#40;1&#41;&#60;/script&#62;|<ScRiPt>AlErT\(1\)</ScRiPt>|javascript:\\u0061\\u006c\\u0065\\u0072\\u0074\\u0028\\u0031\\u0029|<details open ontoggle=alert\(1\)>).*'
+                direct_response:
+                  status: 403
+                  body:
+                    inline_string: "Request blocked by WAF-Checker virtual patch"
+
+            # --- WAF-Checker Heuristic Defense: XSS ---
+              - match:
+                  prefix: "/"
+                  headers:
+                    - name: ":path"
+                      string_match:
+                        safe_regex:
+                          google_re2: { max_program_size: 1000 }
+                          regex: '(?i).*((?i)(?:<script[^>]*>|javascript\s*:|\bon(?:error|load|click|mouseover|focus|blur)\s*=|alert\s*\(|document\.(?:cookie|location|domain)|eval\s*\()).*'
+                direct_response:
+                  status: 403
+                  body:
+                    inline_string: "Request blocked by WAF-Checker virtual patch"
+
+            # --- WAF-Checker Virtual Patch: Path Traversal (Strict) ---
+            # Add to an Envoy route_configuration virtual_host's routes: list, before the catch-all route.
+              - match:
+                  prefix: "/"
+                  headers:
+                    - name: ":path"
+                      string_match:
+                        safe_regex:
+                          google_re2: { max_program_size: 1000 }
+                          regex: '(?i).*(\.\./\.\./etc/passwd|\.\./\.\./\.\./\.\./\.\./\.\./\.\./etc/passwd|\.ini|\.\.%2F\.\.%2F\.\.%2F\.\.%2Fetc%2Fpasswd|\.\.%c0%af\.\.%c0%af\.\.%c0%afetc%c0%afpasswd).*'
+                direct_response:
+                  status: 403
+                  body:
+                    inline_string: "Request blocked by WAF-Checker virtual patch"
+
+            # --- WAF-Checker Heuristic Defense: Path Traversal ---
+              - match:
+                  prefix: "/"
+                  headers:
+                    - name: ":path"
+                      string_match:
+                        safe_regex:
+                          google_re2: { max_program_size: 1000 }
+                          regex: '(?i).*((?:\.\.[\/\\]){2,}|(?:%2e%2e[%2f%5c]){2,}|[\/\\]etc[\/\\](?:passwd|shadow|hosts)|[\/\\](?:boot\.ini|win\.ini|windows[\/\\]system32)).*'
+                direct_response:
+                  status: 403
+                  body:
+                    inline_string: "Request blocked by WAF-Checker virtual patch"
+
+            # --- WAF-Checker Virtual Patch: Command Injection (Strict) ---
+            # Add to an Envoy route_configuration virtual_host's routes: list, before the catch-all route.
+              - match:
+                  prefix: "/"
+                  headers:
+                    - name: ":path"
+                      string_match:
+                        safe_regex:
+                          google_re2: { max_program_size: 1000 }
+                          regex: '(?i).*(\$\(cat /etc/passwd\)|\| cat /etc/passwd|; ls -la|& whoami|\| id|; ping -c 10 127\.0\.0\.1|\| nc -lvp 4444).*'
+                direct_response:
+                  status: 403
+                  body:
+                    inline_string: "Request blocked by WAF-Checker virtual patch"
+
+            # --- WAF-Checker Heuristic Defense: Command Injection ---
+              - match:
+                  prefix: "/"
+                  headers:
+                    - name: ":path"
+                      string_match:
+                        safe_regex:
+                          google_re2: { max_program_size: 1000 }
+                          regex: '(?i).*((?:;|\||&&|\n|\x60|\$\()\s*(?:cat|ls|id|whoami|curl|wget|bash|sh|powershell|cmd|nc|python|perl|echo)\b).*'
+                direct_response:
+                  status: 403
+                  body:
+                    inline_string: "Request blocked by WAF-Checker virtual patch"
+
+            # --- WAF-Checker Virtual Patch: SSRF (Strict) ---
+            # Add to an Envoy route_configuration virtual_host's routes: list, before the catch-all route.
+              - match:
+                  prefix: "/"
+                  headers:
+                    - name: ":path"
+                      string_match:
+                        safe_regex:
+                          google_re2: { max_program_size: 1000 }
+                          regex: '(?i).*(http://127\.0\.0\.1/|file:///etc/passwd).*'
+                direct_response:
+                  status: 403
+                  body:
+                    inline_string: "Request blocked by WAF-Checker virtual patch"
+
+            # --- WAF-Checker Heuristic Defense: SSRF ---
+              - match:
+                  prefix: "/"
+                  headers:
+                    - name: ":path"
+                      string_match:
+                        safe_regex:
+                          google_re2: { max_program_size: 1000 }
+                          regex: '(?i).*((?i)(?:169\.254\.169\.254|metadata\.google\.internal|127\.0\.0\.1|0\.0\.0\.0|localhost|\[::1\]|instance-data|fd00:)).*'
+                direct_response:
+                  status: 403
+                  body:
+                    inline_string: "Request blocked by WAF-Checker virtual patch"
+              - match: { prefix: "/" }
+                route: { cluster: backend }
+  clusters:
+  - name: backend
+    type: STRICT_DNS
+    load_assignment:
+      cluster_name: backend
+      endpoints:
+      - lb_endpoints:
+        - endpoint:
+            address:
+              socket_address: { address: waf-test-backend, port_value: 80 }
