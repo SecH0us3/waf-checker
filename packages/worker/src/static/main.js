@@ -773,6 +773,10 @@ async function showVirtualPatchModal(initialScope) {
 		currentVpVendor = 'modsecurity';
 	} else if (detectedWAF.includes('nginx')) {
 		currentVpVendor = 'nginx';
+	} else if (detectedWAF.includes('apache') || detectedWAF.includes('httpd')) {
+		currentVpVendor = 'apache';
+	} else if (detectedWAF.includes('envoy') || detectedWAF.includes('istio')) {
+		currentVpVendor = 'envoy';
 	}
 
 	updateVpTabs();
@@ -781,7 +785,7 @@ async function showVirtualPatchModal(initialScope) {
 }
 
 function updateVpTabs() {
-	const vendors = ['cloudflare', 'aws', 'gcp', 'azure', 'modsecurity', 'nginx', 'haproxy', 'caddy', 'k8s'];
+	const vendors = ['cloudflare', 'aws', 'gcp', 'azure', 'modsecurity', 'nginx', 'haproxy', 'caddy', 'apache', 'envoy', 'k8s'];
 	vendors.forEach((v) => {
 		const btn = document.getElementById(`tab-${v}`);
 		if (btn) {
@@ -950,6 +954,10 @@ function downloadVpCode() {
 		ext = '.cfg';
 	} else if (currentVpVendor === 'caddy') {
 		ext = '.caddyfile';
+	} else if (currentVpVendor === 'apache') {
+		ext = '.htaccess';
+	} else if (currentVpVendor === 'envoy') {
+		ext = '.yaml';
 	} else if (currentVpVendor === 'k8s') {
 		ext = '.yaml';
 	}

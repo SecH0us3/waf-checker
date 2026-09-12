@@ -33,6 +33,12 @@ describe('Report Module', () => {
 			expect(deduceFormat('test.htm')).toBe('html');
 		});
 
+		it('should deduce junit format from extension', () => {
+			expect(deduceFormat('test.junit')).toBe('junit');
+			expect(deduceFormat('report.xml')).toBe('junit');
+			expect(deduceFormat('report.XML')).toBe('junit');
+		});
+
 		it('should default to html for unknown extensions', () => {
 			expect(deduceFormat('test.txt')).toBe('html');
 			expect(deduceFormat('test')).toBe('html');
@@ -60,6 +66,18 @@ describe('Report Module', () => {
 			vi.mocked(fs.writeFileSync).mockClear();
 			writeReport('report.sarif', 'sarif', 'check', 'https://example.com', checkResults);
 			expect(fs.writeFileSync).toHaveBeenCalledWith('report.sarif', expect.stringContaining('"version": "2.1.0"'), 'utf8');
+		});
+
+		it('should write JUnit check reports', () => {
+			vi.clearAllMocks();
+			writeReport('report.xml', 'junit', 'check', 'https://example.com', checkResults);
+			expect(fs.writeFileSync).toHaveBeenCalledWith('report.xml', expect.stringContaining('<testsuites'), 'utf8');
+		});
+
+		it('should throw error when requesting JUnit for batch report', () => {
+			expect(() => {
+				writeReport('batch.xml', 'junit', 'batch', 'targets.txt', batchResults);
+			}).toThrow(/only supported for single target/);
 		});
 
 		it('should throw error when requesting SARIF for batch report', () => {
@@ -131,6 +149,28 @@ describe('Report Module', () => {
 			writeReport('report.csv', 'csv', 'check', 'https://example.com', checkResults);
 			expect(fs.writeFileSync).toHaveBeenCalledWith('report.csv', expect.stringContaining('Category,Method,Status'), 'utf8');
 			expect(fs.writeFileSync).toHaveBeenCalledWith('report.csv', expect.stringContaining('SQL Injection,GET,403'), 'utf8');
+		});
+
+		it('should include WAF detection columns in CSV check reports', () => {
+			vi.mocked(fs.writeFileSync).mockClear();
+			const enriched = [
+				{
+					status: 200,
+					method: 'GET',
+					payload: 'test-xss',
+					originalPayload: '<script>',
+					responseTime: 120,
+					category: 'XSS',
+					wafType: 'Cloudflare',
+					bypassTechnique: 'Double URL encoding',
+					verdict: 'exposed',
+				},
+			];
+			writeReport('report.csv', 'csv', 'check', 'https://example.com', enriched);
+			const written = vi.mocked(fs.writeFileSync).mock.calls[0][1] as string;
+			expect(written).toContain('WAF Type,Bypass Technique,Verdict');
+			expect(written).toContain('Original Payload');
+			expect(written).toContain('Cloudflare,Double URL encoding,exposed');
 		});
 
 		it('should write HTML check reports with styling and content', () => {

@@ -35,7 +35,7 @@ All packages are thoroughly tested with automated unit, integration, property-ba
 
 ### 🛡️ WAF Virtual Patching & Auto-Remediation (`--patch` / `patch` command)
 - **Instant Mitigation**: Automatically transforms detected WAF bypasses (HTTP 200) into ready-to-deploy firewall rules, reverse proxy configurations, and Infrastructure-as-Code (Terraform HCL / Cloud CLI).
-- **Supported Platforms (10 Dialects)**:
+- **Supported Platforms (11 Dialects)**:
   - **Cloudflare WAF**: Wirefilter expressions (`http.request.uri.query contains ...` / `matches ...`) & `cloudflare_ruleset` Terraform HCL.
   - **AWS WAF v2**: Native JSON Rule Statements (`ByteMatchStatement`, `RegexPatternSet`, `OrStatement`) & `aws_wafv2_rule_group` Terraform HCL.
   - **Google Cloud Armor**: CEL expressions (`request.path.matches(...)`, `request.headers[...]`), `gcloud compute security-policies` CLI commands, & Terraform `google_compute_security_policy`.
@@ -44,14 +44,16 @@ All packages are thoroughly tested with automated unit, integration, property-ba
   - **NGINX**: Native `location ~* \.(ext)$ { return 403; }`, `location ~ /\.(git|svn)`, and `map` configuration blocks.
   - **HAProxy**: High-performance native ACLs (`path_end -i`, `path_beg -i`, `query -m sub -i`, `req.hdr()`) with `http-request deny deny_status 403`.
   - **Caddy Server**: Idiomatic Caddyfile named matchers (`@waf_patch_*`) with CEL expressions (`expression {http.request.uri.query}.matches(...)`) and `respond 403`.
+  - **Apache HTTP Server**: `mod_rewrite` rules (`RewriteCond %{QUERY_STRING}` / `%{REQUEST_URI}` / `%{HTTP_USER_AGENT}` + `RewriteRule ^ - [F,L]`) for `httpd.conf`, `<VirtualHost>`, or `.htaccess`. Supported via `--patch apache`.
+  - **Envoy Proxy**: Route entries matching `:path`/headers via RE2 `safe_regex` with `direct_response: 403` (or forward-and-tag in simulate mode) for a route_configuration virtual_host. Supported via `--patch envoy`.
   - **Kubernetes Ingress (K8s)**: Production-ready `kind: Ingress` YAML manifests with `nginx.ingress.kubernetes.io/server-snippet` annotations.
 - **Dual-Tier Defense**:
   - **Strict Hotfix**: Exact token signatures with **0% false positive risk** for immediate zero-day incident response.
   - **Heuristic Pattern**: Generalized regular expressions covering the entire vulnerability class structure.
 - **Web UI Remediation Studio**: Interactive dashboard modal with live previews across all vendors, 1-click clipboard copy, format toggles, and file export.
 
-### Attack Categories (25 total)
-SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusion, Sensitive Files, Open Redirect, SSTI, XXE, NoSQL Injection, GraphQL Injection, JWT Attack (Header), JWT Attack (Param), Prototype Pollution (JSON Body), Prototype Pollution (URL/Param), LDAP Injection, CRLF Injection, HTTP Parameter Pollution, User-Agent, IP Bypass, HTTP Request Smuggling, Web Cache Poisoning, UTF8/Unicode Bypass, WAF Inspection Limit Bypass (Padding).
+### Attack Categories (28 total)
+SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusion, Sensitive Files, Open Redirect, SSTI, XXE, NoSQL Injection, GraphQL Injection, JWT Attack (Header), JWT Attack (Param), Prototype Pollution (JSON Body), Prototype Pollution (URL/Param), LDAP Injection, XPath Injection, Spreadsheet Formula Injection, Log4Shell (JNDI), CRLF Injection, HTTP Parameter Pollution, User-Agent, IP Bypass, HTTP Request Smuggling, Web Cache Poisoning, UTF8/Unicode Bypass, WAF Inspection Limit Bypass (Padding).
 
 ### WAF Detection
 - Auto-detect WAF type before testing (Cloudflare, AWS WAF, OWASP Coraza, BunkerWeb, ModSecurity, Akamai, Imperva, F5 BIG-IP, etc.).
@@ -127,6 +129,10 @@ node packages/cli/dist/index.js --help
 
 # Print check command help (lists all methods, categories, and WAF vendors)
 node packages/cli/dist/index.js check --help
+
+# Discover detectable WAF vendors and payload categories (JSON for automation)
+node packages/cli/dist/index.js list-wafs --json
+node packages/cli/dist/index.js list-categories --json
 ```
 
 #### WAF Detection
@@ -152,10 +158,13 @@ node packages/cli/dist/index.js batch targets.txt --concurrency 3
 ```
 
 #### Generating Reports
-Save audit results in **SARIF**, **HTML**, **Markdown**, **CSV**, or **JSON** format:
+Save audit results in **SARIF**, **JUnit XML**, **HTML**, **Markdown**, **CSV**, or **JSON** format:
 ```bash
 # Generate SARIF report for GitHub Code Scanning
 node packages/cli/dist/index.js check https://example.com -o results.sarif
+
+# Generate JUnit XML for CI test reporting (GitHub Actions, GitLab CI, Jenkins)
+node packages/cli/dist/index.js check https://example.com -o results.xml
 
 # Generate interactive HTML report
 node packages/cli/dist/index.js check https://example.com -o report.html
@@ -163,6 +172,7 @@ node packages/cli/dist/index.js check https://example.com -o report.html
 # Generate Markdown summary for CI
 node packages/cli/dist/index.js check https://example.com -o summary.md
 ```
+> The report format is deduced from the output file extension, or set explicitly with `-f, --format` (`json`, `csv`, `html`, `sarif`, `markdown`, `junit`). Each attack payload becomes a JUnit `<testcase>`; WAF bypasses are reported as `failure`s and transport/server errors as `error`s, so CI runners surface them directly.
 
 #### CI/CD Integration & Protection Thresholds
 Fail CI/CD pipelines when protection rate is below required threshold or when bypasses are detected:
@@ -175,7 +185,7 @@ node packages/cli/dist/index.js check https://example.com --fail-on-bypass -q
 ```
 
 #### 🛡️ Virtual Patching & Auto-Remediation
-Automatically generate ready-to-deploy firewall rules across all 9 supported platforms (`cloudflare`, `aws`, `gcp`, `azure`, `modsecurity`, `nginx`, `haproxy`, `caddy`, `k8s`, or `all`):
+Automatically generate ready-to-deploy firewall rules across all 11 supported platforms (`cloudflare`, `aws`, `gcp`, `azure`, `modsecurity`, `nginx`, `haproxy`, `caddy`, `apache`, `envoy`, `k8s`, or `all`):
 ```bash
 # Generate and save Cloudflare Terraform rules during audit
 node packages/cli/dist/index.js check https://example.com --patch cloudflare --patch-output ./cloudflare-patch.tf
@@ -191,6 +201,9 @@ node packages/cli/dist/index.js check https://example.com --patch haproxy --patc
 
 # Generate Caddyfile named matchers
 node packages/cli/dist/index.js check https://example.com --patch caddy --patch-output ./patches.caddyfile
+
+# Generate Apache mod_rewrite rules for .htaccess
+node packages/cli/dist/index.js check https://example.com --patch apache --patch-output ./patches.htaccess
 
 # Generate Kubernetes Ingress YAML manifests
 node packages/cli/dist/index.js check https://example.com --patch k8s --patch-output ./ingress-patch.yaml

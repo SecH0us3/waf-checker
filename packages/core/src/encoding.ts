@@ -10,6 +10,7 @@ export interface EncodingOptions {
 	octalEncode?: boolean;
 	base64Encode?: boolean;
 	urlEncode?: boolean;
+	overlongUtf8?: boolean;
 }
 
 export class PayloadEncoder {
@@ -127,6 +128,33 @@ export class PayloadEncoder {
 	}
 
 	/**
+	 * Overlong UTF-8 encode security-relevant ASCII characters.
+	 *
+	 * A code point below 0x80 has a single valid UTF-8 form, but decoders that
+	 * accept the (illegal) 2-byte overlong form treat e.g. %C0%AF as '/'. This
+	 * is a classic path-traversal / WAF-evasion trick (CVE-2000-0884 and
+	 * descendants): the WAF sees %C0%AF, the origin decodes it to '/'.
+	 *
+	 * Example: '../' -> %C0%AE%C0%AE%C0%AF
+	 */
+	static overlongUtf8Encode(payload: string): string {
+		const targets = new Set(['/', '\\', '.', "'", '"', '<', '>', '&', ';', ':', '|', '(', ')', ' ']);
+		let out = '';
+		for (const ch of payload) {
+			const code = ch.charCodeAt(0);
+			if (code < 0x80 && targets.has(ch)) {
+				const b1 = 0xc0 | (code >> 6);
+				const b2 = 0x80 | (code & 0x3f);
+				const hex = (b: number) => `%${b.toString(16).toUpperCase().padStart(2, '0')}`;
+				out += hex(b1) + hex(b2);
+			} else {
+				out += ch;
+			}
+		}
+		return out;
+	}
+
+	/**
 	 * Apply multiple encoding techniques
 	 */
 	static applyEncodings(payload: string, options: EncodingOptions): string[] {
@@ -163,6 +191,10 @@ export class PayloadEncoder {
 
 		if (options.urlEncode) {
 			encodedPayloads.push(encodeURIComponent(payload));
+		}
+
+		if (options.overlongUtf8) {
+			encodedPayloads.push(this.overlongUtf8Encode(payload));
 		}
 
 		return [...new Set(encodedPayloads)]; // Remove duplicates
@@ -258,6 +290,7 @@ export class PayloadEncoder {
 			mixedCaseEncode: true,
 			hexEncode: true,
 			urlEncode: true,
+			overlongUtf8: true,
 		};
 
 		variations = variations.concat(this.applyEncodings(payload, encodingOptions));

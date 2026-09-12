@@ -569,6 +569,160 @@ describe('Virtual Patching & Rule Generator', () => {
 		});
 	});
 
+	describe('Apache Generator', () => {
+		it('should generate valid mod_rewrite block rules for the query string', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'apache', tier: 'strict' });
+			const patch = report.patches.find((p) => p.category === 'SQL Injection');
+			expect(patch).toBeDefined();
+			expect(patch!.vendor).toBe('apache');
+			expect(patch!.nativeRule).toContain('RewriteCond %{QUERY_STRING}');
+			expect(patch!.nativeRule).toContain('[NC]');
+			expect(patch!.nativeRule).toContain('RewriteRule ^ - [F,L]');
+			expect(patch!.nativeRule).toContain('mod_rewrite');
+		});
+
+		it('should use REQUEST_URI for path-based categories', () => {
+			const sensitiveFiles: AuditResultItem[] = [
+				{ category: 'Sensitive Files', method: 'GET', payload: '/.git/config', status: 200, responseTime: 20 },
+			];
+			const report = generateVirtualPatches(sensitiveFiles, { vendor: 'apache', tier: 'strict' });
+			const patch = report.patches[0];
+			expect(patch.nativeRule).toContain('RewriteCond %{REQUEST_URI}');
+		});
+
+		it('should use HTTP_USER_AGENT for User-Agent category', () => {
+			const uaBypasses: AuditResultItem[] = [
+				{ category: 'User-Agent', method: 'GET', payload: 'sqlmap/1.0', status: 200, responseTime: 20 },
+			];
+			const report = generateVirtualPatches(uaBypasses, { vendor: 'apache', tier: 'strict' });
+			expect(report.patches[0].nativeRule).toContain('RewriteCond %{HTTP_USER_AGENT}');
+		});
+
+		it('should switch to environment-variable tagging in simulation mode', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'apache', action: 'simulate', tier: 'strict' });
+			const patch = report.patches[0];
+			expect(patch.nativeRule).toContain('[E=WAF_SIM_');
+			expect(patch.nativeRule).not.toContain('[F,L]');
+			expect(patch.nativeRule).toContain('mod_headers');
+		});
+
+		it('should scope to path with a REQUEST_URI prefix condition', () => {
+			const report = generateVirtualPatches(mockBypasses, {
+				vendor: 'apache',
+				tier: 'strict',
+				scopeToPath: true,
+				targetUrl: 'https://example.com/api/login',
+			});
+			const patch = report.patches[0];
+			expect(patch.nativeRule).toContain('RewriteCond %{REQUEST_URI} "^/api/login"');
+		});
+
+		it('should encode double quotes as \\x22 (not a literal/escaped quote) in CondPatterns', () => {
+			const quoted: AuditResultItem[] = [
+				{ category: 'SQL Injection', method: 'GET', payload: 'admin" OR "1"="1', status: 200, responseTime: 45 },
+			];
+			const report = generateVirtualPatches(quoted, { vendor: 'apache', tier: 'strict' });
+			const rule = report.patches[0].nativeRule;
+			// Apache does not honor \" inside a quoted CondPattern, so a literal quote
+			// would terminate the argument ("bad flag delimiters"). Must be \x22.
+			expect(rule).toContain('\\x22');
+			// The CondPattern itself must not contain a raw double-quote.
+			const cond = rule.split('\n').find((l) => l.startsWith('RewriteCond'))!;
+			expect(cond.slice(cond.indexOf('"') + 1, cond.lastIndexOf('"'))).not.toContain('"');
+		});
+
+		it('must NOT double backslashes in heuristic CondPatterns (Apache passes \\\\ to PCRE)', () => {
+			// Apache's tokenizer passes \\ straight to PCRE, so a doubled backslash
+			// turns \( into an unbalanced group and \s/\b into literal-backslash runs.
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'apache', tier: 'heuristic' });
+			const sqli = report.patches.find((p) => p.category === 'SQL Injection')!;
+			expect(sqli.nativeRule).toContain('\\b'); // single-backslash word boundary preserved
+			expect(sqli.nativeRule).not.toContain('\\\\'); // no doubled backslashes
+		});
+
+		it('should note the body-inspection limitation for body categories', () => {
+			const bodyBypass: AuditResultItem[] = [
+				{ category: 'XXE', method: 'POST', payload: '<!ENTITY xxe SYSTEM "file:///etc/passwd">', status: 200, responseTime: 40 },
+			];
+			const report = generateVirtualPatches(bodyBypass, { vendor: 'apache', tier: 'strict' });
+			expect(report.patches[0].nativeRule).toContain('cannot inspect request bodies');
+		});
+
+		it('should be included in the "all" vendor bundle', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'all' });
+			expect(report.bundles.apache).toBeDefined();
+			expect(report.bundles.apache.ruleCount).toBeGreaterThan(0);
+			expect(report.bundles.apache.native).toContain('RewriteRule');
+		});
+	});
+
+	describe('Envoy Generator', () => {
+		it('should generate a route with safe_regex match and direct_response 403', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'envoy', tier: 'strict' });
+			const patch = report.patches.find((p) => p.category === 'SQL Injection');
+			expect(patch).toBeDefined();
+			expect(patch!.vendor).toBe('envoy');
+			expect(patch!.nativeRule).toContain('- match:');
+			expect(patch!.nativeRule).toContain('safe_regex:');
+			expect(patch!.nativeRule).toContain('regex:');
+			expect(patch!.nativeRule).toContain('direct_response:');
+			expect(patch!.nativeRule).toContain('status: 403');
+			// case-insensitive, substring-matching RE2 wrapper
+			expect(patch!.nativeRule).toContain('(?i)');
+			// Must raise RE2's default program-size ceiling (100) or Envoy rejects
+			// any non-trivial alternation at config load.
+			expect(patch!.nativeRule).toContain('max_program_size');
+			// Query-borne payloads must match the :path HEADER (which carries the
+			// query string), not the route path matcher (which drops it).
+			expect(patch!.nativeRule).toContain('name: ":path"');
+			expect(patch!.nativeRule).toContain('string_match:');
+		});
+
+		it('should match a header for User-Agent bypasses', () => {
+			const uaBypasses: AuditResultItem[] = [
+				{ category: 'User-Agent', method: 'GET', payload: 'sqlmap/1.0', status: 200, responseTime: 20 },
+			];
+			const report = generateVirtualPatches(uaBypasses, { vendor: 'envoy', tier: 'strict' });
+			const rule = report.patches[0].nativeRule;
+			expect(rule).toContain('headers:');
+			expect(rule).toContain('name: "user-agent"');
+			expect(rule).toContain('string_match:');
+		});
+
+		it('should forward + tag instead of blocking in simulation mode', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'envoy', action: 'simulate', tier: 'strict' });
+			const rule = report.patches[0].nativeRule;
+			expect(rule).toContain('x-waf-simulation');
+			expect(rule).toContain('REPLACE_WITH_UPSTREAM_CLUSTER');
+			expect(rule).not.toContain('status: 403');
+		});
+
+		it('should anchor the regex to the path when scopeToPath is set', () => {
+			const report = generateVirtualPatches(mockBypasses, {
+				vendor: 'envoy',
+				tier: 'strict',
+				scopeToPath: true,
+				targetUrl: 'https://example.com/api/login',
+			});
+			expect(report.patches[0].nativeRule).toContain('(?i)^/api/login.*');
+		});
+
+		it('should note the body-inspection limitation for body categories', () => {
+			const bodyBypass: AuditResultItem[] = [
+				{ category: 'XXE', method: 'POST', payload: '<!ENTITY xxe SYSTEM "file:///etc/passwd">', status: 200, responseTime: 40 },
+			];
+			const report = generateVirtualPatches(bodyBypass, { vendor: 'envoy', tier: 'strict' });
+			expect(report.patches[0].nativeRule).toContain('cannot read request bodies');
+		});
+
+		it('should be included in the "all" vendor bundle', () => {
+			const report = generateVirtualPatches(mockBypasses, { vendor: 'all' });
+			expect(report.bundles.envoy).toBeDefined();
+			expect(report.bundles.envoy.ruleCount).toBeGreaterThan(0);
+			expect(report.bundles.envoy.native).toContain('direct_response:');
+		});
+	});
+
 	describe('Kubernetes Ingress Generator', () => {
 		const sensitiveFiles: AuditResultItem[] = [
 			{ category: 'Sensitive Files', method: 'GET', payload: '/dump.sql', status: 200, responseTime: 20 },

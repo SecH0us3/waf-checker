@@ -57,6 +57,30 @@ services:
     networks:
       - waf-e2e-net
 
+  waf-test-apache:
+    image: httpd:2.4-alpine
+    container_name: waf-test-apache
+    volumes:
+      - ./apache/httpd.conf:/usr/local/apache2/conf/httpd.conf:ro
+    ports:
+      - "8092:80"
+    depends_on:
+      - waf-test-backend
+    networks:
+      - waf-e2e-net
+
+  waf-test-envoy:
+    image: envoyproxy/envoy:v1.31-latest
+    container_name: waf-test-envoy
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    ports:
+      - "8093:80"
+    depends_on:
+      - waf-test-backend
+    networks:
+      - waf-e2e-net
+
 networks:
   waf-e2e-net:
     driver: bridge

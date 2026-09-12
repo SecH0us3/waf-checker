@@ -173,7 +173,7 @@ checkCmd
 	.option('--padding <size>', 'Enable WAF inspection buffer padding evasion (e.g. 8kb, 16kb, 64kb, 128kb)')
 	.option('--no-spoof-user-agent', 'Disable the legitimate User-Agent bypass test (replays blocked 403 requests as Googlebot, Slackbot, etc.)')
 	.option('--json', 'Output results in JSON format')
-	.option('-f, --format <format>', 'Output format for report: json, csv, html, sarif, markdown')
+	.option('-f, --format <format>', 'Output format for report: json, csv, html, sarif, markdown, junit')
 	.option('-o, --output <path>', 'File path to save the report to')
 	.option('--sarif-output <path>', 'File path to save SARIF report to')
 	.option('--markdown-output <path>', 'File path to save Markdown report to')
@@ -181,7 +181,7 @@ checkCmd
 	.option('--threshold <percent>', 'Minimum protection score percentage required to pass (e.g. 95). Exits with code 1 if score is lower')
 	.option('--reverse', 'Run deep WAF Reverse Engineering and OWASP Core Rule Set (CRS) audit', false)
 	.option('--reverse-engineer', 'Alias for --reverse', false)
-	.option('--patch [vendor]', 'Generate ready-to-deploy virtual patches (cloudflare, aws, modsecurity, coraza, nginx, gcp, azure, haproxy, caddy, k8s, all)')
+	.option('--patch [vendor]', 'Generate ready-to-deploy virtual patches (cloudflare, aws, modsecurity, coraza, nginx, gcp, azure, haproxy, caddy, apache, envoy, k8s, all)')
 	.option('--patch-output <path>', 'File path or directory to save generated virtual patch(es) to')
 	.option('--patch-tier <tier>', 'Defense tier: strict (exact token), heuristic (regex pattern), or both', 'both')
 	.option('--patch-action <action>', 'Rule action: block or simulate', 'block')
@@ -635,7 +635,7 @@ batchCmd
 program
 	.command('patch <file>')
 	.description('Generate ready-to-deploy virtual patches from a saved JSON audit report')
-	.option('-w, --waf <vendor>', 'Target WAF vendor (cloudflare, aws, modsecurity, coraza, nginx, gcp, azure, haproxy, caddy, k8s, all)', 'all')
+	.option('-w, --waf <vendor>', 'Target WAF vendor (cloudflare, aws, modsecurity, coraza, nginx, gcp, azure, haproxy, caddy, apache, envoy, k8s, all)', 'all')
 	.option('-t, --tier <tier>', 'Defense tier: strict, heuristic, or both', 'both')
 	.option('-a, --action <action>', 'Rule action: block or simulate', 'block')
 	.option('-o, --output <path>', 'Output file or directory to write patches to')
@@ -705,6 +705,8 @@ program
 						azure: 'json',
 						haproxy: 'cfg',
 						caddy: 'caddyfile',
+						apache: 'htaccess',
+						envoy: 'yaml',
 						k8s: 'yaml',
 					};
 					for (const [v, b] of Object.entries(patchReport.bundles)) {
@@ -746,6 +748,44 @@ program
 		} catch (err: any) {
 			console.error(colors.red(`Error generating patches: ${err.message}`));
 			process.exit(1);
+		}
+	});
+
+// Command: list-wafs — enumerate detectable WAF vendors (for automation/discovery)
+program
+	.command('list-wafs')
+	.description('List all WAF vendors this tool can fingerprint')
+	.option('--json', 'Output as a JSON array', false)
+	.action((options: any) => {
+		const wafs = WAFDetector.getSupportedWafs();
+		if (options.json) {
+			console.log(JSON.stringify(wafs, null, 2));
+			return;
+		}
+		console.log(colors.bold(`Supported WAF vendors (${wafs.length}):`));
+		for (const w of wafs) {
+			console.log(`  - ${w}`);
+		}
+	});
+
+// Command: list-categories — enumerate attack payload categories and their injection type
+program
+	.command('list-categories')
+	.description('List all attack payload categories and their injection type')
+	.option('--json', 'Output as a JSON array of {name, type} objects', false)
+	.action((options: any) => {
+		const categories = Object.entries(PAYLOADS).map(([name, cat]: [string, any]) => ({
+			name,
+			type: cat.type,
+			payloads: Array.isArray(cat.payloads) ? cat.payloads.length : 0,
+		}));
+		if (options.json) {
+			console.log(JSON.stringify(categories, null, 2));
+			return;
+		}
+		console.log(colors.bold(`Supported payload categories (${categories.length}):`));
+		for (const c of categories) {
+			console.log(`  - ${c.name} ${colors.dim(`[${c.type}, ${c.payloads} payloads]`)}`);
 		}
 	});
 

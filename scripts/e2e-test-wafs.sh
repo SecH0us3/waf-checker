@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: $0 [OPTIONS]"
       echo ""
       echo "Options:"
-      echo "  --target <all|backend|modsec|caddy|haproxy|nginx>   Target to test (default: all)"
+      echo "  --target <all|backend|modsec|caddy|haproxy|nginx|apache|envoy>   Target to test (default: all)"
       echo "  --keep                                              Do not tear down containers on exit"
       echo "  -v, --verbose                                       Show verbose request logs"
       echo "  -h, --help                                          Show this help message"
@@ -114,6 +114,8 @@ if [[ "${TARGET}" == "all" || "${TARGET}" == "modsec" ]]; then wait_for_port 808
 if [[ "${TARGET}" == "all" || "${TARGET}" == "caddy" ]]; then wait_for_port 8089 "Caddy Server"; fi
 if [[ "${TARGET}" == "all" || "${TARGET}" == "haproxy" ]]; then wait_for_port 8090 "HAProxy"; fi
 if [[ "${TARGET}" == "all" || "${TARGET}" == "nginx" ]]; then wait_for_port 8091 "NGINX Reverse Proxy"; fi
+if [[ "${TARGET}" == "all" || "${TARGET}" == "apache" ]]; then wait_for_port 8092 "Apache (mod_rewrite)"; fi
+if [[ "${TARGET}" == "all" || "${TARGET}" == "envoy" ]]; then wait_for_port 8093 "Envoy Proxy"; fi
 
 echo -e "${GREEN}✅ All test targets are ready!${NC}\n"
 
@@ -191,6 +193,14 @@ fi
 
 if [[ "${TARGET}" == "all" || "${TARGET}" == "nginx" ]]; then
   run_test "NGINX Reverse Proxy (Patched)" "http://127.0.0.1:8091/" 50 100 "nginx"
+fi
+
+if [[ "${TARGET}" == "all" || "${TARGET}" == "apache" ]]; then
+  run_test "Apache mod_rewrite (Patched)" "http://127.0.0.1:8092/" 40 100 "apache"
+fi
+
+if [[ "${TARGET}" == "all" || "${TARGET}" == "envoy" ]]; then
+  run_test "Envoy Proxy (Patched)" "http://127.0.0.1:8093/" 40 100 "envoy"
 fi
 
 echo -e "\n${BOLD}${BLUE}================================================================${NC}"

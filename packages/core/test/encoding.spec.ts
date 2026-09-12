@@ -27,7 +27,22 @@ describe('encoding.ts', () => {
 		it('should base64 encode', () => {
 			expect(PayloadEncoder.base64Encode('test')).toBe('dGVzdA==');
 		});
-		
+
+		it('should overlong UTF-8 encode traversal characters', () => {
+			// '/' (0x2F) -> %C0%AF, '.' (0x2E) -> %C0%AE
+			expect(PayloadEncoder.overlongUtf8Encode('../')).toBe('%C0%AE%C0%AE%C0%AF');
+			expect(PayloadEncoder.overlongUtf8Encode('/etc/passwd')).toContain('%C0%AF');
+		});
+
+		it('should leave alphanumerics untouched when overlong encoding', () => {
+			expect(PayloadEncoder.overlongUtf8Encode('abc123')).toBe('abc123');
+		});
+
+		it('should include overlong UTF-8 variant in applyEncodings', () => {
+			const res = PayloadEncoder.applyEncodings('../etc', { overlongUtf8: true });
+			expect(res.some((r) => r.includes('%C0%AF'))).toBe(true);
+		});
+
 		it('should apply multiple encodings', () => {
 			const res = PayloadEncoder.applyEncodings('test <', { 
 				doubleUrlEncode: true, 

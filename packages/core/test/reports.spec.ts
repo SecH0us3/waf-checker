@@ -3,6 +3,7 @@ import {
 	calculateAuditStats,
 	generateSARIFReport,
 	generateJSONReport,
+	generateJUnitReport,
 	generateReport,
 	AuditResultItem,
 } from '../src/reports';
@@ -103,6 +104,107 @@ describe('Reports Module', () => {
 		it('routes correctly to different formats', () => {
 			expect(JSON.parse(generateReport('sarif', mockResults)).version).toBe('2.1.0');
 			expect(JSON.parse(generateReport('json', mockResults)).summary).toBeDefined();
+			expect(generateReport('junit', mockResults)).toContain('<testsuites');
+		});
+	});
+
+	describe('generateJUnitReport', () => {
+		it('produces a well-formed JUnit XML document', () => {
+			const xml = generateJUnitReport(mockResults, 'https://example.com');
+			expect(xml.startsWith('<?xml version="1.0" encoding="UTF-8"?>')).toBe(true);
+			expect(xml).toContain('<testsuites name="WAF-Checker"');
+			expect(xml.trim().endsWith('</testsuites>')).toBe(true);
+			// Every open tag has a matching close (or self-close).
+			const suites = (xml.match(/<testsuite /g) || []).length;
+			const suiteCloses = (xml.match(/<\/testsuite>/g) || []).length;
+			expect(suites).toBe(suiteCloses);
+		});
+
+		it('counts totals and maps bypass -> failure, error -> error', () => {
+			const xml = generateJUnitReport(mockResults, 'https://example.com');
+			// 4 results, 1 bypass (200), 1 error (ERR)
+			expect(xml).toContain('tests="4"');
+			expect(xml).toContain('failures="1"');
+			expect(xml).toContain('errors="1"');
+			expect(xml).toContain('<failure ');
+			expect(xml).toContain('type="WafBypass"');
+			expect(xml).toContain('<error ');
+			expect(xml).toContain('type="RequestError"');
+		});
+
+		it('groups testcases into one testsuite per category', () => {
+			const xml = generateJUnitReport(mockResults);
+			expect(xml).toContain('<testsuite name="SQLi"');
+			expect(xml).toContain('<testsuite name="XSS"');
+			expect(xml).toContain('classname="WAF.XSS"');
+		});
+
+		it('escapes XML metacharacters in payloads and attributes', () => {
+			const xml = generateJUnitReport([
+				{
+					category: 'XSS & "friends"',
+					payload: '<script>alert(1)</script>',
+					method: 'GET',
+					status: 200,
+					responseTime: 12,
+				},
+			]);
+			expect(xml).not.toContain('<script>alert(1)</script>');
+			expect(xml).toContain('&lt;script&gt;');
+			expect(xml).toContain('&amp;');
+			expect(xml).toContain('&quot;');
+		});
+
+		it('reports response time in seconds', () => {
+			const xml = generateJUnitReport([
+				{ category: 'SQLi', payload: 'x', method: 'GET', status: 403, responseTime: 1500 },
+			]);
+			expect(xml).toContain('time="1.500"');
+		});
+
+		it('treats a legitimate User-Agent bypass as a failure', () => {
+			const xml = generateJUnitReport([
+				{
+					category: 'IP Bypass',
+					payload: 'x',
+					method: 'GET',
+					status: 403,
+					responseTime: 20,
+					userAgentBypass: {
+						bypassed: true,
+						tested: 3,
+						hits: [{ name: 'Googlebot', userAgent: 'Googlebot', status: 200, verdict: 'exposed' }],
+					},
+				},
+			]);
+			expect(xml).toContain('failures="1"');
+			expect(xml).toContain('Googlebot');
+		});
+
+		it('does not embed raw line breaks inside attribute values', () => {
+			const xml = generateJUnitReport([
+				{
+					category: 'HTTP Request Smuggling',
+					payload: 'Transfer-Encoding: chunked\r\n0\r\n\r\nGARBAGE',
+					method: 'POST',
+					status: 200,
+					responseTime: 10,
+				},
+			]);
+			// The name attribute (first line up to its closing quote) must be single-line.
+			const nameAttr = xml.match(/name="([^"]*)"/);
+			expect(nameAttr).not.toBeNull();
+			expect(nameAttr![1]).not.toMatch(/[\r\n]/);
+			// CR/LF were encoded as numeric entities instead.
+			expect(xml).toContain('&#13;');
+			expect(xml).toContain('&#10;');
+		});
+
+		it('handles an empty result set', () => {
+			const xml = generateJUnitReport([]);
+			expect(xml).toContain('tests="0"');
+			expect(xml).toContain('failures="0"');
+			expect(xml.trim().endsWith('</testsuites>')).toBe(true);
 		});
 	});
 });
