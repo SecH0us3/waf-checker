@@ -483,4 +483,79 @@ describe('WAFDetector', () => {
 			expect(result.wafType).toBe('Nemesida');
 		});
 	});
+
+	describe('Cloudflare /cdn-cgi/script_monitor/report probe', () => {
+		const CDN_CGI_PATH = '/cdn-cgi/script_monitor/report';
+
+		// Any non-probe request (the payload probes) resolves to a clean 200 so
+		// only the /cdn-cgi probe can influence the outcome.
+		const cleanResponse = () => ({
+			status: 200,
+			headers: { get: () => null },
+			text: () => Promise.resolve('ok clean page'),
+		});
+
+		const probeResponder = (probe: { status: number; header?: (name: string) => string | null }) =>
+			vi.fn().mockImplementation((url: string) => {
+				if (url.includes(CDN_CGI_PATH)) {
+					return Promise.resolve({
+						status: probe.status,
+						headers: { get: (name: string) => (probe.header ? probe.header(name.toLowerCase()) : null) },
+						text: () => Promise.resolve('not found'),
+					});
+				}
+				return Promise.resolve(cleanResponse());
+			});
+
+		it('detects Cloudflare when the probe path 404s with a server: cloudflare signature', async () => {
+			const mockFetch = probeResponder({ status: 404, header: (n) => (n === 'server' ? 'cloudflare' : null) });
+
+			const result = await WAFDetector.activeDetection('http://example.com/api', { fetch: mockFetch as any });
+
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('Cloudflare');
+			expect(result.confidence).toBeGreaterThan(result.confidenceThreshold);
+			expect(mockFetch).toHaveBeenCalledWith(
+				'http://example.com/cdn-cgi/script_monitor/report',
+				expect.objectContaining({ method: 'GET' }),
+			);
+			expect(result.evidence.some((e) => e.includes(CDN_CGI_PATH))).toBe(true);
+		});
+
+		it('detects Cloudflare when the probe path 404s with only a cf-ray header', async () => {
+			const mockFetch = probeResponder({ status: 404, header: (n) => (n === 'cf-ray' ? '8ff0c0a1b2c3d4e5-FRA' : null) });
+
+			const result = await WAFDetector.activeDetection('http://example.com/api', { fetch: mockFetch as any });
+
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('Cloudflare');
+		});
+
+		it('does not flag Cloudflare when the probe path 404s without any Cloudflare signature', async () => {
+			const mockFetch = probeResponder({ status: 404, header: (n) => (n === 'server' ? 'nginx' : null) });
+
+			const result = await WAFDetector.activeDetection('http://example.com/api', { fetch: mockFetch as any });
+
+			expect(result.detected).toBe(false);
+			expect(result.wafType).toBe('Unknown');
+		});
+
+		it('does not flag Cloudflare when the probe path returns 200 with a Cloudflare signature', async () => {
+			const mockFetch = probeResponder({ status: 200, header: (n) => (n === 'server' ? 'cloudflare' : null) });
+
+			const result = await WAFDetector.activeDetection('http://example.com/api', { fetch: mockFetch as any });
+
+			expect(result.detected).toBe(false);
+			expect(result.wafType).toBe('Unknown');
+		});
+
+		it('ignores the probe signature when running as a Cloudflare Worker (injected headers untrusted)', async () => {
+			const mockFetch = probeResponder({ status: 404, header: (n) => (n === 'server' ? 'cloudflare' : null) });
+
+			const result = await WAFDetector.activeDetection('http://example.com/api', { fetch: mockFetch as any, isWorker: true });
+
+			expect(result.detected).toBe(false);
+			expect(result.wafType).toBe('Unknown');
+		});
+	});
 });
