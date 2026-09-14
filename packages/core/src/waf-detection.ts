@@ -187,7 +187,16 @@ export class WAFDetector {
 			}
 		});
 
-		const results = (await Promise.all(probePromises)).filter((r): r is WAFDetectionResult => r !== null);
+		// Run the payload probes and the Cloudflare /cdn-cgi edge probe in parallel.
+		const [payloadResults, cdnCgiResult] = await Promise.all([
+			Promise.all(probePromises),
+			this.detectViaCdnCgi(url, fetchFn, options?.isWorker),
+		]);
+
+		const results = payloadResults.filter((r): r is WAFDetectionResult => r !== null);
+		if (cdnCgiResult) {
+			results.push(cdnCgiResult);
+		}
 
 		// Return the detection result with highest confidence, or if a captcha was detected
 		if (results.length > 0) {
@@ -208,6 +217,77 @@ export class WAFDetector {
 			evidence: [],
 			suggestedBypassTechniques: [],
 		};
+	}
+
+	/**
+	 * Active Cloudflare-specific probe against a reserved edge path.
+	 *
+	 * `/cdn-cgi/` is a path namespace owned by Cloudflare's edge — an origin
+	 * cannot serve it. `/cdn-cgi/script_monitor/report` (the Page Shield script
+	 * monitor beacon) is answered by Cloudflare itself: on a Cloudflare-fronted
+	 * site it returns HTTP 404 but the response still carries a Cloudflare
+	 * signature (`server: cloudflare` and/or a `cf-ray` header). A plain origin
+	 * 404s without those headers (or fails differently). So a 404 with a
+	 * Cloudflare signature on that path is decisive evidence of Cloudflare.
+	 *
+	 * Returns a high-confidence Cloudflare result, or null when there is no
+	 * usable signal (non-404, no signature, bad URL, or the probe failed).
+	 *
+	 * When the checker itself runs as a Cloudflare Worker, the runtime injects
+	 * `server: cloudflare`/`cf-*` headers into subrequest responses, so they
+	 * can't be attributed to the target origin (same reasoning as the guard in
+	 * `detectFromResponse`). The probe is skipped in that case to avoid false
+	 * positives.
+	 */
+	private static async detectViaCdnCgi(url: string, fetchFn: typeof fetch, isWorker?: boolean): Promise<WAFDetectionResult | null> {
+		if (isWorker) {
+			return null;
+		}
+
+		let origin: string;
+		try {
+			origin = new URL(url).origin;
+		} catch {
+			return null;
+		}
+
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 10000);
+		try {
+			const response = await fetchFn(`${origin}/cdn-cgi/script_monitor/report`, {
+				method: 'GET',
+				redirect: 'manual',
+				signal: controller.signal,
+			});
+
+			if (response.status !== 404) {
+				return null;
+			}
+
+			const server = response.headers.get('server');
+			const cfRay = response.headers.get('cf-ray');
+			const serverIsCloudflare = server != null && /cloudflare/i.test(server);
+			if (!serverIsCloudflare && cfRay == null) {
+				return null;
+			}
+
+			const detail = serverIsCloudflare ? 'server: cloudflare' : 'cf-ray present';
+			const confidence = 95;
+			return {
+				detected: true,
+				wafType: 'Cloudflare',
+				confidence,
+				confidencePercent: Math.max(0, Math.min(100, Math.round(confidence))),
+				confidenceThreshold: 40,
+				evidence: [`/cdn-cgi/script_monitor/report -> 404 via Cloudflare (${detail})`],
+				suggestedBypassTechniques: this.getSuggestedBypassTechniques('Cloudflare'),
+			};
+		} catch (error) {
+			console.error('Cloudflare /cdn-cgi probe failed:', error);
+			return null;
+		} finally {
+			clearTimeout(timeoutId);
+		}
 	}
 
 	/**
