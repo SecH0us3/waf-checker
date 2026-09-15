@@ -531,8 +531,14 @@
 						</div>
 
 						<!-- Rules preview box -->
-						<div class="position-relative">
-							<pre id="vpCodeViewer" class="p-3 rounded text-light" style="background: #111827; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;"></pre>
+						<div class="position-relative vp-code-wrap">
+							<div class="vp-code-toolbar">
+								<span class="vp-dot vp-dot-red"></span>
+								<span class="vp-dot vp-dot-amber"></span>
+								<span class="vp-dot vp-dot-green"></span>
+								<span id="vpLangChip" class="vp-lang-chip">native</span>
+							</div>
+							<pre id="vpCodeViewer" class="vp-code-viewer"></pre>
 						</div>
 					</div>
 				</div>

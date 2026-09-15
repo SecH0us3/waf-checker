@@ -737,7 +737,12 @@ async function showVirtualPatchModal(initialScope) {
 	if (bypasses.length === 0 && misses.length === 0) {
 		if (noBypassesAlert) {
 			noBypassesAlert.style.display = 'block';
-			noBypassesAlert.textContent = 'All tested attack payloads were successfully blocked by the WAF (403 Forbidden). No patches required!';
+			noBypassesAlert.classList.add('vp-empty-state');
+			noBypassesAlert.innerHTML =
+				'<div class="vp-empty-icon">🛡️</div>' +
+				'<div class="vp-empty-title">All attacks blocked</div>' +
+				'<div class="vp-empty-sub">Every tested attack payload was successfully blocked by the WAF ' +
+				'(<code>403 Forbidden</code>). No virtual patches are required.</div>';
 		}
 		if (contentContainer) contentContainer.style.display = 'none';
 		const badge = document.getElementById('vpRuleCountBadge');
@@ -881,9 +886,65 @@ async function refreshVpCode() {
 		renderVpCode();
 	} catch (err) {
 		console.error('Error fetching virtual patches:', err);
-		const viewer = document.getElementById('vpCodeViewer');
-		if (viewer) viewer.textContent = `Error generating patches: ${err.message}`;
+		setVpCode(`Error generating patches: ${err.message}`, false);
 	}
+}
+
+// --- Lightweight, dependency-free syntax highlighter for generated rules ---
+function escapeHtml(str) {
+	return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Highlights comments, strings, keywords, numbers and punctuation across the
+// mixed config dialects we emit (Cloudflare expr, AWS/Azure JSON, HCL,
+// ModSecurity, NGINX/Apache/HAProxy conf, YAML, shell CLI). Escaping happens
+// first, so the token regex only ever runs over already-safe text.
+const VP_TOKEN_RE = new RegExp(
+	[
+		'(\\/\\*[\\s\\S]*?\\*\\/|#[^\\n]*|\\/\\/[^\\n]*)', // 1: comments
+		'("(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\')', // 2: strings
+		'\\b(true|false|null|and|or|not|in|eq|ne|contains|matches|lower|http|SecRule|SecAction|SecRuleEngine|SecDefaultAction|deny|allow|block|pass|log|nolog|drop|return|set|if|location|resource|module|variable|rule|action|priority|statement|byte_match_statement|regex_match_statement|gcloud|az|aws|kubectl)\\b', // 3: keywords
+		'(\\b\\d+(?:\\.\\d+)?\\b)', // 4: numbers
+		'([{}\\[\\]():;,=])', // 5: punctuation
+	].join('|'),
+	'gi',
+);
+
+function highlightRules(code) {
+	return escapeHtml(code).replace(VP_TOKEN_RE, (m, comment, str, kw, num, punct) => {
+		if (comment !== undefined) return `<span class="tok-comment">${comment}</span>`;
+		if (str !== undefined) return `<span class="tok-string">${str}</span>`;
+		if (kw !== undefined) return `<span class="tok-keyword">${kw}</span>`;
+		if (num !== undefined) return `<span class="tok-number">${num}</span>`;
+		if (punct !== undefined) return `<span class="tok-punct">${punct}</span>`;
+		return m;
+	});
+}
+
+// Writes code into the viewer while keeping the raw text on dataset.raw so
+// copy/download stay byte-for-byte accurate regardless of highlighting.
+function setVpCode(content, highlight) {
+	const viewer = document.getElementById('vpCodeViewer');
+	if (!viewer) return;
+	viewer.dataset.raw = content;
+	if (highlight) {
+		viewer.innerHTML = highlightRules(content);
+	} else {
+		viewer.textContent = content;
+	}
+}
+
+// Updates the little language/vendor chip floating over the code panel.
+function updateVpLangChip() {
+	const chip = document.getElementById('vpLangChip');
+	if (!chip) return;
+	const format = document.getElementById('vpFormatSelect')?.value || 'native';
+	const labels = {
+		terraform: 'Terraform · HCL',
+		gcloud: 'gcloud · shell',
+		azureCli: 'Azure CLI · shell',
+	};
+	chip.textContent = labels[format] || `${currentVpVendor} · native`;
 }
 
 function renderVpCode() {
@@ -891,11 +952,12 @@ function renderVpCode() {
 
 	const format = document.getElementById('vpFormatSelect')?.value || 'native';
 	const bundle = currentVpReport.bundles?.[currentVpVendor];
-	const viewer = document.getElementById('vpCodeViewer');
 	const countBadge = document.getElementById('vpRuleCountBadge');
 
+	updateVpLangChip();
+
 	if (!bundle || bundle.ruleCount === 0) {
-		if (viewer) viewer.textContent = `# No patches generated for ${currentVpVendor.toUpperCase()}`;
+		setVpCode(`# No patches generated for ${currentVpVendor.toUpperCase()}`, true);
 		if (countBadge) countBadge.textContent = '0 rules';
 		return;
 	}
@@ -913,16 +975,15 @@ function renderVpCode() {
 		content = bundle.azureCli;
 	}
 
-	if (viewer) {
-		viewer.textContent = content;
-	}
+	setVpCode(content, true);
 }
 
 function copyVpCode() {
 	const viewer = document.getElementById('vpCodeViewer');
-	if (!viewer || !viewer.textContent) return;
+	const raw = viewer ? (viewer.dataset.raw ?? viewer.textContent) : '';
+	if (!raw) return;
 
-	navigator.clipboard.writeText(viewer.textContent).then(() => {
+	navigator.clipboard.writeText(raw).then(() => {
 		const btn = document.getElementById('vpCopyBtn');
 		if (btn) {
 			const originalHtml = btn.innerHTML;
@@ -938,7 +999,8 @@ function copyVpCode() {
 
 function downloadVpCode() {
 	const viewer = document.getElementById('vpCodeViewer');
-	if (!viewer || !viewer.textContent) return;
+	const raw = viewer ? (viewer.dataset.raw ?? viewer.textContent) : '';
+	if (!raw) return;
 
 	const format = document.getElementById('vpFormatSelect')?.value || 'native';
 	let ext = '.conf';
@@ -963,7 +1025,7 @@ function downloadVpCode() {
 	}
 
 	const filename = `${currentVpVendor}-virtual-patches${ext}`;
-	const blob = new Blob([viewer.textContent], { type: 'text/plain;charset=utf-8' });
+	const blob = new Blob([raw], { type: 'text/plain;charset=utf-8' });
 	const a = document.createElement('a');
 	a.href = URL.createObjectURL(blob);
 	a.download = filename;
