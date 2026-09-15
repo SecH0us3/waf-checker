@@ -4,6 +4,27 @@ function escapeHtml(str) {
 	return div.innerHTML;
 }
 
+// If the user typed a bare domain (no scheme), default to https:// so the scan
+// targets a real URL. Also satisfies <input type="url"> validation, which
+// rejects a scheme-less value.
+function normalizeUrl(raw) {
+	const v = (raw || '').trim();
+	if (!v) return v;
+	if (/^[a-z][a-z0-9+.\-]*:\/\//i.test(v)) return v; // already has scheme://
+	if (v.startsWith('//')) return 'https:' + v; // protocol-relative
+	return 'https://' + v;
+}
+
+// Reads the URL input, prepends the protocol when missing, reflects the
+// normalized value back into the field so the user sees it, and returns it.
+function getNormalizedUrlInput() {
+	const el = document.getElementById('url');
+	if (!el) return '';
+	const norm = normalizeUrl(el.value);
+	if (norm !== el.value) el.value = norm;
+	return norm;
+}
+
 let currentAbortController = null;
 function cancelCurrentScan() {
     if (currentAbortController) {
@@ -374,7 +395,7 @@ async function fetchResults() {
 	showResultsSkeleton();
     const cancelBtn = document.getElementById('cancelBtn');
     if (cancelBtn) cancelBtn.style.display = 'flex';
-	const url = document.getElementById('url').value;
+	const url = getNormalizedUrlInput();
 
 	// Create test session
 	const sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -599,7 +620,7 @@ async function runReverseEngineering() {
     const cancelBtn = document.getElementById('cancelBtn');
     if (cancelBtn) cancelBtn.style.display = 'flex';
     
-    const url = document.getElementById('url').value;
+    const url = getNormalizedUrlInput();
     if (!url) {
         alert("Please enter a URL first.");
         btn.disabled = false;
@@ -1326,7 +1347,7 @@ function getPreferredTheme() {
 // WAF Detection functionality
 async function detectWAF() {
 	const btn = document.getElementById('detectWafBtn');
-	const url = document.getElementById('url').value;
+	const url = getNormalizedUrlInput();
 
 	if (!url) {
 		alert('Please enter a URL first');
@@ -1501,7 +1522,7 @@ function clearWAFResults() {
 // HTTP Manipulation Testing functionality
 async function testHTTPManipulation() {
 	const btn = document.getElementById('httpManipulationBtn');
-	const url = document.getElementById('url').value;
+	const url = getNormalizedUrlInput();
 
 	if (!url) {
 		alert('Please enter a URL first');

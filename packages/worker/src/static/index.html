@@ -83,6 +83,7 @@
 				<div class="url-input-group mb-3">
 					<input type="url" id="url" name="url" class="form-control"
 						placeholder="https://example.com/api/endpoint/{PAYLOAD}" required
+						onblur="getNormalizedUrlInput()"
 						style="color: var(--bs-body-color); background-color: var(--bs-body-bg)" />
 					<button type="button" id="checkBtn" class="btn btn-primary" onclick="fetchResults()">
 						<span class="btn-icon">▶</span> <span class="check-label">Check</span>
