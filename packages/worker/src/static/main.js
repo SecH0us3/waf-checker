@@ -1684,11 +1684,11 @@ function generateHTMLReport(session, vulnerabilityScores, executiveSummary) {
     <title>WAF Security Assessment Report</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
-        .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #007bff; padding-bottom: 20px; }
+        .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #6366f1; padding-bottom: 20px; }
         .summary-card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
         .risk-badge { padding: 4px 12px; border-radius: 4px; color: white; font-weight: bold; }
         .metric { display: inline-block; margin: 10px 20px; text-align: center; }
-        .metric-value { font-size: 2em; font-weight: bold; color: #007bff; }
+        .metric-value { font-size: 2em; font-weight: bold; color: #6366f1; }
         .metric-label { font-size: 0.9em; color: #666; }
         .vulnerability-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
         .vulnerability-table th, .vulnerability-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
@@ -1697,7 +1697,7 @@ function generateHTMLReport(session, vulnerabilityScores, executiveSummary) {
         .severity-high { color: #fd7e14; font-weight: bold; }
         .severity-medium { color: #ffc107; font-weight: bold; }
         .severity-low { color: #198754; font-weight: bold; }
-        .recommendations { background: #e7f3ff; padding: 20px; border-left: 4px solid #007bff; }
+        .recommendations { background: #eef0fe; padding: 20px; border-left: 4px solid #6366f1; }
         .results-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
         .results-table th, .results-table td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
         .results-table th { background-color: #f8f9fa; }

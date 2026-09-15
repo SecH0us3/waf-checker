@@ -1,63 +1,109 @@
 /* ===== WAF Checker — Modern Design System ===== */
 
-/* --- CSS Variables / Theme Tokens --- */
+/* --- CSS Variables / Theme Tokens ---
+   Palette: "Aurora" — electric indigo → violet → fuchsia, with a cyan accent.
+   --grad-brand / --grad-accent are theme-aware so gradients stay consistent. */
 :root {
-	--bs-body-bg: #dfe2e7;
-	--bs-body-color: #1e293b;
-	--bs-card-bg: rgba(255, 255, 255, 0.95);
-	--bs-card-color: #1e293b;
-	--accent: #2563eb;
-	--accent-hover: #1d4ed8;
-	--accent-glow: rgba(37, 99, 235, 0.25);
-	--section-border: rgba(71, 85, 105, 0.2);
-	--section-bg: rgba(71, 85, 105, 0.05);
-	--chip-bg: rgba(37, 99, 235, 0.06);
-	--chip-active-bg: #2563eb;
+	color-scheme: light;
+
+	/* Aurora brand spectrum */
+	--brand-indigo: #6366f1;
+	--brand-violet: #8b5cf6;
+	--brand-fuchsia: #d946ef;
+	--brand-cyan: #06b6d4;
+
+	--bs-body-bg: #eceef6;
+	--bs-body-color: #1e2338;
+	--bs-card-bg: rgba(255, 255, 255, 0.86);
+	--bs-card-color: #1e2338;
+
+	--accent: #6366f1;
+	--accent-hover: #4f46e5;
+	--accent-2: #d946ef;
+	--accent-3: #06b6d4;
+	--accent-glow: rgba(99, 102, 241, 0.28);
+
+	--grad-brand: linear-gradient(135deg, #6366f1 0%, #8b5cf6 45%, #d946ef 100%);
+	--grad-accent: linear-gradient(135deg, #6366f1, #7c3aed);
+
+	--section-border: rgba(99, 102, 241, 0.16);
+	--section-bg: rgba(99, 102, 241, 0.05);
+	--chip-bg: rgba(99, 102, 241, 0.07);
+	--chip-active-bg: #6366f1;
 	--chip-active-color: #fff;
-	--chip-border: rgba(37, 99, 235, 0.25);
-	--surface-hover: rgba(37, 99, 235, 0.06);
-	--text-muted: #475569;
+	--chip-border: rgba(99, 102, 241, 0.22);
+	--surface-hover: rgba(99, 102, 241, 0.08);
+	--text-muted: #5b6478;
 	--font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 body[data-theme='dark'] {
-	--bs-body-bg: #0f1117;
-	--bs-body-color: #e2e8f0;
-	--bs-card-bg: rgba(30, 33, 43, 0.82);
-	--bs-card-color: #e2e8f0;
-	--accent: #60a5fa;
-	--accent-hover: #93c5fd;
-	--accent-glow: rgba(96, 165, 250, 0.25);
-	--section-border: rgba(96, 165, 250, 0.2);
-	--section-bg: rgba(96, 165, 250, 0.06);
-	--chip-bg: rgba(96, 165, 250, 0.1);
-	--chip-active-bg: #3b82f6;
+	color-scheme: dark;
+	--bs-body-bg: #0a0b12;
+	--bs-body-color: #e6e8f2;
+	--bs-card-bg: rgba(23, 25, 40, 0.72);
+	--bs-card-color: #e6e8f2;
+
+	--accent: #818cf8;
+	--accent-hover: #a5b4fc;
+	--accent-2: #e879f9;
+	--accent-3: #22d3ee;
+	--accent-glow: rgba(129, 140, 248, 0.3);
+
+	--grad-brand: linear-gradient(135deg, #818cf8 0%, #a78bfa 45%, #e879f9 100%);
+	--grad-accent: linear-gradient(135deg, #6366f1, #8b5cf6);
+
+	--section-border: rgba(129, 140, 248, 0.2);
+	--section-bg: rgba(129, 140, 248, 0.06);
+	--chip-bg: rgba(129, 140, 248, 0.1);
+	--chip-active-bg: #6366f1;
 	--chip-active-color: #fff;
-	--chip-border: rgba(96, 165, 250, 0.25);
-	--surface-hover: rgba(96, 165, 250, 0.08);
-	--text-muted: #94a3b8;
+	--chip-border: rgba(129, 140, 248, 0.28);
+	--surface-hover: rgba(129, 140, 248, 0.1);
+	--text-muted: #9aa3bd;
 }
 
 body[data-theme='light'] {
-	--bs-body-bg: #dfe2e7;
-	--bs-body-color: #1e293b;
-	--bs-card-bg: rgba(255, 255, 255, 0.95);
-	--bs-card-color: #1e293b;
-	--accent: #2563eb;
-	--accent-hover: #1d4ed8;
-	--accent-glow: rgba(37, 99, 235, 0.25);
-	--chip-bg: rgba(37, 99, 235, 0.06);
-	--chip-active-bg: #2563eb;
-	--chip-border: rgba(37, 99, 235, 0.25);
-	--text-muted: #475569;
+	color-scheme: light;
+	--bs-body-bg: #eceef6;
+	--bs-body-color: #1e2338;
+	--bs-card-bg: rgba(255, 255, 255, 0.86);
+	--bs-card-color: #1e2338;
+	--accent: #6366f1;
+	--accent-hover: #4f46e5;
+	--accent-2: #d946ef;
+	--accent-3: #06b6d4;
+	--accent-glow: rgba(99, 102, 241, 0.28);
+	--grad-brand: linear-gradient(135deg, #6366f1 0%, #8b5cf6 45%, #d946ef 100%);
+	--grad-accent: linear-gradient(135deg, #6366f1, #7c3aed);
+	--section-border: rgba(99, 102, 241, 0.16);
+	--section-bg: rgba(99, 102, 241, 0.05);
+	--chip-bg: rgba(99, 102, 241, 0.07);
+	--chip-active-bg: #6366f1;
+	--chip-border: rgba(99, 102, 241, 0.22);
+	--surface-hover: rgba(99, 102, 241, 0.08);
+	--text-muted: #5b6478;
 }
 
 @media (prefers-color-scheme: dark) {
 	:root {
-		--bs-body-bg: #0f1117;
-		--bs-body-color: #e2e8f0;
-		--bs-card-bg: rgba(30, 33, 43, 0.82);
-		--bs-card-color: #e2e8f0;
+		color-scheme: dark;
+		--bs-body-bg: #0a0b12;
+		--bs-body-color: #e6e8f2;
+		--bs-card-bg: rgba(23, 25, 40, 0.72);
+		--bs-card-color: #e6e8f2;
+		--accent: #818cf8;
+		--accent-hover: #a5b4fc;
+		--accent-2: #e879f9;
+		--accent-glow: rgba(129, 140, 248, 0.3);
+		--grad-brand: linear-gradient(135deg, #818cf8 0%, #a78bfa 45%, #e879f9 100%);
+		--grad-accent: linear-gradient(135deg, #6366f1, #8b5cf6);
+		--section-border: rgba(129, 140, 248, 0.2);
+		--section-bg: rgba(129, 140, 248, 0.06);
+		--chip-bg: rgba(129, 140, 248, 0.1);
+		--chip-border: rgba(129, 140, 248, 0.28);
+		--surface-hover: rgba(129, 140, 248, 0.1);
+		--text-muted: #9aa3bd;
 	}
 }
 
@@ -171,6 +217,36 @@ body {
 	transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+/* Ambient aurora mesh — soft brand-colored glows behind everything */
+body::before {
+	content: "";
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background:
+		radial-gradient(40rem 40rem at 12% -8%, rgba(99, 102, 241, 0.20), transparent 60%),
+		radial-gradient(38rem 38rem at 100% 2%, rgba(217, 70, 239, 0.14), transparent 55%),
+		radial-gradient(34rem 34rem at 82% 108%, rgba(6, 182, 212, 0.12), transparent 55%);
+	transition: opacity 0.3s ease;
+}
+
+body[data-theme='dark']::before {
+	background:
+		radial-gradient(44rem 44rem at 10% -10%, rgba(99, 102, 241, 0.24), transparent 60%),
+		radial-gradient(40rem 40rem at 100% 0%, rgba(217, 70, 239, 0.16), transparent 55%),
+		radial-gradient(36rem 36rem at 85% 110%, rgba(34, 211, 238, 0.12), transparent 55%);
+}
+
+@media (prefers-color-scheme: dark) {
+	body:not([data-theme='light'])::before {
+		background:
+			radial-gradient(44rem 44rem at 10% -10%, rgba(99, 102, 241, 0.24), transparent 60%),
+			radial-gradient(40rem 40rem at 100% 0%, rgba(217, 70, 239, 0.16), transparent 55%),
+			radial-gradient(36rem 36rem at 85% 110%, rgba(34, 211, 238, 0.12), transparent 55%);
+	}
+}
+
 /* --- Main Card (glassmorphism) --- */
 .card {
 	background-color: var(--bs-card-bg) !important;
@@ -215,14 +291,14 @@ body[data-theme='dark'] .shadow {
 	font-weight: 700;
 	font-size: 1.85rem;
 	letter-spacing: -0.02em;
-	background: linear-gradient(135deg, var(--accent), #8b5cf6);
+	background: var(--grad-brand);
 	-webkit-background-clip: text;
 	-webkit-text-fill-color: transparent;
 	background-clip: text;
 }
 
 body[data-theme='light'] .hero-header h1 {
-	background: linear-gradient(135deg, #1e40af, #7c3aed);
+	background: linear-gradient(135deg, #4f46e5, #9333ea 50%, #c026d3);
 	-webkit-background-clip: text;
 	background-clip: text;
 }
@@ -269,7 +345,7 @@ body[data-theme='light'] .hero-header h1 {
 }
 
 .url-input-group .btn-primary {
-	background: linear-gradient(135deg, var(--accent), #2563eb);
+	background: var(--grad-accent);
 }
 
 .url-input-group .btn-danger {
@@ -937,16 +1013,16 @@ body[data-theme='dark'] ::-webkit-scrollbar {
 }
 
 body[data-theme='dark'] ::-webkit-scrollbar-track {
-	background: #1e1e2e;
+	background: #14161f;
 }
 
 body[data-theme='dark'] ::-webkit-scrollbar-thumb {
-	background: #374151;
+	background: rgba(129, 140, 248, 0.4);
 	border-radius: 4px;
 }
 
 body[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
-	background: #4b5563;
+	background: rgba(129, 140, 248, 0.6);
 }
 
 /* --- Modal dark mode --- */
