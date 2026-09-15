@@ -4,6 +4,27 @@ function escapeHtml(str) {
 	return div.innerHTML;
 }
 
+// If the user typed a bare domain (no scheme), default to https:// so the scan
+// targets a real URL. Also satisfies <input type="url"> validation, which
+// rejects a scheme-less value.
+function normalizeUrl(raw) {
+	const v = (raw || '').trim();
+	if (!v) return v;
+	if (/^[a-z][a-z0-9+.\-]*:\/\//i.test(v)) return v; // already has scheme://
+	if (v.startsWith('//')) return 'https:' + v; // protocol-relative
+	return 'https://' + v;
+}
+
+// Reads the URL input, prepends the protocol when missing, reflects the
+// normalized value back into the field so the user sees it, and returns it.
+function getNormalizedUrlInput() {
+	const el = document.getElementById('url');
+	if (!el) return '';
+	const norm = normalizeUrl(el.value);
+	if (norm !== el.value) el.value = norm;
+	return norm;
+}
+
 let currentAbortController = null;
 function cancelCurrentScan() {
     if (currentAbortController) {
@@ -117,7 +138,17 @@ function renderReport(results, falsePositiveMode = false) {
 	}
 
 	html += renderSummary(results, falsePositiveMode);
-	html += `<table border='1' cellpadding='5' class='w-100' id='resultsTable'><tr><th>Category</th><th>Method</th><th>Status</th><th>Response Time</th><th>Payload</th></tr>`;
+	html += `<div class="results-toolbar mb-2">
+		<input id="resultsSearch" class="form-control form-control-sm results-search" placeholder="🔍 Filter by category, payload, method or status…" oninput="filterResultsTableByStatus()" autocomplete="off">
+		<span id="resultsSearchCount" class="results-count"></span>
+	</div>`;
+	html += `<table cellpadding='5' class='w-100 results-table-modern' id='resultsTable'><thead><tr>` +
+		`<th class="vp-sortable" onclick="sortResultsTable(0,'text')">Category<span class="sort-caret"></span></th>` +
+		`<th class="vp-sortable text-center" onclick="sortResultsTable(1,'text')">Method<span class="sort-caret"></span></th>` +
+		`<th class="vp-sortable text-center" onclick="sortResultsTable(2,'num')">Status<span class="sort-caret"></span></th>` +
+		`<th class="vp-sortable text-center" onclick="sortResultsTable(3,'num')">Response Time<span class="sort-caret"></span></th>` +
+		`<th>Payload</th>` +
+		`</tr></thead><tbody>`;
 	for (const r of results) {
 		const status_class = getStatusClass(r.status, r.is_redirect, falsePositiveMode);
 		let codeClass = '';
@@ -154,15 +185,15 @@ function renderReport(results, falsePositiveMode = false) {
 		}
 		const rowClass = uaBadge ? ' class="ua-bypass-row"' : '';
 		html +=
-			`<tr data-status='${r.status}'${uaAttr}${rowClass}>` +
-			`<td data-label='Category'>${r.category}</td>` +
-			`<td class='text-center' data-label='Method'>${r.method}</td>` +
-			`<td class='${status_class} text-center' data-label='Status'>${r.status}</td>` +
-			`<td class='text-center' data-label='Response Time'>${responseTime}ms</td>` +
+			`<tr data-status='${escapeHtml(String(r.status))}'${uaAttr}${rowClass}>` +
+			`<td data-label='Category'>${escapeHtml(String(r.category ?? ''))}</td>` +
+			`<td class='text-center' data-label='Method'>${escapeHtml(String(r.method ?? ''))}</td>` +
+			`<td class='${status_class} text-center' data-label='Status'>${escapeHtml(String(r.status ?? ''))}</td>` +
+			`<td class='text-center' data-label='Response Time'>${escapeHtml(String(responseTime))}ms</td>` +
 			`<td data-label='Payload'><code class='${codeClass}'>${escapeHtml(r.payload)}</code>${patchBtn}${uaBadge}</td>` +
 			`</tr>`;
 	}
-	html += `</table>`;
+	html += `</tbody></table>`;
 	setTimeout(() => {
 		filterResultsTableByStatus();
 		const all = document.querySelectorAll('.status-filter-checkbox');
@@ -344,14 +375,27 @@ function toggleActionButtons() {
 	}
 }
 
+// Shimmering placeholder shown while a scan is in flight.
+function showResultsSkeleton() {
+	const el = document.getElementById('results');
+	if (!el) return;
+	let rows = '';
+	for (let i = 0; i < 8; i++) {
+		const w = 38 + Math.round(Math.random() * 42);
+		rows += `<div class="skeleton-row"><span class="sk sk-pill"></span><span class="sk sk-line" style="width:${w}%"></span></div>`;
+	}
+	el.innerHTML = `<div class="results-skeleton" aria-hidden="true"><div class="sk sk-head"></div>${rows}</div>`;
+}
+
 async function fetchResults() {
 	const btn = document.getElementById('checkBtn');
 	btn.disabled = true;
 	const oldText = btn.textContent;
 	btn.textContent = 'Wait...';
+	showResultsSkeleton();
     const cancelBtn = document.getElementById('cancelBtn');
     if (cancelBtn) cancelBtn.style.display = 'flex';
-	const url = document.getElementById('url').value;
+	const url = getNormalizedUrlInput();
 
 	// Create test session
 	const sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
@@ -576,7 +620,7 @@ async function runReverseEngineering() {
     const cancelBtn = document.getElementById('cancelBtn');
     if (cancelBtn) cancelBtn.style.display = 'flex';
     
-    const url = document.getElementById('url').value;
+    const url = getNormalizedUrlInput();
     if (!url) {
         alert("Please enter a URL first.");
         btn.disabled = false;
@@ -737,7 +781,12 @@ async function showVirtualPatchModal(initialScope) {
 	if (bypasses.length === 0 && misses.length === 0) {
 		if (noBypassesAlert) {
 			noBypassesAlert.style.display = 'block';
-			noBypassesAlert.textContent = 'All tested attack payloads were successfully blocked by the WAF (403 Forbidden). No patches required!';
+			noBypassesAlert.classList.add('vp-empty-state');
+			noBypassesAlert.innerHTML =
+				'<div class="vp-empty-icon">🛡️</div>' +
+				'<div class="vp-empty-title">All attacks blocked</div>' +
+				'<div class="vp-empty-sub">Every tested attack payload was successfully blocked by the WAF ' +
+				'(<code>403 Forbidden</code>). No virtual patches are required.</div>';
 		}
 		if (contentContainer) contentContainer.style.display = 'none';
 		const badge = document.getElementById('vpRuleCountBadge');
@@ -881,9 +930,130 @@ async function refreshVpCode() {
 		renderVpCode();
 	} catch (err) {
 		console.error('Error fetching virtual patches:', err);
-		const viewer = document.getElementById('vpCodeViewer');
-		if (viewer) viewer.textContent = `Error generating patches: ${err.message}`;
+		setVpCode(`Error generating patches: ${err.message}`, false);
 	}
+}
+
+// --- Lightweight, dependency-free syntax highlighter for generated rules ---
+// Recognises comments, strings, keywords, numbers and punctuation across the
+// mixed config dialects we emit (Cloudflare expr, AWS/Azure JSON, HCL,
+// ModSecurity, NGINX/Apache/HAProxy conf, YAML, shell CLI).
+const VP_TOKEN_RE = new RegExp(
+	[
+		'(\\/\\*[\\s\\S]*?\\*\\/|#[^\\n]*|\\/\\/[^\\n]*)', // 1: comments
+		'("(?:\\\\.|[^"\\\\])*"|\'(?:\\\\.|[^\'\\\\])*\')', // 2: strings
+		'\\b(true|false|null|and|or|not|in|eq|ne|contains|matches|lower|http|SecRule|SecAction|SecRuleEngine|SecDefaultAction|deny|allow|block|pass|log|nolog|drop|return|set|if|location|resource|module|variable|rule|action|priority|statement|byte_match_statement|regex_match_statement|gcloud|az|aws|kubectl)\\b', // 3: keywords
+		'(\\b\\d+(?:\\.\\d+)?\\b)', // 4: numbers
+		'([{}\\[\\]():;,=])', // 5: punctuation
+	].join('|'),
+	'gi',
+);
+
+// Splits one line into typed tokens. Rule text never becomes HTML — the caller
+// renders each token via textContent, so this is XSS-proof by construction (no
+// innerHTML sink, nothing to escape).
+function tokenizeRuleLine(line) {
+	const tokens = [];
+	let last = 0;
+	let m;
+	VP_TOKEN_RE.lastIndex = 0;
+	while ((m = VP_TOKEN_RE.exec(line)) !== null) {
+		if (m.index > last) tokens.push({ cls: '', text: line.slice(last, m.index) });
+		let cls = '';
+		if (m[1] !== undefined) cls = 'tok-comment';
+		else if (m[2] !== undefined) cls = 'tok-string';
+		else if (m[3] !== undefined) cls = 'tok-keyword';
+		else if (m[4] !== undefined) cls = 'tok-number';
+		else if (m[5] !== undefined) cls = 'tok-punct';
+		tokens.push({ cls, text: m[0] });
+		last = VP_TOKEN_RE.lastIndex;
+		// Guard against a zero-width match wedging the loop.
+		if (m.index === VP_TOKEN_RE.lastIndex) VP_TOKEN_RE.lastIndex++;
+	}
+	if (last < line.length) tokens.push({ cls: '', text: line.slice(last) });
+	return tokens;
+}
+
+// Writes code into the viewer while keeping the raw text on dataset.raw so
+// copy/download stay byte-for-byte accurate regardless of highlighting.
+// When highlighting, each line gets a gutter number and can be clicked to
+// mark it active — the editor feel the panel is going for. Built entirely with
+// DOM nodes + textContent so rule content is never interpreted as markup.
+function setVpCode(content, highlight) {
+	const viewer = document.getElementById('vpCodeViewer');
+	if (!viewer) return;
+	viewer.dataset.raw = content;
+
+	if (!highlight) {
+		viewer.classList.add('vp-plain');
+		viewer.textContent = content;
+		return;
+	}
+
+	viewer.classList.remove('vp-plain');
+	// Highlight per line so gutter numbers stay aligned even when a long rule
+	// wraps. (Our dialects have no multi-line block comments, so per-line is safe.)
+	const frag = document.createDocumentFragment();
+	content.split('\n').forEach((line, i) => {
+		const lineEl = document.createElement('span');
+		lineEl.className = 'vp-line';
+
+		const gutter = document.createElement('span');
+		gutter.className = 'vp-ln';
+		gutter.textContent = String(i + 1);
+
+		const code = document.createElement('span');
+		code.className = 'vp-lc';
+		const tokens = tokenizeRuleLine(line);
+		if (tokens.length === 0) {
+			code.appendChild(document.createTextNode(' '));
+		} else {
+			tokens.forEach((tok) => {
+				if (tok.cls) {
+					const span = document.createElement('span');
+					span.className = tok.cls;
+					span.textContent = tok.text;
+					code.appendChild(span);
+				} else {
+					code.appendChild(document.createTextNode(tok.text));
+				}
+			});
+		}
+
+		lineEl.appendChild(gutter);
+		lineEl.appendChild(code);
+		frag.appendChild(lineEl);
+	});
+	viewer.replaceChildren(frag);
+}
+
+// Reads the raw (un-highlighted) rule text for copy/download.
+function getVpRaw() {
+	const viewer = document.getElementById('vpCodeViewer');
+	if (!viewer) return '';
+	return viewer.dataset.raw ?? viewer.textContent ?? '';
+}
+
+// Click-to-highlight the active line in the code panel.
+function handleVpLineClick(ev) {
+	const line = ev.target.closest('.vp-line');
+	if (!line) return;
+	const wasActive = line.classList.contains('active');
+	document.querySelectorAll('#vpCodeViewer .vp-line.active').forEach((l) => l.classList.remove('active'));
+	if (!wasActive) line.classList.add('active');
+}
+
+// Updates the little language/vendor chip floating over the code panel.
+function updateVpLangChip() {
+	const chip = document.getElementById('vpLangChip');
+	if (!chip) return;
+	const format = document.getElementById('vpFormatSelect')?.value || 'native';
+	const labels = {
+		terraform: 'Terraform · HCL',
+		gcloud: 'gcloud · shell',
+		azureCli: 'Azure CLI · shell',
+	};
+	chip.textContent = labels[format] || `${currentVpVendor} · native`;
 }
 
 function renderVpCode() {
@@ -891,11 +1061,12 @@ function renderVpCode() {
 
 	const format = document.getElementById('vpFormatSelect')?.value || 'native';
 	const bundle = currentVpReport.bundles?.[currentVpVendor];
-	const viewer = document.getElementById('vpCodeViewer');
 	const countBadge = document.getElementById('vpRuleCountBadge');
 
+	updateVpLangChip();
+
 	if (!bundle || bundle.ruleCount === 0) {
-		if (viewer) viewer.textContent = `# No patches generated for ${currentVpVendor.toUpperCase()}`;
+		setVpCode(`# No patches generated for ${currentVpVendor.toUpperCase()}`, true);
 		if (countBadge) countBadge.textContent = '0 rules';
 		return;
 	}
@@ -913,16 +1084,14 @@ function renderVpCode() {
 		content = bundle.azureCli;
 	}
 
-	if (viewer) {
-		viewer.textContent = content;
-	}
+	setVpCode(content, true);
 }
 
 function copyVpCode() {
-	const viewer = document.getElementById('vpCodeViewer');
-	if (!viewer || !viewer.textContent) return;
+	const raw = getVpRaw();
+	if (!raw) return;
 
-	navigator.clipboard.writeText(viewer.textContent).then(() => {
+	navigator.clipboard.writeText(raw).then(() => {
 		const btn = document.getElementById('vpCopyBtn');
 		if (btn) {
 			const originalHtml = btn.innerHTML;
@@ -936,9 +1105,26 @@ function copyVpCode() {
 	});
 }
 
+// Copy triggered from the small button inside the code panel toolbar.
+function copyVpCodeInline() {
+	const raw = getVpRaw();
+	if (!raw) return;
+	navigator.clipboard.writeText(raw).then(() => {
+		const btn = document.getElementById('vpCopyMini');
+		if (!btn) return;
+		const original = btn.innerHTML;
+		btn.innerHTML = '✓';
+		btn.classList.add('copied');
+		setTimeout(() => {
+			btn.innerHTML = original;
+			btn.classList.remove('copied');
+		}, 1500);
+	});
+}
+
 function downloadVpCode() {
-	const viewer = document.getElementById('vpCodeViewer');
-	if (!viewer || !viewer.textContent) return;
+	const raw = getVpRaw();
+	if (!raw) return;
 
 	const format = document.getElementById('vpFormatSelect')?.value || 'native';
 	let ext = '.conf';
@@ -963,7 +1149,7 @@ function downloadVpCode() {
 	}
 
 	const filename = `${currentVpVendor}-virtual-patches${ext}`;
-	const blob = new Blob([viewer.textContent], { type: 'text/plain;charset=utf-8' });
+	const blob = new Blob([raw], { type: 'text/plain;charset=utf-8' });
 	const a = document.createElement('a');
 	a.href = URL.createObjectURL(blob);
 	a.download = filename;
@@ -1161,7 +1347,7 @@ function getPreferredTheme() {
 // WAF Detection functionality
 async function detectWAF() {
 	const btn = document.getElementById('detectWafBtn');
-	const url = document.getElementById('url').value;
+	const url = getNormalizedUrlInput();
 
 	if (!url) {
 		alert('Please enter a URL first');
@@ -1336,7 +1522,7 @@ function clearWAFResults() {
 // HTTP Manipulation Testing functionality
 async function testHTTPManipulation() {
 	const btn = document.getElementById('httpManipulationBtn');
-	const url = document.getElementById('url').value;
+	const url = getNormalizedUrlInput();
 
 	if (!url) {
 		alert('Please enter a URL first');
@@ -1525,16 +1711,66 @@ function filterResultsTableByStatus() {
 	// it visible whenever its own filter is on, regardless of the status filters.
 	const uaFilter = document.getElementById('uaBypassFilter');
 	const uaFilterOn = !uaFilter || uaFilter.checked;
+	const searchEl = document.getElementById('resultsSearch');
+	const term = (searchEl?.value || '').trim().toLowerCase();
+
 	const rows = document.querySelectorAll('#resultsTable tr[data-status]');
+	let visible = 0;
 	rows.forEach((row) => {
 		const statusVisible = checkedStatuses.includes(row.getAttribute('data-status'));
 		const isUaBypass = row.getAttribute('data-ua-bypass') === '1';
-		if (statusVisible || (isUaBypass && uaFilterOn)) {
+		const passesStatus = statusVisible || (isUaBypass && uaFilterOn);
+		const passesSearch = !term || row.textContent.toLowerCase().includes(term);
+		if (passesStatus && passesSearch) {
 			row.style.display = '';
+			visible++;
 		} else {
 			row.style.display = 'none';
 		}
 	});
+
+	const countEl = document.getElementById('resultsSearchCount');
+	if (countEl) {
+		countEl.textContent = term ? `${visible} of ${rows.length} shown` : '';
+	}
+}
+
+// Sortable results columns. Reorders the tbody rows in place; type 'num'
+// strips units (ms) so Status and Response Time sort numerically.
+let vpSortState = { col: -1, dir: 1 };
+function sortResultsTable(col, type) {
+	const table = document.getElementById('resultsTable');
+	const tbody = table?.tBodies?.[0];
+	if (!tbody) return;
+
+	const dir = vpSortState.col === col ? -vpSortState.dir : 1;
+	vpSortState = { col, dir };
+
+	const rows = Array.from(tbody.querySelectorAll('tr'));
+	rows.sort((a, b) => {
+		let av = a.children[col]?.textContent.trim() || '';
+		let bv = b.children[col]?.textContent.trim() || '';
+		if (type === 'num') {
+			av = parseFloat(av.replace(/[^\d.-]/g, '')) || 0;
+			bv = parseFloat(bv.replace(/[^\d.-]/g, '')) || 0;
+			return (av - bv) * dir;
+		}
+		return av.localeCompare(bv) * dir;
+	});
+	rows.forEach((r) => tbody.appendChild(r));
+
+	// Refresh sort indicators
+	table.querySelectorAll('thead th.vp-sortable').forEach((th) => {
+		th.classList.remove('sorted');
+		const caret = th.querySelector('.sort-caret');
+		if (caret) caret.textContent = '';
+	});
+	const activeTh = table.querySelectorAll('thead th')[col];
+	if (activeTh) {
+		activeTh.classList.add('sorted');
+		const caret = activeTh.querySelector('.sort-caret');
+		if (caret) caret.textContent = dir > 0 ? ' ▲' : ' ▼';
+	}
 }
 
 // Global variables for test session and batch testing
@@ -1683,29 +1919,87 @@ function generateHTMLReport(session, vulnerabilityScores, executiveSummary) {
     <meta charset="UTF-8">
     <title>WAF Security Assessment Report</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; color: #333; }
-        .header { text-align: center; margin-bottom: 40px; border-bottom: 2px solid #007bff; padding-bottom: 20px; }
-        .summary-card { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0; }
-        .risk-badge { padding: 4px 12px; border-radius: 4px; color: white; font-weight: bold; }
-        .metric { display: inline-block; margin: 10px 20px; text-align: center; }
-        .metric-value { font-size: 2em; font-weight: bold; color: #007bff; }
-        .metric-label { font-size: 0.9em; color: #666; }
-        .vulnerability-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        .vulnerability-table th, .vulnerability-table td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-        .vulnerability-table th { background-color: #f8f9fa; font-weight: bold; }
-        .severity-critical { color: #dc3545; font-weight: bold; }
-        .severity-high { color: #fd7e14; font-weight: bold; }
-        .severity-medium { color: #ffc107; font-weight: bold; }
-        .severity-low { color: #198754; font-weight: bold; }
-        .recommendations { background: #e7f3ff; padding: 20px; border-left: 4px solid #007bff; }
-        .results-table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
-        .results-table th, .results-table td { padding: 8px; text-align: left; border-bottom: 1px solid #ddd; }
-        .results-table th { background-color: #f8f9fa; }
-        .status-200 { background-color: #f8d7da; }
-        .status-403 { background-color: #d1e7dd; }
-        .status-other { background-color: #fff3cd; }
+        :root {
+            --ink: #1e2338; --muted: #5b6478; --line: #e6e8f2;
+            --indigo: #6366f1; --violet: #8b5cf6; --fuchsia: #d946ef;
+            --crit: #dc2626; --high: #ea580c; --med: #d97706; --low: #059669;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0; padding: 40px; color: var(--ink); line-height: 1.55;
+            background:
+                radial-gradient(48rem 34rem at 100% -10%, rgba(99,102,241,0.07), transparent 60%),
+                radial-gradient(40rem 30rem at -10% 110%, rgba(217,70,239,0.06), transparent 60%),
+                #f6f7fb;
+        }
+        h1, h2, h3 { letter-spacing: -0.01em; }
+        .header {
+            text-align: center; margin-bottom: 36px; padding-bottom: 24px;
+            border-bottom: 1px solid var(--line);
+        }
+        .header h1 {
+            font-size: 2rem; font-weight: 800; margin: 0 0 12px;
+            background: linear-gradient(135deg, #4f46e5, #9333ea 50%, #c026d3);
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .header p { margin: 4px 0; color: var(--muted); font-size: 0.92rem; }
+        .header p strong { color: var(--ink); }
+        .summary-card, .recommendations {
+            padding: 24px; border-radius: 14px; margin: 24px 0;
+            background: #fff; border: 1px solid var(--line);
+            box-shadow: 0 6px 24px rgba(30,35,56,0.06);
+        }
+        .summary-card h2 { margin-top: 0; }
+        .risk-badge {
+            padding: 6px 16px; border-radius: 999px; color: white; font-weight: 700;
+            font-size: 0.85rem; letter-spacing: 0.02em; display: inline-block;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+        .metric {
+            display: inline-block; margin: 12px 14px; text-align: center; min-width: 120px;
+            padding: 16px 18px; border-radius: 12px;
+            background: linear-gradient(180deg, rgba(99,102,241,0.05), rgba(99,102,241,0.02));
+            border: 1px solid var(--line);
+        }
+        .metric-value {
+            font-size: 2em; font-weight: 800; line-height: 1;
+            background: linear-gradient(135deg, #4f46e5, #9333ea);
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .metric-label { font-size: 0.82em; color: var(--muted); margin-top: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+        .vulnerability-table, .results-table {
+            width: 100%; border-collapse: separate; border-spacing: 0; margin: 20px 0;
+            background: #fff; border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+        }
+        .results-table { font-size: 0.9em; }
+        .vulnerability-table th, .vulnerability-table td,
+        .results-table th, .results-table td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--line); }
+        .vulnerability-table tr:last-child td, .results-table tr:last-child td { border-bottom: none; }
+        .vulnerability-table th, .results-table th {
+            background: linear-gradient(180deg, #f1f2fb, #eceef8);
+            font-weight: 700; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; color: #414a63;
+        }
+        .severity-critical { color: var(--crit); font-weight: 700; }
+        .severity-high { color: var(--high); font-weight: 700; }
+        .severity-medium { color: var(--med); font-weight: 700; }
+        .severity-low { color: var(--low); font-weight: 700; }
+        .recommendations {
+            border-left: 4px solid var(--indigo);
+            background:
+                radial-gradient(30rem 18rem at 100% -30%, rgba(99,102,241,0.08), transparent 60%),
+                #fbfbfe;
+        }
+        .status-200 { background-color: #fdecec; }
+        .status-403 { background-color: #e7f6ee; }
+        .status-other { background-color: #fdf5e3; }
+        code { font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.88em; }
         .page-break { page-break-before: always; }
-        @media print { .page-break { page-break-before: always; } }
+        @media print {
+            body { padding: 0; background: #fff; }
+            .summary-card, .recommendations, .vulnerability-table, .results-table { box-shadow: none; }
+            .page-break { page-break-before: always; }
+        }
     </style>
 </head>
 <body>

@@ -4,7 +4,7 @@
 
 ## Repository
 
-- [GitHub](https://github.com/SecH0us3/waf-checher): Source code and issue tracking.
+- [GitHub](https://github.com/SecH0us3/waf-checker): Source code and issue tracking.
 
 ## Documentation
 
