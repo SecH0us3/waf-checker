@@ -537,8 +537,9 @@
 								<span class="vp-dot vp-dot-amber"></span>
 								<span class="vp-dot vp-dot-green"></span>
 								<span id="vpLangChip" class="vp-lang-chip">native</span>
+								<button type="button" id="vpCopyMini" class="vp-copy-mini" onclick="copyVpCodeInline()" title="Copy rules">📋</button>
 							</div>
-							<pre id="vpCodeViewer" class="vp-code-viewer"></pre>
+							<pre id="vpCodeViewer" class="vp-code-viewer" onclick="handleVpLineClick(event)"></pre>
 						</div>
 					</div>
 				</div>
