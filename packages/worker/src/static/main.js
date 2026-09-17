@@ -129,7 +129,7 @@ function renderReport(results, falsePositiveMode = false) {
 
 	// Add WAF detection info if available
 	if (results.length > 0 && results[0].wafDetected) {
-		html += `<div class="alert alert-info mb-3">
+		html += `<div class="alert alert-info py-2 px-3 mb-2">
 			<strong>🛡️ WAF Detected:</strong> ${results[0].wafType}
 			<small class="text-muted"> (Auto-detection enabled)</small>
 		</div>`;

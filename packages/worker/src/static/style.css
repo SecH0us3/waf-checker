@@ -1642,36 +1642,36 @@ body[data-theme='dark'] .middle-footer {
 /* "No patches required" empty state (double class = specificity over .alert-success) */
 .vp-empty-state.vp-empty-state {
 	text-align: center;
-	padding: 2.5rem 1.5rem;
+	padding: 1.1rem 1.25rem;
 	border: 1px solid rgba(16, 185, 129, 0.28);
 	background:
 		radial-gradient(26rem 17rem at 50% -25%, rgba(16, 185, 129, 0.14), transparent 65%),
 		var(--section-bg);
-	border-radius: 1rem;
+	border-radius: 0.75rem;
 	color: var(--bs-body-color);
 }
 
 .vp-empty-icon {
-	font-size: 2.85rem;
+	font-size: 1.6rem;
 	line-height: 1;
-	margin-bottom: 0.5rem;
+	margin-bottom: 0.2rem;
 	filter: drop-shadow(0 4px 12px rgba(16, 185, 129, 0.4));
 }
 
 .vp-empty-title {
 	font-weight: 700;
-	font-size: 1.2rem;
+	font-size: 1.02rem;
 	letter-spacing: -0.01em;
-	margin-bottom: 0.35rem;
+	margin-bottom: 0.15rem;
 	color: #10b981;
 }
 
 .vp-empty-sub {
 	color: var(--text-muted);
-	font-size: 0.9rem;
+	font-size: 0.85rem;
 	max-width: 34rem;
 	margin: 0 auto;
-	line-height: 1.55;
+	line-height: 1.4;
 }
 
 .vp-empty-sub code {
