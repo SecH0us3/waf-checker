@@ -58,7 +58,9 @@ function renderSummary(results, falsePositiveMode = false) {
 	const statusCounter = {};
 	for (const r of results) statusCounter[r.status] = (statusCounter[r.status] || 0) + 1;
 	const totalRequests = results.length;
-	let html = `<div class='mb-3'>`;
+	// px-3 insets the legend + status bars to align with the banner text, while
+	// the results table below stays full-width against the edges.
+	let html = `<div class='mb-3 px-3'>`;
 	// Compact inline mode legend sitting directly above the status bars.
 	html += falsePositiveMode
 		? `<div class='results-legend text-muted small mb-2 d-flex align-items-center flex-wrap gap-2'>
@@ -130,7 +132,7 @@ function renderReport(results, falsePositiveMode = false) {
 	}
 
 	html += renderSummary(results, falsePositiveMode);
-	html += `<div class="results-toolbar mb-2">
+	html += `<div class="results-toolbar mb-2 px-3">
 		<input id="resultsSearch" class="form-control form-control-sm results-search" placeholder="🔍 Filter by category, payload, method or status…" oninput="filterResultsTableByStatus()" autocomplete="off">
 		<span id="resultsSearchCount" class="results-count"></span>
 	</div>`;
