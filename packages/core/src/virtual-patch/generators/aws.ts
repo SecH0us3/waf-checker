@@ -21,7 +21,9 @@ function getAwsFieldToMatch(location: 'query' | 'body' | 'header' | 'uri', categ
 		case 'uri':
 			return { UriPath: {} };
 		case 'body':
-			return { Body: {} };
+			// OversizeHandling is required for Body inspection; CONTINUE inspects the
+			// first 8 KB (the default WebACL body limit) instead of rejecting the rule.
+			return { Body: { OversizeHandling: 'CONTINUE' } };
 		case 'query':
 		default:
 			return { AllQueryArguments: {} };
@@ -34,7 +36,8 @@ function getAwsTerraformFieldToMatch(location: 'query' | 'body' | 'header' | 'ur
 		return `single_header {\n          name = "${headerName}"\n        }`;
 	}
 	if (location === 'uri') return 'uri_path {}';
-	if (location === 'body') return 'body {}';
+	// oversize_handling is a required argument on the body block in the AWS provider.
+	if (location === 'body') return 'body {\n          oversize_handling = "CONTINUE"\n        }';
 	return 'all_query_arguments {}';
 }
 
@@ -66,8 +69,16 @@ export function generateAwsPatches(
 		const sanitizedCat = category.replace(/[^a-zA-Z0-9]/g, '');
 
 		// 1. Strict Hotfix Tier
-		if (options.tier !== 'heuristic') {
-			const tokens = [...new Set(items.map((it) => sanitizeStrictToken(it.payload, category)))];
+		// The ByteMatchStatement below applies a LOWERCASE text transformation to the
+		// inspected field, but AWS WAF does NOT transform the SearchString. A search
+		// string containing any uppercase character would therefore never match the
+		// lowercased field, so the tokens must be lowercased to stay effective.
+		// Empty tokens (e.g. a blank/whitespace-only payload) are dropped, since AWS
+		// WAFv2 rejects a ByteMatchStatement with an empty SearchString.
+		const tokens = [
+			...new Set(items.map((it) => sanitizeStrictToken(it.payload, category).toLowerCase())),
+		].filter(Boolean);
+		if (options.tier !== 'heuristic' && tokens.length > 0) {
 			const byteStatements = tokens.map((tok) => ({
 				ByteMatchStatement: {
 					SearchString: tok,

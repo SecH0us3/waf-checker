@@ -216,6 +216,33 @@ describe('Virtual Patching & Rule Generator', () => {
 			expect(parsedJson.Action).toEqual({ Count: {} });
 			expect(patch.terraformHcl).toContain('count {}');
 		});
+
+		it('should lowercase strict search strings so they match the LOWERCASE-transformed field', () => {
+			const bypass: AuditResultItem[] = [
+				{ category: 'SQL Injection', method: 'GET', payload: "1' UNION SELECT NULL-- -", status: 200, responseTime: 10 },
+			];
+			const report = generateVirtualPatches(bypass, { vendor: 'aws', tier: 'strict' });
+			const patch = report.patches[0];
+			const parsedJson = JSON.parse(patch.nativeRule);
+			const bm = parsedJson.Statement.ByteMatchStatement;
+			// LOWERCASE transform is applied to the field, but AWS never transforms the
+			// SearchString, so an uppercase search string could never match.
+			expect(bm.TextTransformations.some((t: any) => t.Type === 'LOWERCASE')).toBe(true);
+			expect(bm.SearchString).toBe("1' union select null-- -");
+			expect(bm.SearchString).toBe(bm.SearchString.toLowerCase());
+			expect(patch.terraformHcl).toContain('search_string         = "1\' union select null-- -"');
+		});
+
+		it('should include required oversize_handling for body field inspection', () => {
+			const bypass: AuditResultItem[] = [
+				{ category: 'XXE', method: 'POST', payload: '<!ENTITY x SYSTEM "file:///etc/passwd">', status: 200, responseTime: 10 },
+			];
+			const report = generateVirtualPatches(bypass, { vendor: 'aws', tier: 'strict' });
+			const patch = report.patches[0];
+			const parsedJson = JSON.parse(patch.nativeRule);
+			expect(parsedJson.Statement.ByteMatchStatement.FieldToMatch.Body).toEqual({ OversizeHandling: 'CONTINUE' });
+			expect(patch.terraformHcl).toContain('oversize_handling = "CONTINUE"');
+		});
 	});
 
 	describe('ModSecurity Generator', () => {

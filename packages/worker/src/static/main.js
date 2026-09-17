@@ -58,7 +58,22 @@ function renderSummary(results, falsePositiveMode = false) {
 	const statusCounter = {};
 	for (const r of results) statusCounter[r.status] = (statusCounter[r.status] || 0) + 1;
 	const totalRequests = results.length;
-	let html = `<div class='mb-3'>`;
+	// px-3 insets the legend + status bars to align with the banner text, while
+	// the results table below stays full-width against the edges.
+	let html = `<div class='mb-3 px-3'>`;
+	// Compact inline mode legend sitting directly above the status bars.
+	html += falsePositiveMode
+		? `<div class='results-legend text-muted small mb-2 d-flex align-items-center flex-wrap gap-2'>
+        <span class='fw-semibold'>🔍 False Positive Test</span>
+        <span class='text-success'>● 200 = allowed</span>
+        <span class='text-danger'>● 403 = blocked</span>
+      </div>`
+		: `<div class='results-legend text-muted small mb-2 d-flex align-items-center flex-wrap gap-2'>
+        <span class='fw-semibold'>🛡️ Security Test</span>
+        <span class='text-danger'>● 200 = bypass</span>
+        <span class='text-success'>● 403 = blocked</span>
+        <button type='button' class='btn btn-link btn-sm p-0 align-baseline text-decoration-none legend-info' data-bs-toggle='modal' data-bs-target='#securityTestModal' title='What do 200 / 403 mean?'>ⓘ</button>
+      </div>`;
 	html += `<div class='d-flex align-items-left mb-1'><div class='min-width-112'><label><input type='checkbox' id='statusSelectAll' checked class='checkbox-align'> <b>Total</b></label></div><div class='status-bar status-bar-total'>${totalRequests}</div></div>`;
 	for (const code of Object.keys(statusCounter).sort()) {
 		const percent = totalRequests ? (statusCounter[code] / totalRequests) * 100 : 0;
@@ -83,30 +98,9 @@ function renderReport(results, falsePositiveMode = false) {
 	if (!results || results.length === 0) return '';
 	let html = '';
 
-	// Add visual indicator for test mode
-	if (falsePositiveMode) {
-		html += `<div class="false-positive-indicator mb-3">
-      <strong>🔍 False Positive Test Mode <span class="help-icon" onclick="toggleHelp('fp-help')" title="What is False Positive Test?">ℹ️</span></strong>
-      <div id="fp-help" class="help-content" style="display: none;">
-        <small><em>False Positive Test checks if your WAF incorrectly blocks legitimate traffic. This helps ensure your security doesn't interfere with normal users.</em></small>
-      </div>
-      <small>
-        <span style="color: #198754">200 = WAF correctly allows legitimate requests</span>
-        <span style="color: #dc3545">403 = WAF incorrectly blocks legitimate requests</span>
-      </small>
-    </div>`;
-	} else {
-		html += `<div class="normal-test-indicator mb-3">
-      <strong>🛡️ Security Test Mode <span class="help-icon" onclick="toggleHelp('security-help')" title="What is Security Test?">ℹ️</span></strong>
-      <div id="security-help" class="help-content" style="display: none;">
-        <small><em>Security Test checks if your WAF properly blocks malicious attack payloads. This helps verify your application is protected against common web attacks.</em></small>
-      </div>
-      <small>
-        <span style="color: #dc3545">200 = WAF did not protect your application</span>
-        <span style="color: #198754">403 = WAF protected your application</span>
-      </small>
-    </div>`;
-	}
+	// The test-mode indicator + status legend are rendered as a compact inline
+	// caption directly above the status bars (see renderSummary), instead of a
+	// standalone coloured block, to keep the results header uncluttered.
 
 	// Legitimate User-Agent allow-list bypass alert. Distinct from the virtual-patch
 	// banner: a UA allow-list bypass isn't fixed by a payload regex rule, so it gets
@@ -131,14 +125,14 @@ function renderReport(results, falsePositiveMode = false) {
 
 	// Add WAF detection info if available
 	if (results.length > 0 && results[0].wafDetected) {
-		html += `<div class="alert alert-info mb-3">
+		html += `<div class="alert alert-info py-2 px-3 mb-2">
 			<strong>🛡️ WAF Detected:</strong> ${results[0].wafType}
 			<small class="text-muted"> (Auto-detection enabled)</small>
 		</div>`;
 	}
 
 	html += renderSummary(results, falsePositiveMode);
-	html += `<div class="results-toolbar mb-2">
+	html += `<div class="results-toolbar mb-2 px-3">
 		<input id="resultsSearch" class="form-control form-control-sm results-search" placeholder="🔍 Filter by category, payload, method or status…" oninput="filterResultsTableByStatus()" autocomplete="off">
 		<span id="resultsSearchCount" class="results-count"></span>
 	</div>`;
@@ -569,7 +563,7 @@ async function fetchResults() {
 							: 'WAF Bypass(es) Detected!';
 					}
 					if (vpSubtitle) {
-						vpSubtitle.textContent = 'Generate instant virtual patches for Cloudflare, AWS WAF, ModSecurity, and NGINX to mitigate these risks immediately.';
+						vpSubtitle.textContent = 'Generate virtual patches to mitigate these bypasses.';
 					}
 				} else {
 					vpCountBadge.textContent = misses.length;
@@ -577,7 +571,7 @@ async function fetchResults() {
 						vpTitle.textContent = 'Unprotected Attack Vectors (404/5xx) Detected!';
 					}
 					if (vpSubtitle) {
-						vpSubtitle.textContent = 'These attack requests reached your origin server without WAF interception. Generate perimeter rules to block them.';
+						vpSubtitle.textContent = 'These requests reached your origin — generate perimeter rules to block them.';
 					}
 				}
 				vpBanner.style.display = 'flex';
@@ -1651,6 +1645,12 @@ function initApp() {
 	// --- Восстановить состояние ---
 	restoreStateFromLocalStorage();
 
+	// The remediation banner is only meaningful after a scan; make sure it never
+	// lingers visible (or empty) on a fresh load — the scan handler reveals and
+	// populates it when bypasses/misses are found.
+	const vpBannerEl = document.getElementById('virtualPatchBanner');
+	if (vpBannerEl) vpBannerEl.style.display = 'none';
+
 	// Update description based on false positive test state
 	updateDescriptionText();
 	// --- Toggle payload template section on method change ---
@@ -1693,14 +1693,6 @@ function initApp() {
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', initApp);
-
-// Function to toggle help content
-function toggleHelp(helpId) {
-	const helpElement = document.getElementById(helpId);
-	if (helpElement) {
-		helpElement.style.display = helpElement.style.display === 'none' ? 'block' : 'none';
-	}
-}
 
 function filterResultsTableByStatus() {
 	const checkedStatuses = Array.from(document.querySelectorAll('.status-filter-checkbox:checked')).map((cb) =>

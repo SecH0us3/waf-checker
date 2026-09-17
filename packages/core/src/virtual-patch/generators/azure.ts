@@ -25,6 +25,12 @@ function getAzureMatchVariable(location: 'query' | 'body' | 'header' | 'uri') {
 
 /**
  * Generates Azure Front Door / Application Gateway WAF rules (JSON, Azure CLI, and Terraform).
+ *
+ * Note on the native JSON match-condition field name: the Azure Front Door ARM schema
+ * (Microsoft.Network/FrontDoorWebApplicationFirewallPolicies) uses `negateCondition`.
+ * The misspelling `negationConditon` that appears in some Azure REST reference docs is a
+ * documented typo (see Azure/azure-cli#31807) and is rejected by the real API, so it must
+ * not be emitted here.
  */
 export function generateAzurePatches(
 	bypasses: AuditResultItem[],
@@ -83,7 +89,7 @@ export function generateAzurePatches(
 					matchConditions.push({
 						matchVariable: 'RequestUri',
 						operator: 'EndsWith',
-						negationConditon: false,
+						negateCondition: false,
 						matchValue: exts,
 					});
 					tfMatchBlocks.push(`    match_conditions {
@@ -108,7 +114,7 @@ export function generateAzurePatches(
 					matchConditions.push({
 						matchVariable: 'RequestUri',
 						operator: 'RegEx',
-						negationConditon: false,
+						negateCondition: false,
 						matchValue: [vcsRegex],
 					});
 					tfMatchBlocks.push(`    match_conditions {
@@ -132,7 +138,7 @@ export function generateAzurePatches(
 					matchConditions.push({
 						matchVariable: 'RequestUri',
 						operator: 'EndsWith',
-						negationConditon: false,
+						negateCondition: false,
 						matchValue: files,
 					});
 					tfMatchBlocks.push(`    match_conditions {
@@ -151,12 +157,12 @@ export function generateAzurePatches(
 						`    --values ${files.map((f) => `"${escapeDoubleQuotes(f)}"`).join(' ')}`
 					);
 				}
-			} else {
+			} else if (tokens.length > 0) {
 				matchConditions.push({
 					matchVariable,
 					selector,
 					operator: 'Contains',
-					negationConditon: false,
+					negateCondition: false,
 					matchValue: tokens,
 				});
 				tfMatchBlocks.push(`    match_conditions {
@@ -177,15 +183,19 @@ export function generateAzurePatches(
 				);
 			}
 
-			const ruleObj = {
-				name: `VirtualPatch_${sanitizedCat}_Strict`,
-				priority: currentPriority,
-				ruleType: 'MatchRule',
-				action: azureAction,
-				matchConditions,
-			};
+			// Only emit a rule when at least one match condition survived (a
+			// blank/whitespace-only payload leaves matchConditions empty, and Azure
+			// rejects a custom rule with no conditions or an empty matchValue set).
+			if (matchConditions.length > 0) {
+				const ruleObj = {
+					name: `VirtualPatch_${sanitizedCat}_Strict`,
+					priority: currentPriority,
+					ruleType: 'MatchRule',
+					action: azureAction,
+					matchConditions,
+				};
 
-			const tfHcl = `custom_rules {
+				const tfHcl = `custom_rules {
   name      = "VirtualPatch_${sanitizedCat}_Strict"
   priority  = ${currentPriority}
   rule_type = "MatchRule"
@@ -194,17 +204,18 @@ export function generateAzurePatches(
 ${tfMatchBlocks.join('\n\n')}
 }`;
 
-			patches.push({
-				vendor: 'azure',
-				name: `Azure WAF: ${category} (Strict Hotfix)`,
-				category,
-				tier: 'strict',
-				nativeRule: JSON.stringify(ruleObj, null, 2),
-				terraformHcl: tfHcl,
-				azureCliCommand: cliCommands.join('\n'),
-				description: `Azure WAF custom rule matching ${tokens.length} verified ${category} bypass token(s)`,
-			});
-			currentPriority += 10;
+				patches.push({
+					vendor: 'azure',
+					name: `Azure WAF: ${category} (Strict Hotfix)`,
+					category,
+					tier: 'strict',
+					nativeRule: JSON.stringify(ruleObj, null, 2),
+					terraformHcl: tfHcl,
+					azureCliCommand: cliCommands.join('\n'),
+					description: `Azure WAF custom rule matching ${tokens.length} verified ${category} bypass token(s)`,
+				});
+				currentPriority += 10;
+			}
 		}
 
 		// 2. Heuristic Pattern Tier
@@ -222,7 +233,7 @@ ${tfMatchBlocks.join('\n\n')}
 						matchVariable,
 						selector,
 						operator: 'RegEx',
-						negationConditon: false,
+						negateCondition: false,
 						matchValue: [rawPattern],
 					},
 				],

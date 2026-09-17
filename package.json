@@ -8,6 +8,7 @@
     "esbuild": "^0.28.2",
     "fast-check": "^4.9.0",
     "typescript": "^7.0.2",
+    "vite-node": "^6.0.0",
     "vitest": "~4.1.11",
     "wrangler": "^4.130.0"
   },
@@ -17,6 +18,7 @@
   "scripts": {
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "bash scripts/e2e-test-wafs.sh",
+    "validate:aws:cfn": "vite-node scripts/validate-aws-cfn.mjs",
     "build": "npm run build --workspace=@waf-checker/core && npm run build --workspace=@waf-checker/cli",
     "dev:worker": "npm run dev --workspace=packages/worker"
   }
