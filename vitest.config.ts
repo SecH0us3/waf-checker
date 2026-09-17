@@ -5,6 +5,7 @@ export default defineConfig({
 		projects: [
 			'packages/core/vitest.config.mts',
 			'packages/worker/vitest.config.mts',
+			'packages/worker/vitest.ui.config.mts',
 			'packages/cli/vitest.config.mts'
 		]
 	}

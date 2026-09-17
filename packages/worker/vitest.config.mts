@@ -13,5 +13,8 @@ export default defineConfig({
 		})
 	],
 	test: {
+		// Runtime tests only. Static front-end asset checks run in a Node project
+		// (vitest.ui.config.mts) because they need node:fs, which the workers pool lacks.
+		include: ['test/**/*.{test,spec}.{ts,mts,js,mjs}'],
 	},
 });
