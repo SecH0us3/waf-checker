@@ -567,7 +567,7 @@ async function fetchResults() {
 							: 'WAF Bypass(es) Detected!';
 					}
 					if (vpSubtitle) {
-						vpSubtitle.textContent = 'Generate instant virtual patches for Cloudflare, AWS WAF, ModSecurity, and NGINX to mitigate these risks immediately.';
+						vpSubtitle.textContent = 'Generate virtual patches to mitigate these bypasses.';
 					}
 				} else {
 					vpCountBadge.textContent = misses.length;
@@ -575,7 +575,7 @@ async function fetchResults() {
 						vpTitle.textContent = 'Unprotected Attack Vectors (404/5xx) Detected!';
 					}
 					if (vpSubtitle) {
-						vpSubtitle.textContent = 'These attack requests reached your origin server without WAF interception. Generate perimeter rules to block them.';
+						vpSubtitle.textContent = 'These requests reached your origin — generate perimeter rules to block them.';
 					}
 				}
 				vpBanner.style.display = 'flex';
