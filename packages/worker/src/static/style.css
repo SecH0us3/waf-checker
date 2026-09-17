@@ -862,51 +862,6 @@ body[data-theme='dark'] .false-positive-indicator small {
 	color: #bfdbfe;
 }
 
-/* --- Normal Test Indicator --- */
-.normal-test-indicator {
-	background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-	border: 1px solid #fbbf24;
-	border-left: 4px solid #f59e0b;
-	padding: 1rem 1.25rem;
-	margin: 1rem 0;
-	border-radius: 0.75rem;
-	box-shadow: 0 2px 8px rgba(245, 158, 11, 0.1);
-}
-
-.normal-test-indicator strong {
-	color: #92400e;
-	font-size: 1.05em;
-	display: block;
-	margin-bottom: 0.5rem;
-}
-
-.normal-test-indicator small {
-	color: #b45309;
-	line-height: 1.5;
-	display: block;
-	margin-top: 0.5rem;
-}
-
-.normal-test-indicator small span {
-	display: block;
-	margin: 0.25rem 0;
-}
-
-body[data-theme='dark'] .normal-test-indicator {
-	background: linear-gradient(135deg, #451a03 0%, #78350f 100%);
-	border-color: #92400e;
-	border-left-color: #fbbf24;
-	box-shadow: 0 2px 12px rgba(251, 191, 36, 0.15);
-}
-
-body[data-theme='dark'] .normal-test-indicator strong {
-	color: #fde68a;
-}
-
-body[data-theme='dark'] .normal-test-indicator small {
-	color: #fbbf24;
-}
-
 /* --- Help icon --- */
 .help-icon {
 	cursor: pointer;

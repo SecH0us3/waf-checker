@@ -96,15 +96,13 @@ function renderReport(results, falsePositiveMode = false) {
       </small>
     </div>`;
 	} else {
-		html += `<div class="normal-test-indicator mb-3">
-      <strong>🛡️ Security Test Mode <span class="help-icon" onclick="toggleHelp('security-help')" title="What is Security Test?">ℹ️</span></strong>
-      <div id="security-help" class="help-content" style="display: none;">
-        <small><em>Security Test checks if your WAF properly blocks malicious attack payloads. This helps verify your application is protected against common web attacks.</em></small>
-      </div>
-      <small>
-        <span style="color: #dc3545">200 = WAF did not protect your application</span>
-        <span style="color: #198754">403 = WAF protected your application</span>
-      </small>
+		// Security Test Mode: keep the report header uncluttered. The explanation and
+		// the status-code legend now live in #securityTestModal, opened from a small
+		// button instead of an always-visible block.
+		html += `<div class="mb-3">
+      <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2 normal-test-info-btn" data-bs-toggle="modal" data-bs-target="#securityTestModal" title="What is Security Test?">
+        🛡️ Security Test Mode <span aria-hidden="true">ℹ️</span>
+      </button>
     </div>`;
 	}
 

@@ -607,6 +607,28 @@
 		</div>
 	</div>
 
+	<!-- Security Test Mode Info Modal -->
+	<div class="modal fade" id="securityTestModal" tabindex="-1">
+		<div class="modal-dialog modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title">🛡️ Security Test Mode</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+				</div>
+				<div class="modal-body">
+					<p class="small"><em>Security Test checks if your WAF properly blocks malicious attack payloads.
+							This helps verify your application is protected against common web attacks.</em></p>
+					<ul class="small list-unstyled mb-0">
+						<li><span style="color: #dc3545">●</span> <strong>200</strong> — WAF did not protect your
+							application</li>
+						<li><span style="color: #198754">●</span> <strong>403</strong> — WAF protected your application
+						</li>
+					</ul>
+				</div>
+			</div>
+		</div>
+	</div>
+
 	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 	<script src="main.js"></script>
 </body>
