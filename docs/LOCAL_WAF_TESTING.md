@@ -142,6 +142,51 @@ docker compose -f docker/docker-compose.e2e.yml down -v
 
 ---
 
+## ✅ Validating Cloud WAF Rules Offline (AWS / Azure)
+
+Cloud WAFs (AWS WAFv2, Azure Front Door) have no local engine, so generated rules
+cannot be behaviourally tested without deploying to the cloud. Two layers of
+offline checks guard rule *formation* instead:
+
+### Structural invariants (always in CI)
+
+`packages/core/test/virtual-patch-invariants.spec.ts` runs every generated rule
+through invariant checks across all inspection locations (query / body / header /
+uri) with no external dependencies. It enforces, among others:
+
+- **AWS** – a `ByteMatchStatement` that applies a `LOWERCASE` transform must use a
+  lowercase `SearchString` (otherwise AWS lowercases only the field and the rule
+  never matches); every `Body` field declares the required `OversizeHandling`;
+  bundle rule priorities are unique.
+- **Azure** – the ARM match-condition field is `negateCondition` (never the
+  documented typo `negationConditon`, see [Azure/azure-cli#31807](https://github.com/Azure/azure-cli/issues/31807)).
+
+```bash
+cd packages/core && npm test
+```
+
+### Official AWS validator (cfn-lint)
+
+The generated AWS rules can also be checked with AWS's own `cfn-lint`, fully
+offline and without credentials. `scripts/validate-aws-cfn.mjs` wraps them in an
+`AWS::WAFv2::RuleGroup` template (adjusting the one API→CloudFormation casing
+difference, `ARN`→`Arn`) and lints it:
+
+```bash
+# Install cfn-lint into an isolated venv (avoids clobbering system PyYAML)
+python3 -m venv .cfnenv && ./.cfnenv/bin/pip install cfn-lint
+
+# Validate (falls back to printing the template path if cfn-lint is absent)
+PATH="$PWD/.cfnenv/bin:$PATH" npm run validate:aws:cfn
+```
+
+> The native rules target the `aws wafv2` CLI/API, where the regex-pattern-set
+> reference field is `ARN`. CloudFormation spells the same field `Arn`; the
+> script applies only that rename, so a clean `cfn-lint` run confirms the rule
+> structure itself is valid.
+
+---
+
 ## 🛡️ OWASP Coraza Standalone Testing
 
 Coraza can be run as a lightweight Go reverse-proxy without Docker:

@@ -25,6 +25,12 @@ function getAzureMatchVariable(location: 'query' | 'body' | 'header' | 'uri') {
 
 /**
  * Generates Azure Front Door / Application Gateway WAF rules (JSON, Azure CLI, and Terraform).
+ *
+ * Note on the native JSON match-condition field name: the Azure Front Door ARM schema
+ * (Microsoft.Network/FrontDoorWebApplicationFirewallPolicies) uses `negateCondition`.
+ * The misspelling `negationConditon` that appears in some Azure REST reference docs is a
+ * documented typo (see Azure/azure-cli#31807) and is rejected by the real API, so it must
+ * not be emitted here.
  */
 export function generateAzurePatches(
 	bypasses: AuditResultItem[],
@@ -83,7 +89,7 @@ export function generateAzurePatches(
 					matchConditions.push({
 						matchVariable: 'RequestUri',
 						operator: 'EndsWith',
-						negationConditon: false,
+						negateCondition: false,
 						matchValue: exts,
 					});
 					tfMatchBlocks.push(`    match_conditions {
@@ -108,7 +114,7 @@ export function generateAzurePatches(
 					matchConditions.push({
 						matchVariable: 'RequestUri',
 						operator: 'RegEx',
-						negationConditon: false,
+						negateCondition: false,
 						matchValue: [vcsRegex],
 					});
 					tfMatchBlocks.push(`    match_conditions {
@@ -132,7 +138,7 @@ export function generateAzurePatches(
 					matchConditions.push({
 						matchVariable: 'RequestUri',
 						operator: 'EndsWith',
-						negationConditon: false,
+						negateCondition: false,
 						matchValue: files,
 					});
 					tfMatchBlocks.push(`    match_conditions {
@@ -156,7 +162,7 @@ export function generateAzurePatches(
 					matchVariable,
 					selector,
 					operator: 'Contains',
-					negationConditon: false,
+					negateCondition: false,
 					matchValue: tokens,
 				});
 				tfMatchBlocks.push(`    match_conditions {
@@ -222,7 +228,7 @@ ${tfMatchBlocks.join('\n\n')}
 						matchVariable,
 						selector,
 						operator: 'RegEx',
-						negationConditon: false,
+						negateCondition: false,
 						matchValue: [rawPattern],
 					},
 				],
