@@ -99,6 +99,20 @@ describe('AWS WAF rule-formation invariants', () => {
 		const priorities = arr.map((r: any) => r.Priority);
 		expect(new Set(priorities).size).toBe(priorities.length);
 	});
+
+	it('never emits a ByteMatchStatement with an empty SearchString', () => {
+		// A blank/whitespace-only payload must not produce an invalid empty match.
+		const blank: AuditResultItem[] = [
+			{ category: 'SQL Injection', method: 'GET', payload: '   ', status: 200, responseTime: 5 },
+		];
+		const blankReport = generateVirtualPatches(blank, { vendor: 'aws', tier: 'strict' });
+		for (const patch of blankReport.patches) {
+			const rule = JSON.parse(patch.nativeRule);
+			for (const bm of collect(rule.Statement, 'ByteMatchStatement')) {
+				expect(bm.SearchString.length).toBeGreaterThan(0);
+			}
+		}
+	});
 });
 
 describe('Azure WAF rule-formation invariants', () => {
@@ -123,6 +137,19 @@ describe('Azure WAF rule-formation invariants', () => {
 			const rule = JSON.parse(patch.nativeRule);
 			for (const mc of rule.matchConditions) {
 				expect(typeof mc.negateCondition).toBe('boolean');
+			}
+		}
+	});
+
+	it('never emits a match condition with an empty matchValue set', () => {
+		const blank: AuditResultItem[] = [
+			{ category: 'SQL Injection', method: 'GET', payload: '   ', status: 200, responseTime: 5 },
+		];
+		const blankReport = generateVirtualPatches(blank, { vendor: 'azure', tier: 'strict' });
+		for (const patch of blankReport.patches) {
+			const rule = JSON.parse(patch.nativeRule);
+			for (const mc of rule.matchConditions) {
+				expect(mc.matchValue.length).toBeGreaterThan(0);
 			}
 		}
 	});

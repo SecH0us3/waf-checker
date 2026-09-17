@@ -169,8 +169,9 @@ cd packages/core && npm test
 
 The generated AWS rules can also be checked with AWS's own `cfn-lint`, fully
 offline and without credentials. `scripts/validate-aws-cfn.mjs` wraps them in an
-`AWS::WAFv2::RuleGroup` template (adjusting the one API→CloudFormation casing
-difference, `ARN`→`Arn`) and lints it:
+`AWS::WAFv2::RuleGroup` template (renaming only the one API→CloudFormation key,
+`ARN`→`Arn`) and lints it. It runs on the repo's TypeScript runner (`vite-node`,
+a declared devDependency), so it works offline after `npm install`:
 
 ```bash
 # Install cfn-lint into an isolated venv (avoids clobbering system PyYAML)
@@ -182,8 +183,9 @@ PATH="$PWD/.cfnenv/bin:$PATH" npm run validate:aws:cfn
 
 > The native rules target the `aws wafv2` CLI/API, where the regex-pattern-set
 > reference field is `ARN`. CloudFormation spells the same field `Arn`; the
-> script applies only that rename, so a clean `cfn-lint` run confirms the rule
-> structure itself is valid.
+> script renames only that key, so a clean `cfn-lint` run confirms the rule
+> **structure** is valid. It does not compute WAF WCU capacity, so an oversized
+> rule group can still be rejected at deploy time.
 
 ---
 

@@ -69,14 +69,16 @@ export function generateAwsPatches(
 		const sanitizedCat = category.replace(/[^a-zA-Z0-9]/g, '');
 
 		// 1. Strict Hotfix Tier
-		if (options.tier !== 'heuristic') {
-			// The ByteMatchStatement below applies a LOWERCASE text transformation to the
-			// inspected field, but AWS WAF does NOT transform the SearchString. A search
-			// string containing any uppercase character would therefore never match the
-			// lowercased field, so the tokens must be lowercased to stay effective.
-			const tokens = [
-				...new Set(items.map((it) => sanitizeStrictToken(it.payload, category).toLowerCase())),
-			];
+		// The ByteMatchStatement below applies a LOWERCASE text transformation to the
+		// inspected field, but AWS WAF does NOT transform the SearchString. A search
+		// string containing any uppercase character would therefore never match the
+		// lowercased field, so the tokens must be lowercased to stay effective.
+		// Empty tokens (e.g. a blank/whitespace-only payload) are dropped, since AWS
+		// WAFv2 rejects a ByteMatchStatement with an empty SearchString.
+		const tokens = [
+			...new Set(items.map((it) => sanitizeStrictToken(it.payload, category).toLowerCase())),
+		].filter(Boolean);
+		if (options.tier !== 'heuristic' && tokens.length > 0) {
 			const byteStatements = tokens.map((tok) => ({
 				ByteMatchStatement: {
 					SearchString: tok,

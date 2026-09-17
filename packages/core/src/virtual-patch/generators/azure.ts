@@ -157,7 +157,7 @@ export function generateAzurePatches(
 						`    --values ${files.map((f) => `"${escapeDoubleQuotes(f)}"`).join(' ')}`
 					);
 				}
-			} else {
+			} else if (tokens.length > 0) {
 				matchConditions.push({
 					matchVariable,
 					selector,
@@ -183,15 +183,19 @@ export function generateAzurePatches(
 				);
 			}
 
-			const ruleObj = {
-				name: `VirtualPatch_${sanitizedCat}_Strict`,
-				priority: currentPriority,
-				ruleType: 'MatchRule',
-				action: azureAction,
-				matchConditions,
-			};
+			// Only emit a rule when at least one match condition survived (a
+			// blank/whitespace-only payload leaves matchConditions empty, and Azure
+			// rejects a custom rule with no conditions or an empty matchValue set).
+			if (matchConditions.length > 0) {
+				const ruleObj = {
+					name: `VirtualPatch_${sanitizedCat}_Strict`,
+					priority: currentPriority,
+					ruleType: 'MatchRule',
+					action: azureAction,
+					matchConditions,
+				};
 
-			const tfHcl = `custom_rules {
+				const tfHcl = `custom_rules {
   name      = "VirtualPatch_${sanitizedCat}_Strict"
   priority  = ${currentPriority}
   rule_type = "MatchRule"
@@ -200,17 +204,18 @@ export function generateAzurePatches(
 ${tfMatchBlocks.join('\n\n')}
 }`;
 
-			patches.push({
-				vendor: 'azure',
-				name: `Azure WAF: ${category} (Strict Hotfix)`,
-				category,
-				tier: 'strict',
-				nativeRule: JSON.stringify(ruleObj, null, 2),
-				terraformHcl: tfHcl,
-				azureCliCommand: cliCommands.join('\n'),
-				description: `Azure WAF custom rule matching ${tokens.length} verified ${category} bypass token(s)`,
-			});
-			currentPriority += 10;
+				patches.push({
+					vendor: 'azure',
+					name: `Azure WAF: ${category} (Strict Hotfix)`,
+					category,
+					tier: 'strict',
+					nativeRule: JSON.stringify(ruleObj, null, 2),
+					terraformHcl: tfHcl,
+					azureCliCommand: cliCommands.join('\n'),
+					description: `Azure WAF custom rule matching ${tokens.length} verified ${category} bypass token(s)`,
+				});
+				currentPriority += 10;
+			}
 		}
 
 		// 2. Heuristic Pattern Tier
