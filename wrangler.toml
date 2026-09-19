@@ -6,5 +6,17 @@ compatibility_date = "2024-03-29"
 directory = "packages/worker/src/static"
 binding = "ASSETS"
 
+[[send_email]]
+name = "SEND_EMAIL"
+allowed_sender_addresses = ["waf@secmy.app"]
+
+[[kv_namespaces]]
+binding = "MONITOR_KV"
+id = "MONITOR_KV"
+preview_id = "MONITOR_KV_PREVIEW"
+
+[triggers]
+crons = ["0 3 * * *"]
+
 [build]
 command = "npm run build"
