@@ -12,8 +12,8 @@ allowed_sender_addresses = ["waf@secmy.app"]
 
 [[kv_namespaces]]
 binding = "MONITOR_KV"
-id = "MONITOR_KV"
-preview_id = "MONITOR_KV_PREVIEW"
+id = "1e4af46d70ef4d38a080421b1103b0c7"
+preview_id = "8b7b2a6c087a4b4195f5558134a29c85"
 
 [triggers]
 crons = ["0 3 * * *"]
