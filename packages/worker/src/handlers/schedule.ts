@@ -1,0 +1,401 @@
+import { isValidTargetUrl, WAFDetector } from '@waf-checker/core';
+import { isSelfScan } from '../api';
+import {
+	WorkerEnv,
+	PendingVerificationRecord,
+	SubscriptionRecord,
+	EmailOptions,
+} from '../types/monitor';
+import {
+	encryptPayload,
+	decryptPayload,
+	computeBlindIndex,
+	generateSecureToken,
+} from '../utils/crypto';
+import {
+	determineOwnershipMode,
+	verifyHttpOwnership,
+	extractHost,
+} from '../services/ownership';
+import {
+	sendNotificationEmail,
+	buildVerificationEmail,
+	buildAlertEmail,
+} from '../services/email';
+import { computeFingerprint, diffFingerprints } from '../services/monitor';
+import { checkRateLimit } from '../services/rate-limiter';
+
+const DEFAULT_SECRET = 'default-dev-secret-key-32-chars-long';
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+async function verifyTurnstile(token: string, secretKey: string, remoteIp?: string): Promise<boolean> {
+	try {
+		const formData = new FormData();
+		formData.append('secret', secretKey);
+		formData.append('response', token);
+		if (remoteIp) formData.append('remoteip', remoteIp);
+
+		const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+			method: 'POST',
+			body: formData,
+		});
+		const outcome: any = await res.json();
+		return Boolean(outcome.success);
+	} catch {
+		return false;
+	}
+}
+
+export async function handleScheduleSubscribe(request: Request, env: WorkerEnv): Promise<Response> {
+	if (request.method !== 'POST') {
+		return new Response(JSON.stringify({ error: 'Method not allowed. Use POST.' }), {
+			status: 405,
+			headers: { 'content-type': 'application/json' },
+		});
+	}
+
+	let body: any;
+	try {
+		body = await request.json();
+	} catch {
+		return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+			status: 400,
+			headers: { 'content-type': 'application/json' },
+		});
+	}
+
+	const email = typeof body.email === 'string' ? body.email.trim() : '';
+	const targetUrl = typeof body.targetUrl === 'string' ? body.targetUrl.trim() : '';
+	const turnstileToken = typeof body.turnstileToken === 'string' ? body.turnstileToken.trim() : '';
+
+	if (!email || !EMAIL_REGEX.test(email)) {
+		return new Response(JSON.stringify({ error: 'Invalid email address' }), {
+			status: 400,
+			headers: { 'content-type': 'application/json' },
+		});
+	}
+
+	if (!targetUrl || !isValidTargetUrl(targetUrl)) {
+		return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), {
+			status: 400,
+			headers: { 'content-type': 'application/json' },
+		});
+	}
+
+	if (isSelfScan(targetUrl)) {
+		return new Response(JSON.stringify({ error: 'self-scan refused', code: 'SELF_SCAN_REFUSED' }), {
+			status: 422,
+			headers: { 'content-type': 'application/json' },
+		});
+	}
+
+	// Verify Turnstile captcha if configured
+	const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
+	if (env.TURNSTILE_SECRET_KEY) {
+		if (!turnstileToken) {
+			return new Response(JSON.stringify({ error: 'Captcha verification required' }), {
+				status: 403,
+				headers: { 'content-type': 'application/json' },
+			});
+		}
+		const validCaptcha = await verifyTurnstile(turnstileToken, env.TURNSTILE_SECRET_KEY, clientIp);
+		if (!validCaptcha) {
+			return new Response(JSON.stringify({ error: 'Captcha validation failed' }), {
+				status: 403,
+				headers: { 'content-type': 'application/json' },
+			});
+		}
+	}
+
+	// Rate limiting: max 5 subscription attempts per IP per hour
+	const rl = await checkRateLimit(env.MONITOR_KV, `rl:sub:${clientIp}`, 5, 3600);
+	if (!rl.allowed) {
+		return new Response(
+			JSON.stringify({ error: 'Too many subscription requests. Please try again later.' }),
+			{ status: 429, headers: { 'content-type': 'application/json' } }
+		);
+	}
+
+	const mode = determineOwnershipMode(email, targetUrl);
+	const verifyToken = generateSecureToken(24);
+	const ownershipToken = mode === 'external' ? `secmy-${generateSecureToken(16)}` : undefined;
+
+	const secretKey = env.EMAIL_ENCRYPTION_KEY || DEFAULT_SECRET;
+	const pendingRecord: PendingVerificationRecord = {
+		email,
+		targetUrl,
+		mode,
+		ownershipToken,
+		createdAt: Date.now(),
+	};
+
+	const encrypted = await encryptPayload(pendingRecord, secretKey);
+
+	if (env.MONITOR_KV) {
+		// Pending verification expires in 24 hours (86400s)
+		await env.MONITOR_KV.put(`pending:${verifyToken}`, encrypted, { expirationTtl: 86400 });
+	}
+
+	const origin = new URL(request.url).origin;
+	const verifyUrl = `${origin}/api/schedule/verify?token=${verifyToken}`;
+
+	const emailContent = buildVerificationEmail({
+		targetUrl,
+		verifyUrl,
+		mode,
+		ownershipToken,
+	});
+
+	await sendNotificationEmail(env, {
+		to: email,
+		subject: emailContent.subject,
+		html: emailContent.html,
+		text: emailContent.text,
+	});
+
+	return new Response(
+		JSON.stringify({
+			success: true,
+			message: 'Verification email dispatched. Please confirm to activate monitoring.',
+			mode,
+			ownershipChallengeFile:
+				mode === 'external' ? `${targetUrl}/.well-known/secmy-check.txt` : undefined,
+		}),
+		{ status: 200, headers: { 'content-type': 'application/json' } }
+	);
+}
+
+export async function handleScheduleVerify(request: Request, env: WorkerEnv): Promise<Response> {
+	const url = new URL(request.url);
+	const token = url.searchParams.get('token');
+
+	if (!token) {
+		return new Response(JSON.stringify({ error: 'Missing token parameter' }), {
+			status: 400,
+			headers: { 'content-type': 'application/json' },
+		});
+	}
+
+	if (!env.MONITOR_KV) {
+		return new Response(JSON.stringify({ error: 'Storage KV not configured' }), {
+			status: 500,
+			headers: { 'content-type': 'application/json' },
+		});
+	}
+
+	const encrypted = await env.MONITOR_KV.get(`pending:${token}`);
+	if (!encrypted) {
+		return new Response(JSON.stringify({ error: 'Invalid or expired verification token' }), {
+			status: 404,
+			headers: { 'content-type': 'application/json' },
+		});
+	}
+
+	const secretKey = env.EMAIL_ENCRYPTION_KEY || DEFAULT_SECRET;
+	let pending: PendingVerificationRecord;
+	try {
+		pending = await decryptPayload<PendingVerificationRecord>(encrypted, secretKey);
+	} catch {
+		return new Response(JSON.stringify({ error: 'Decryption failed for verification record' }), {
+			status: 500,
+			headers: { 'content-type': 'application/json' },
+		});
+	}
+
+	// If external mode, verify HTTP challenge file
+	if (pending.mode === 'external') {
+		const verified = await verifyHttpOwnership(pending.targetUrl, pending.ownershipToken || '');
+		if (!verified) {
+			return new Response(
+				JSON.stringify({
+					error: 'Domain ownership verification failed.',
+					instruction: `Please create file ${pending.targetUrl}/.well-known/secmy-check.txt with token: ${pending.ownershipToken}`,
+				}),
+				{ status: 400, headers: { 'content-type': 'application/json' } }
+			);
+		}
+	}
+
+	// Compute initial baseline
+	const baseline = computeFingerprint({
+		wafDetected: 'Verified Target',
+		summary: { blocked: 0, passed: 0, total: 0 },
+	});
+
+	const manageToken = generateSecureToken(24);
+	const activeRecord: SubscriptionRecord = {
+		email: pending.email,
+		targetUrl: pending.targetUrl,
+		status: 'ACTIVE',
+		manageToken,
+		baselineFingerprint: baseline,
+		createdAt: Date.now(),
+		lastScannedAt: Date.now(),
+	};
+
+	const encryptedActive = await encryptPayload(activeRecord, secretKey);
+	const blindIndex = await computeBlindIndex(
+		`${pending.email}:${extractHost(pending.targetUrl)}`,
+		secretKey
+	);
+
+	await env.MONITOR_KV.put(`active:${manageToken}`, encryptedActive);
+	await env.MONITOR_KV.put(`blind:${blindIndex}`, manageToken);
+	await env.MONITOR_KV.delete(`pending:${token}`);
+
+	const origin = new URL(request.url).origin;
+	const unsubscribeUrl = `${origin}/api/schedule/unsubscribe?token=${manageToken}`;
+
+	const welcomeEmail = buildAlertEmail({
+		targetUrl: pending.targetUrl,
+		isAlert: false,
+		diffDetails: ['Мониторинг успешно активирован. Ежедневные проверки запущены.'],
+		detectedWAF: baseline.wafDetected,
+		unsubscribeUrl,
+		manageUrl: origin,
+	});
+
+	await sendNotificationEmail(env, {
+		to: pending.email,
+		subject: welcomeEmail.subject,
+		html: welcomeEmail.html,
+		text: welcomeEmail.text,
+		headers: {
+			'List-Unsubscribe': `<${unsubscribeUrl}>`,
+			'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+		},
+	});
+
+	const acceptsHtml = request.headers.get('accept')?.includes('text/html');
+	if (acceptsHtml) {
+		return new Response(
+			`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;">
+				<h2 style="color:#00875a;">Мониторинг безопасности активирован!</h2>
+				<p>Ресурс <strong>${pending.targetUrl}</strong> добавлен в ежедневный аудит.</p>
+				<p><a href="${origin}">Перейти на secmy.app</a></p>
+			</body></html>`,
+			{ status: 200, headers: { 'content-type': 'text/html; charset=UTF-8' } }
+		);
+	}
+
+	return new Response(
+		JSON.stringify({
+			success: true,
+			message: 'Monitoring activated successfully',
+			targetUrl: pending.targetUrl,
+			manageToken,
+		}),
+		{ status: 200, headers: { 'content-type': 'application/json' } }
+	);
+}
+
+export async function handleScheduleUnsubscribe(request: Request, env: WorkerEnv): Promise<Response> {
+	const url = new URL(request.url);
+	let token = url.searchParams.get('token');
+
+	if (!token && request.method === 'POST') {
+		try {
+			const body: any = await request.clone().json();
+			if (typeof body?.token === 'string') token = body.token;
+		} catch {}
+	}
+
+	if (!token) {
+		return new Response(JSON.stringify({ error: 'Missing token parameter' }), {
+			status: 400,
+			headers: { 'content-type': 'application/json' },
+		});
+	}
+
+	if (env.MONITOR_KV) {
+		const existing = await env.MONITOR_KV.get(`active:${token}`);
+		if (existing) {
+			await env.MONITOR_KV.delete(`active:${token}`);
+		}
+	}
+
+	const acceptsHtml = request.headers.get('accept')?.includes('text/html');
+	if (acceptsHtml) {
+		return new Response(
+			`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;">
+				<h2>Вы успешно отписались</h2>
+				<p>Уведомления о мониторинге больше не будут приходить на этот адрес.</p>
+			</body></html>`,
+			{ status: 200, headers: { 'content-type': 'text/html; charset=UTF-8' } }
+		);
+	}
+
+	return new Response(JSON.stringify({ success: true, message: 'Successfully unsubscribed' }), {
+		status: 200,
+		headers: { 'content-type': 'application/json' },
+	});
+}
+
+export async function handleScheduledCron(
+	env: WorkerEnv,
+	scanFn?: (targetUrl: string) => Promise<{ wafDetected?: string; summary?: { blocked: number; passed: number; total: number } }>
+): Promise<void> {
+	if (!env.MONITOR_KV) return;
+	const secret = env.EMAIL_ENCRYPTION_KEY || DEFAULT_SECRET;
+
+	const listRes = await env.MONITOR_KV.list({ prefix: 'active:' });
+	for (const key of listRes.keys) {
+		try {
+			const encrypted = await env.MONITOR_KV.get(key.name);
+			if (!encrypted) continue;
+
+			const record = await decryptPayload<SubscriptionRecord>(encrypted, secret);
+			if (record.status !== 'ACTIVE') continue;
+
+			// Enforce at most 1 scan per 23h
+			if (record.lastScannedAt && Date.now() - record.lastScannedAt < 23 * 3600 * 1000) {
+				continue;
+			}
+
+			let scanResult: { wafDetected?: string; summary?: { blocked: number; passed: number; total: number } };
+			if (scanFn) {
+				scanResult = await scanFn(record.targetUrl);
+			} else {
+				const detector = new WAFDetector();
+				const detection = await detector.detect(record.targetUrl);
+				scanResult = {
+					wafDetected: detection.detectedWAF || 'Не обнаружен',
+					summary: { blocked: 50, passed: 0, total: 50 },
+				};
+			}
+
+			const newFp = computeFingerprint(scanResult);
+			if (record.baselineFingerprint) {
+				const diff = diffFingerprints(record.baselineFingerprint, newFp);
+				if (diff.isAlert) {
+					const unsubscribeUrl = `https://secmy.app/api/schedule/unsubscribe?token=${record.manageToken}`;
+					const email = buildAlertEmail({
+						targetUrl: record.targetUrl,
+						isAlert: true,
+						diffDetails: diff.details,
+						detectedWAF: newFp.wafDetected,
+						unsubscribeUrl,
+						manageUrl: 'https://secmy.app',
+					});
+					await sendNotificationEmail(env, {
+						to: record.email,
+						subject: email.subject,
+						html: email.html,
+						text: email.text,
+						headers: {
+							'List-Unsubscribe': `<${unsubscribeUrl}>`,
+							'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+						},
+					});
+				}
+			}
+
+			record.baselineFingerprint = newFp;
+			record.lastScannedAt = Date.now();
+			const updatedEncrypted = await encryptPayload(record, secret);
+			await env.MONITOR_KV.put(key.name, updatedEncrypted);
+		} catch (err) {
+			console.error(`Error in scheduled scan for key ${key.name}:`, err);
+		}
+	}
+}
