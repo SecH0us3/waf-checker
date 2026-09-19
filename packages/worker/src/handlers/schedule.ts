@@ -116,11 +116,32 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 		);
 	}
 
+	const secretKey = env.EMAIL_ENCRYPTION_KEY || DEFAULT_SECRET;
+	const host = extractHost(targetUrl);
+
+	// Check if already actively subscribed
+	if (env.MONITOR_KV && host) {
+		const blindIndex = await computeBlindIndex(`${email}:${host}`, secretKey);
+		const existingManageToken = await env.MONITOR_KV.get(`blind:${blindIndex}`);
+		if (existingManageToken) {
+			const existingActive = await env.MONITOR_KV.get(`active:${existingManageToken}`);
+			if (existingActive) {
+				return new Response(
+					JSON.stringify({
+						success: true,
+						message: 'This domain is already actively monitored with this email.',
+						alreadySubscribed: true,
+					}),
+					{ status: 200, headers: { 'content-type': 'application/json' } }
+				);
+			}
+		}
+	}
+
 	const mode = determineOwnershipMode(email, targetUrl);
 	const verifyToken = generateSecureToken(24);
 	const ownershipToken = mode === 'external' ? `secmy-${generateSecureToken(16)}` : undefined;
 
-	const secretKey = env.EMAIL_ENCRYPTION_KEY || DEFAULT_SECRET;
 	const pendingRecord: PendingVerificationRecord = {
 		email,
 		targetUrl,
@@ -310,6 +331,15 @@ export async function handleScheduleUnsubscribe(request: Request, env: WorkerEnv
 	if (env.MONITOR_KV) {
 		const existing = await env.MONITOR_KV.get(`active:${token}`);
 		if (existing) {
+			try {
+				const secretKey = env.EMAIL_ENCRYPTION_KEY || DEFAULT_SECRET;
+				const record = await decryptPayload<SubscriptionRecord>(existing, secretKey);
+				const host = extractHost(record.targetUrl);
+				if (host) {
+					const blindIndex = await computeBlindIndex(`${record.email}:${host}`, secretKey);
+					await env.MONITOR_KV.delete(`blind:${blindIndex}`);
+				}
+			} catch {}
 			await env.MONITOR_KV.delete(`active:${token}`);
 		}
 	}

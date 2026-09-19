@@ -298,6 +298,10 @@ export default {
 		return new Response('Not found', { status: 404 });
 	},
 	async scheduled(event: ScheduledEvent, env: WorkerEnv, ctx?: ExecutionContext): Promise<void> {
-		await handleScheduledCron(env);
+		if (ctx && typeof ctx.waitUntil === 'function') {
+			ctx.waitUntil(handleScheduledCron(env));
+		} else {
+			await handleScheduledCron(env);
+		}
 	},
 };

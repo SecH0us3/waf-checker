@@ -148,6 +148,34 @@ describe('Schedule Handlers & Cron Execution', () => {
 		const unsubRes = await handleScheduleUnsubscribe(unsubReq, env);
 		expect(unsubRes.status).toBe(200);
 		expect(mockKV.store.has(activeKey)).toBe(false);
+
+		// Blind index should also be cleaned up
+		const blindKeys = Array.from(mockKV.store.keys()).filter((k) => k.startsWith('blind:'));
+		expect(blindKeys.length).toBe(0);
+	});
+
+	it('returns alreadySubscribed when attempting duplicate subscription for active site', async () => {
+		// Subscribe and activate
+		const subReq = new Request('https://secmy.app/api/schedule/subscribe', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email: 'security@example.com', targetUrl: 'https://example.com' }),
+		});
+		await handleScheduleSubscribe(subReq, env);
+		const pendingKey = Array.from(mockKV.store.keys()).find((k) => k.startsWith('pending:'))!;
+		const token = pendingKey.replace('pending:', '');
+		await handleScheduleVerify(new Request(`https://secmy.app/api/schedule/verify?token=${token}`), env);
+
+		// Attempt subscribe again with same email and target
+		const dupReq = new Request('https://secmy.app/api/schedule/subscribe', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email: 'security@example.com', targetUrl: 'https://example.com' }),
+		});
+		const dupRes = await handleScheduleSubscribe(dupReq, env);
+		expect(dupRes.status).toBe(200);
+		const json = (await dupRes.json()) as any;
+		expect(json.alreadySubscribed).toBe(true);
 	});
 
 	it('cron detects degradation diff and sends alert email', async () => {
