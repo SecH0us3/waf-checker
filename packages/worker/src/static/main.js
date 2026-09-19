@@ -1,3 +1,23 @@
+const safeStorage = {
+	getItem(key) {
+		try {
+			return localStorage.getItem(key);
+		} catch {
+			return null;
+		}
+	},
+	setItem(key, value) {
+		try {
+			localStorage.setItem(key, value);
+		} catch {}
+	},
+	removeItem(key) {
+		try {
+			localStorage.removeItem(key);
+		} catch {}
+	},
+};
+
 function escapeHtml(str) {
 	const div = document.createElement('div');
 	div.textContent = str;
@@ -240,6 +260,10 @@ const PAYLOAD_CATEGORIES = [
 function renderCategoryCheckboxes() {
 	const container = document.getElementById('categoryCheckboxes');
 	if (!container) return;
+	const existingCheckboxes = container.querySelectorAll ? container.querySelectorAll('input[type=checkbox]') : [];
+	if (existingCheckboxes.length === PAYLOAD_CATEGORIES.length) {
+		return;
+	}
 	container.innerHTML = '';
 	const defaultChecked = ['SQL Injection', 'XSS'];
 	PAYLOAD_CATEGORIES.forEach((cat, idx) => {
@@ -315,7 +339,7 @@ function toggleMoreSettings() {
 		}, 300);
 
 		button.innerHTML = '⚙️';
-		localStorage.setItem('wafchecker_moreSettingsExpanded', 'false');
+		safeStorage.setItem('wafchecker_moreSettingsExpanded', 'false');
 	} else {
 		// Start opening animation
 		panel.style.display = '';
@@ -334,13 +358,13 @@ function toggleMoreSettings() {
 		}, 300);
 
 		button.innerHTML = '⚙️';
-		localStorage.setItem('wafchecker_moreSettingsExpanded', 'true');
+		safeStorage.setItem('wafchecker_moreSettingsExpanded', 'true');
 	}
 }
 
 // Update description text based on false positive test mode
 function updateDescriptionText() {
-	const description = document.querySelector('.description-waf-check');
+	const description = typeof document !== 'undefined' && document.querySelector ? document.querySelector('.description-waf-check') : null;
 	if (description) {
 		description.innerHTML = `This project helps you check how well your Web Application Firewall (WAF) protects your product against common web attacks. You can also run audits from the command line using: <code>node packages/cli/dist/index.js check &lt;url&gt;</code>`;
 	}
@@ -429,33 +453,33 @@ async function fetchResults() {
 		.filter((cb) => cb.checked)
 		.map((cb) => cb.value);
 	// --- Сохраняем в localStorage ---
-	localStorage.setItem('wafchecker_url', url);
-	localStorage.setItem('wafchecker_methods', JSON.stringify(selectedMethods));
-	localStorage.setItem('wafchecker_categories', JSON.stringify(selectedCategories));
-	localStorage.setItem('wafchecker_followRedirect', followRedirect ? '1' : '0');
-	localStorage.setItem('wafchecker_falsePositiveTest', falsePositiveTest ? '1' : '0');
-	localStorage.setItem('wafchecker_caseSensitiveTest', caseSensitiveTest ? '1' : '0');
-	localStorage.setItem('wafchecker_enhancedPayloads', enhancedPayloads ? '1' : '0');
-	localStorage.setItem('wafchecker_useAdvancedPayloads', useAdvancedPayloads ? '1' : '0');
-	localStorage.setItem('wafchecker_autoDetectWAF', autoDetectWAF ? '1' : '0');
-	localStorage.setItem('wafchecker_useEncodingVariations', useEncodingVariations ? '1' : '0');
-	localStorage.setItem('wafchecker_httpManipulation', httpManipulation ? '1' : '0');
-	localStorage.setItem('wafchecker_enablePadding', enablePadding ? '1' : '0');
-	localStorage.setItem('wafchecker_paddingSize', paddingSize);
-	localStorage.setItem('wafchecker_spoofUserAgent', spoofUserAgent ? '1' : '0');
+	safeStorage.setItem('wafchecker_url', url);
+	safeStorage.setItem('wafchecker_methods', JSON.stringify(selectedMethods));
+	safeStorage.setItem('wafchecker_categories', JSON.stringify(selectedCategories));
+	safeStorage.setItem('wafchecker_followRedirect', followRedirect ? '1' : '0');
+	safeStorage.setItem('wafchecker_falsePositiveTest', falsePositiveTest ? '1' : '0');
+	safeStorage.setItem('wafchecker_caseSensitiveTest', caseSensitiveTest ? '1' : '0');
+	safeStorage.setItem('wafchecker_enhancedPayloads', enhancedPayloads ? '1' : '0');
+	safeStorage.setItem('wafchecker_useAdvancedPayloads', useAdvancedPayloads ? '1' : '0');
+	safeStorage.setItem('wafchecker_autoDetectWAF', autoDetectWAF ? '1' : '0');
+	safeStorage.setItem('wafchecker_useEncodingVariations', useEncodingVariations ? '1' : '0');
+	safeStorage.setItem('wafchecker_httpManipulation', httpManipulation ? '1' : '0');
+	safeStorage.setItem('wafchecker_enablePadding', enablePadding ? '1' : '0');
+	safeStorage.setItem('wafchecker_paddingSize', paddingSize);
+	safeStorage.setItem('wafchecker_spoofUserAgent', spoofUserAgent ? '1' : '0');
 	// --- Получаем шаблон и заголовки ---\n
 	let payloadTemplate = '';
 	const templateEl = document.getElementById('payloadTemplate');
 	if (templateEl) {
 		payloadTemplate = templateEl.value;
-		localStorage.setItem('wafchecker_payloadTemplate', payloadTemplate);
+		safeStorage.setItem('wafchecker_payloadTemplate', payloadTemplate);
 	}
 
 	let customHeaders = '';
 	const headersEl = document.getElementById('customHeaders');
 	if (headersEl) {
 		customHeaders = headersEl.value;
-		localStorage.setItem('wafchecker_customHeaders', customHeaders);
+		safeStorage.setItem('wafchecker_customHeaders', customHeaders);
 	}
 	let page = 0;
 	let allResults = [];
@@ -1153,13 +1177,13 @@ function downloadVpCode() {
 
 function restoreStateFromLocalStorage() {
 	// URL
-	const url = localStorage.getItem('wafchecker_url');
+	const url = safeStorage.getItem('wafchecker_url');
 	if (url) {
 		const urlInput = document.getElementById('url');
 		if (urlInput) urlInput.value = url;
 	}
 	// Methods
-	const methods = localStorage.getItem('wafchecker_methods');
+	const methods = safeStorage.getItem('wafchecker_methods');
 	if (methods) {
 		try {
 			const arr = JSON.parse(methods);
@@ -1170,14 +1194,14 @@ function restoreStateFromLocalStorage() {
 		} catch { }
 	}
 	// Follow redirect
-	const followRedirect = localStorage.getItem('wafchecker_followRedirect');
+	const followRedirect = safeStorage.getItem('wafchecker_followRedirect');
 	if (followRedirect !== null) {
 		const el = document.getElementById('followRedirect');
 		if (el) el.checked = !!parseInt(followRedirect, 10);
 	}
 
 	// False positive test
-	const falsePositiveTest = localStorage.getItem('wafchecker_falsePositiveTest');
+	const falsePositiveTest = safeStorage.getItem('wafchecker_falsePositiveTest');
 	if (falsePositiveTest !== null) {
 		const el = document.getElementById('falsePositiveTest');
 		if (el) {
@@ -1186,7 +1210,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Case sensitive test
-	const caseSensitiveTest = localStorage.getItem('wafchecker_caseSensitiveTest');
+	const caseSensitiveTest = safeStorage.getItem('wafchecker_caseSensitiveTest');
 	if (caseSensitiveTest !== null) {
 		const el = document.getElementById('caseSensitiveTest');
 		if (el) {
@@ -1195,7 +1219,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Enhanced payloads
-	const enhancedPayloads = localStorage.getItem('wafchecker_enhancedPayloads');
+	const enhancedPayloads = safeStorage.getItem('wafchecker_enhancedPayloads');
 	if (enhancedPayloads !== null) {
 		const el = document.getElementById('enhancedPayloads');
 		if (el) {
@@ -1204,7 +1228,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Use advanced WAF bypass payloads
-	const useAdvancedPayloads = localStorage.getItem('wafchecker_useAdvancedPayloads');
+	const useAdvancedPayloads = safeStorage.getItem('wafchecker_useAdvancedPayloads');
 	if (useAdvancedPayloads !== null) {
 		const el = document.getElementById('useAdvancedPayloadsCheckbox');
 		if (el) {
@@ -1213,7 +1237,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Auto detect WAF
-	const autoDetectWAF = localStorage.getItem('wafchecker_autoDetectWAF');
+	const autoDetectWAF = safeStorage.getItem('wafchecker_autoDetectWAF');
 	if (autoDetectWAF !== null) {
 		const el = document.getElementById('autoDetectWAF');
 		if (el) {
@@ -1222,7 +1246,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Use encoding variations
-	const useEncodingVariations = localStorage.getItem('wafchecker_useEncodingVariations');
+	const useEncodingVariations = safeStorage.getItem('wafchecker_useEncodingVariations');
 	if (useEncodingVariations !== null) {
 		const el = document.getElementById('useEncodingVariations');
 		if (el) {
@@ -1231,7 +1255,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// HTTP Manipulation
-	const httpManipulation = localStorage.getItem('wafchecker_httpManipulation');
+	const httpManipulation = safeStorage.getItem('wafchecker_httpManipulation');
 	if (httpManipulation !== null) {
 		const el = document.getElementById('httpManipulation');
 		if (el) {
@@ -1240,7 +1264,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Buffer Padding Evasion
-	const enablePadding = localStorage.getItem('wafchecker_enablePadding');
+	const enablePadding = safeStorage.getItem('wafchecker_enablePadding');
 	if (enablePadding !== null) {
 		const el = document.getElementById('enablePadding');
 		if (el) {
@@ -1248,7 +1272,7 @@ function restoreStateFromLocalStorage() {
 			togglePaddingSizeSelect();
 		}
 	}
-	const paddingSize = localStorage.getItem('wafchecker_paddingSize');
+	const paddingSize = safeStorage.getItem('wafchecker_paddingSize');
 	if (paddingSize !== null) {
 		const el = document.getElementById('paddingSizeSelect');
 		if (el) {
@@ -1257,7 +1281,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Legit User-Agent bypass test (defaults to on when never set)
-	const spoofUserAgent = localStorage.getItem('wafchecker_spoofUserAgent');
+	const spoofUserAgent = safeStorage.getItem('wafchecker_spoofUserAgent');
 	if (spoofUserAgent !== null) {
 		const el = document.getElementById('spoofUserAgent');
 		if (el) {
@@ -1266,7 +1290,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Categories
-	const categories = localStorage.getItem('wafchecker_categories');
+	const categories = safeStorage.getItem('wafchecker_categories');
 	if (categories) {
 		try {
 			const arr = JSON.parse(categories);
@@ -1277,14 +1301,14 @@ function restoreStateFromLocalStorage() {
 		} catch { }
 	}
 	// Payload template
-	const payloadTemplate = localStorage.getItem('wafchecker_payloadTemplate');
+	const payloadTemplate = safeStorage.getItem('wafchecker_payloadTemplate');
 	if (payloadTemplate) {
 		const templateEl = document.getElementById('payloadTemplate');
 		if (templateEl) {
 			// Auto-fix legacy placeholder {{$$}} to {PAYLOAD}
 			if (payloadTemplate.includes('{{$$}}')) {
 				templateEl.value = payloadTemplate.replace(/\{\{\$\$\}\}/g, '{PAYLOAD}');
-				localStorage.setItem('wafchecker_payloadTemplate', templateEl.value);
+				safeStorage.setItem('wafchecker_payloadTemplate', templateEl.value);
 			} else {
 				templateEl.value = payloadTemplate;
 			}
@@ -1292,14 +1316,14 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Custom headers
-	const customHeaders = localStorage.getItem('wafchecker_customHeaders');
+	const customHeaders = safeStorage.getItem('wafchecker_customHeaders');
 	if (customHeaders) {
 		const headersEl = document.getElementById('customHeaders');
 		if (headersEl) headersEl.value = customHeaders;
 	}
 
 	// More Settings panel state
-	const moreSettingsExpanded = localStorage.getItem('wafchecker_moreSettingsExpanded');
+	const moreSettingsExpanded = safeStorage.getItem('wafchecker_moreSettingsExpanded');
 	if (moreSettingsExpanded === 'true') {
 		const panel = document.getElementById('moreSettingsPanel');
 		const button = document.getElementById('moreSettingsToggle');
@@ -1315,27 +1339,34 @@ function restoreStateFromLocalStorage() {
 
 // Theme logic
 function setTheme(theme) {
-	document.body.setAttribute('data-theme', theme);
-	localStorage.setItem('theme', theme);
+	if (document.body) {
+		document.body.setAttribute('data-theme', theme);
+	}
+	safeStorage.setItem('theme', theme);
 	// Use unicode sun/moon for theme toggle
-	document.getElementById('themeToggle').textContent = theme === 'dark' ? '\u2600' : '\u263E';
+	const themeToggle = document.getElementById('themeToggle');
+	if (themeToggle) {
+		themeToggle.textContent = theme === 'dark' ? '\u2600' : '\u263E';
+	}
 	// Adjust subtitle color for dark/light
 	const subtitle = document.getElementById('subtitle');
 	if (subtitle) {
-		if (theme === 'dark') {
-			subtitle.style.color = '#bfc6ce';
-		} else {
-			subtitle.style.color = '#6c757d';
-		}
+		subtitle.style.color = theme === 'dark' ? '#bfc6ce' : '#6c757d';
 	}
 	// Adjust input placeholder color for dark/light
 	const urlInput = document.getElementById('url');
-	urlInput.classList.toggle('dark-placeholder', theme === 'dark');
+	if (urlInput) {
+		urlInput.classList.toggle('dark-placeholder', theme === 'dark');
+	}
 }
 function getPreferredTheme() {
-	const stored = localStorage.getItem('theme');
+	const stored = safeStorage.getItem('theme');
 	if (stored) return stored;
-	return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+	try {
+		return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+	} catch {
+		return 'light';
+	}
 }
 
 // WAF Detection functionality
@@ -1607,11 +1638,18 @@ function displayHTTPManipulationResults(data) {
 
 // Initialize application
 function initApp() {
-	setTheme(getPreferredTheme());
-	document.getElementById('themeToggle').addEventListener('click', function () {
-		const current = document.body.getAttribute('data-theme') || getPreferredTheme();
-		setTheme(current === 'dark' ? 'light' : 'dark');
-	});
+	try {
+		setTheme(getPreferredTheme());
+	} catch (e) {
+		console.warn('Failed to set theme:', e);
+	}
+	const themeToggle = document.getElementById('themeToggle');
+	if (themeToggle) {
+		themeToggle.addEventListener('click', function () {
+			const current = (document.body && document.body.getAttribute('data-theme')) || getPreferredTheme();
+			setTheme(current === 'dark' ? 'light' : 'dark');
+		});
+	}
 	renderCategoryCheckboxes();
 	// --- Кнопки select all/deselect all ---
 	const selectAllBtn = document.getElementById('selectAllCategoriesBtn');
@@ -1692,7 +1730,13 @@ function initApp() {
 }
 
 // Initialize the application when DOM is loaded
-document.addEventListener('DOMContentLoaded', initApp);
+if (typeof document !== 'undefined') {
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', initApp);
+	} else if (document.readyState === 'interactive' || document.readyState === 'complete') {
+		initApp();
+	}
+}
 
 function filterResultsTableByStatus() {
 	const checkedStatuses = Array.from(document.querySelectorAll('.status-filter-checkbox:checked')).map((cb) =>
