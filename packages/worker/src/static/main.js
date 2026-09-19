@@ -407,23 +407,46 @@ function showResultsSkeleton() {
 
 async function fetchResults() {
 	const btn = document.getElementById('checkBtn');
-	btn.disabled = true;
-	const oldText = btn.textContent;
-	btn.textContent = 'Wait...';
-	showResultsSkeleton();
-    const cancelBtn = document.getElementById('cancelBtn');
-    if (cancelBtn) cancelBtn.style.display = 'flex';
-	const url = getNormalizedUrlInput();
+	if (!btn) return;
 
-	// Create test session
-	const sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-	const startTime = new Date().toISOString();
+	const url = getNormalizedUrlInput();
+	if (!url) {
+		alert('Please enter a target URL first (e.g. https://example.com)');
+		const urlInput = document.getElementById('url');
+		if (urlInput) urlInput.focus();
+		return;
+	}
 
 	// Collect selected methods — ТОЛЬКО из .http-methods!
 	const methodCheckboxes = document.querySelectorAll('.http-methods input[type=checkbox]');
 	const selectedMethods = Array.from(methodCheckboxes)
 		.filter((cb) => cb.checked)
 		.map((cb) => cb.value);
+	if (selectedMethods.length === 0) {
+		alert('Please select at least one HTTP method (e.g. GET).');
+		return;
+	}
+
+	// Collect selected categories
+	const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
+	const selectedCategories = Array.from(categoryCheckboxes)
+		.filter((cb) => cb.checked)
+		.map((cb) => cb.value);
+	if (selectedCategories.length === 0) {
+		alert('Please select at least one attack category from the left panel.');
+		return;
+	}
+
+	btn.disabled = true;
+	btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Scanning...';
+	showResultsSkeleton();
+	const cancelBtn = document.getElementById('cancelBtn');
+	if (cancelBtn) cancelBtn.style.display = 'flex';
+
+	// Create test session
+	const sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+	const startTime = new Date().toISOString();
+
 	// Follow redirect
 	const followRedirect = document.getElementById('followRedirect')?.checked ? true : false;
 	// False positive test
@@ -447,11 +470,7 @@ async function fetchResults() {
 	// requests as Googlebot/Slackbot/etc. to catch User-Agent allow-list bypasses.
 	const spoofUserAgentEl = document.getElementById('spoofUserAgent');
 	const spoofUserAgent = spoofUserAgentEl ? spoofUserAgentEl.checked : true;
-	// Collect selected categories
-	const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
-	const selectedCategories = Array.from(categoryCheckboxes)
-		.filter((cb) => cb.checked)
-		.map((cb) => cb.value);
+
 	// --- Сохраняем в localStorage ---
 	safeStorage.setItem('wafchecker_url', url);
 	safeStorage.setItem('wafchecker_methods', JSON.stringify(selectedMethods));
@@ -467,7 +486,8 @@ async function fetchResults() {
 	safeStorage.setItem('wafchecker_enablePadding', enablePadding ? '1' : '0');
 	safeStorage.setItem('wafchecker_paddingSize', paddingSize);
 	safeStorage.setItem('wafchecker_spoofUserAgent', spoofUserAgent ? '1' : '0');
-	// --- Получаем шаблон и заголовки ---\n
+
+	// --- Получаем шаблон и заголовки ---
 	let payloadTemplate = '';
 	const templateEl = document.getElementById('payloadTemplate');
 	if (templateEl) {
@@ -505,13 +525,15 @@ async function fetchResults() {
 	}
 
 	try {
-        currentAbortController = new AbortController();
+		currentAbortController = new AbortController();
+		let requestErrorMsg = null;
 		while (true) {
 			const params = new URLSearchParams({
 				url,
 				methods: selectedMethods.join(','),
 				categories: selectedCategories.join(','),
-				page: page,
+				page: String(page),
+				pageSize: '15',
 				followRedirect: followRedirect ? '1' : '0',
 				falsePositiveTest: falsePositiveTest ? '1' : '0',
 				caseSensitiveTest: caseSensitiveTest ? '1' : '0',
@@ -533,13 +555,37 @@ async function fetchResults() {
 					customHeaders,
 					detectedWAF: detectedWAFType,
 				}),
-                signal: currentAbortController.signal
+				signal: currentAbortController.signal,
 			});
-			if (!resp.ok) break;
+			if (!resp.ok) {
+				const errorText = await resp.text().catch(() => '');
+				let parsedMsg = `Server error ${resp.status}`;
+				try {
+					const json = JSON.parse(errorText);
+					if (json && json.error) parsedMsg = json.error;
+				} catch {
+					if (errorText && errorText.length < 200) parsedMsg = errorText;
+				}
+				requestErrorMsg = parsedMsg;
+				break;
+			}
 			const results = await resp.json();
 			if (!results || !results.length) break;
 			allResults = allResults.concat(results);
+			btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Scanning (${allResults.length} done)...`;
+			document.getElementById('results').innerHTML = renderReport(allResults, falsePositiveTest);
+			highlightCategoryCheckboxesByResults(allResults, falsePositiveTest);
 			page++;
+		}
+
+		if (allResults.length === 0 && requestErrorMsg) {
+			document.getElementById('results').innerHTML = `<div class="alert alert-danger mb-3"><strong>Check Failed:</strong> ${escapeHtml(requestErrorMsg)}</div>`;
+			return;
+		}
+
+		if (allResults.length === 0) {
+			document.getElementById('results').innerHTML = '<div class="alert alert-warning mb-3">No test results returned for the specified configuration.</div>';
+			return;
 		}
 
 		const endTime = new Date().toISOString();
@@ -615,18 +661,22 @@ async function fetchResults() {
 		const descEl = document.querySelector('.description-waf-check');
 		if (descEl) descEl.style.display = 'none';
 	} catch (e) {
-        if (e.name === 'AbortError') {
-            document.getElementById('results').innerHTML = '<div class="alert alert-warning">Scan cancelled by user.</div>';
-        } else {
-            console.error('Scan error:', e);
-        }
-    } finally {
+		if (e.name === 'AbortError') {
+			document.getElementById('results').innerHTML = '<div class="alert alert-warning mb-3">Scan cancelled by user.</div>';
+		} else {
+			console.error('Scan error:', e);
+			document.getElementById('results').innerHTML = `<div class="alert alert-danger mb-3"><strong>Scan Error:</strong> ${escapeHtml(e.message || String(e))}</div>`;
+		}
+	} finally {
 		btn.disabled = false;
-		btn.textContent = oldText;
-        const cancelBtn = document.getElementById('cancelBtn');
-        if (cancelBtn) cancelBtn.style.display = 'none';
-        currentAbortController = null;
+		btn.innerHTML = '<span class="btn-icon">▶</span> <span class="check-label">Check</span>';
+		const cancelBtn = document.getElementById('cancelBtn');
+		if (cancelBtn) cancelBtn.style.display = 'none';
+		currentAbortController = null;
 	}
+}
+if (typeof window !== 'undefined') {
+	window.fetchResults = fetchResults;
 }
 
 async function runReverseEngineering() {
@@ -1187,10 +1237,12 @@ function restoreStateFromLocalStorage() {
 	if (methods) {
 		try {
 			const arr = JSON.parse(methods);
-			const methodCheckboxes = document.querySelectorAll('.http-methods input[type=checkbox]');
-			methodCheckboxes.forEach((cb) => {
-				cb.checked = arr.includes(cb.value);
-			});
+			if (Array.isArray(arr) && arr.length > 0) {
+				const methodCheckboxes = document.querySelectorAll('.http-methods input[type=checkbox]');
+				methodCheckboxes.forEach((cb) => {
+					cb.checked = arr.includes(cb.value);
+				});
+			}
 		} catch { }
 	}
 	// Follow redirect
@@ -1294,10 +1346,12 @@ function restoreStateFromLocalStorage() {
 	if (categories) {
 		try {
 			const arr = JSON.parse(categories);
-			const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
-			categoryCheckboxes.forEach((cb) => {
-				cb.checked = arr.includes(cb.value);
-			});
+			if (Array.isArray(arr) && arr.length > 0) {
+				const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
+				categoryCheckboxes.forEach((cb) => {
+					cb.checked = arr.includes(cb.value);
+				});
+			}
 		} catch { }
 	}
 	// Payload template
@@ -1679,6 +1733,11 @@ function initApp() {
 				fetchResults();
 			}
 		});
+	}
+	// --- Кнопка Check ---
+	const checkBtn = document.getElementById('checkBtn');
+	if (checkBtn) {
+		checkBtn.onclick = fetchResults;
 	}
 	// --- Восстановить состояние ---
 	restoreStateFromLocalStorage();

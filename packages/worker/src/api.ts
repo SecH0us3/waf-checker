@@ -161,7 +161,7 @@ export default {
 				urlObj.searchParams.get('envelope') === 'true' ||
 				request.headers.get('accept')?.includes('application/vnd.waf-checker.v2+json');
 			const pageSizeParam = urlObj.searchParams.get('pageSize') || urlObj.searchParams.get('limit');
-			const pageSize = pageSizeParam ? parseInt(pageSizeParam, 10) : undefined;
+			const pageSize = pageSizeParam ? parseInt(pageSizeParam, 10) : 15;
 
 			const envelope = await handleApiCheckWithEnvelope(
 				url,
