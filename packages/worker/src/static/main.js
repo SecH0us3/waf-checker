@@ -152,6 +152,20 @@ function renderReport(results, falsePositiveMode = false) {
 	}
 
 	html += renderSummary(results, falsePositiveMode);
+	html += `<div class="card mb-3 mx-3 border-0 bg-subtle p-3 shadow-sm" style="border-radius: 8px;">
+		<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+			<div class="d-flex align-items-center gap-2">
+				<span style="font-size: 1.3rem;">⏰</span>
+				<div>
+					<div class="fw-semibold">Automated Daily WAF Monitoring</div>
+					<small class="text-muted">Receive automatic alerts from <code>waf@secmy.app</code> when protection status or bypasses change.</small>
+				</div>
+			</div>
+			<button type="button" class="btn btn-sm btn-outline-primary" onclick="showScheduleModal()">
+				🔔 Set Up Daily Monitoring
+			</button>
+		</div>
+	</div>`;
 	html += `<div class="results-toolbar mb-2 px-3">
 		<input id="resultsSearch" class="form-control form-control-sm results-search" placeholder="🔍 Filter by category, payload, method or status…" oninput="filterResultsTableByStatus()" autocomplete="off">
 		<span id="resultsSearchCount" class="results-count"></span>
@@ -3002,4 +3016,124 @@ function validateBatchUrls() {
 		urlsTextarea.style.borderColor = '';
 		urlsTextarea.title = '';
 	}
+}
+
+// Scheduled Daily Monitoring Functions
+function showScheduleModal(targetUrl) {
+	const modalEl = document.getElementById('scheduleModal');
+	if (!modalEl) return;
+	const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+	const urlInput = document.getElementById('scheduleTargetUrl');
+	if (urlInput) {
+		const currentUrl = targetUrl || getNormalizedUrlInput();
+		if (currentUrl) {
+			urlInput.value = currentUrl;
+		}
+	}
+
+	// Reset alerts and buttons
+	const alertContainer = document.getElementById('scheduleAlertContainer');
+	if (alertContainer) alertContainer.innerHTML = '';
+
+	const submitBtn = document.getElementById('submitScheduleBtn');
+	if (submitBtn) {
+		submitBtn.disabled = false;
+		submitBtn.innerHTML = '<span>🔔 Activate Daily Monitoring</span>';
+	}
+
+	modal.show();
+}
+
+async function submitScheduleSubscription(event) {
+	if (event && event.preventDefault) event.preventDefault();
+
+	const targetUrlEl = document.getElementById('scheduleTargetUrl');
+	const emailEl = document.getElementById('scheduleEmail');
+	const alertContainer = document.getElementById('scheduleAlertContainer');
+	const submitBtn = document.getElementById('submitScheduleBtn');
+
+	if (!targetUrlEl || !emailEl || !submitBtn) return;
+
+	const targetUrl = normalizeUrl(targetUrlEl.value.trim());
+	const email = emailEl.value.trim();
+
+	if (!targetUrl) {
+		if (alertContainer) {
+			alertContainer.innerHTML = '<div class="alert alert-danger py-2 px-3 small">Please provide a valid target URL.</div>';
+		}
+		return;
+	}
+
+	if (!email || !email.includes('@')) {
+		if (alertContainer) {
+			alertContainer.innerHTML = '<div class="alert alert-danger py-2 px-3 small">Please provide a valid email address.</div>';
+		}
+		return;
+	}
+
+	submitBtn.disabled = true;
+	submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Sending...';
+	if (alertContainer) alertContainer.innerHTML = '';
+
+	try {
+		const resp = await fetch('/api/schedule/subscribe', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ targetUrl, email }),
+		});
+
+		const data = await resp.json().catch(() => ({}));
+
+		if (!resp.ok) {
+			const errMsg = data.error || `Server error (${resp.status})`;
+			if (alertContainer) {
+				alertContainer.innerHTML = `<div class="alert alert-danger py-2 px-3 small"><strong>Subscription Failed:</strong> ${escapeHtml(errMsg)}</div>`;
+			}
+			return;
+		}
+
+		if (data.alreadySubscribed) {
+			if (alertContainer) {
+				alertContainer.innerHTML = `<div class="alert alert-info py-2 px-3 small">ℹ️ <strong>Already Monitored:</strong> ${escapeHtml(data.message)}</div>`;
+			}
+			return;
+		}
+
+		// Success message
+		let successHtml = `<div class="alert alert-success py-3 px-3 small">
+			<div class="fw-bold mb-1">✅ Verification Email Dispatched!</div>
+			<div>We sent a confirmation link to <strong>${escapeHtml(email)}</strong> from <code>waf@secmy.app</code>.</div>`;
+
+		if (data.mode === 'external' && data.ownershipToken) {
+			successHtml += `
+			<hr class="my-2">
+			<div><strong>Anti-Abuse Verification:</strong> Since this is an external or public email, please also place this token:</div>
+			<div class="my-1"><code class="p-1 user-select-all bg-dark text-white rounded">${escapeHtml(data.ownershipToken)}</code></div>
+			<div>in file: <code>${escapeHtml(data.ownershipChallengeFile || targetUrl + '/.well-known/secmy-check.txt')}</code>, then click the link in your email to activate.</div>`;
+		} else {
+			successHtml += `
+			<div class="mt-1">Domain match confirmed! Just click the link in the email to activate daily monitoring.</div>`;
+		}
+
+		successHtml += `</div>`;
+
+		if (alertContainer) alertContainer.innerHTML = successHtml;
+
+		// Clear email input on success
+		emailEl.value = '';
+	} catch (err) {
+		console.error('Subscription error:', err);
+		if (alertContainer) {
+			alertContainer.innerHTML = `<div class="alert alert-danger py-2 px-3 small"><strong>Network Error:</strong> ${escapeHtml(err.message || String(err))}</div>`;
+		}
+	} finally {
+		submitBtn.disabled = false;
+		submitBtn.innerHTML = '<span>🔔 Activate Daily Monitoring</span>';
+	}
+}
+
+if (typeof window !== 'undefined') {
+	window.showScheduleModal = showScheduleModal;
+	window.submitScheduleSubscription = submitScheduleSubscription;
 }

@@ -214,6 +214,10 @@
 						onclick="showBatchModal()">
 						📋 Batch Test
 					</button>
+					<button type="button" id="scheduleModalBtn" class="btn btn-outline-info btn-sm"
+						onclick="showScheduleModal()">
+						⏰ Daily Monitoring
+					</button>
 					<button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal"
 						data-bs-target="#aboutModal">
 						❓
@@ -703,6 +707,71 @@
 					<div class="alert alert-warning small mt-3 icon-link-hover">
 						<strong>Note:</strong> Always ensure you have permission to scan the target URL.
 					</div>
+				</div>
+			</div>
+		</div>
+	<!-- Daily Monitoring & Scheduled Scans Modal -->
+	<div class="modal fade" id="scheduleModal" tabindex="-1" aria-labelledby="scheduleModalLabel" aria-hidden="true">
+		<div class="modal-dialog modal-lg modal-dialog-centered">
+			<div class="modal-content">
+				<div class="modal-header">
+					<h5 class="modal-title" id="scheduleModalLabel">⏰ Automated Daily WAF Monitoring & Alerts</h5>
+					<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+				</div>
+				<div class="modal-body">
+					<p class="text-muted small mb-3">
+						Schedule regular daily security audits of your perimeter. Get notified by email (<code style="color:var(--bs-primary)">waf@secmy.app</code>) whenever your WAF posture changes, bypasses are detected, or new vulnerabilities emerge.
+					</p>
+
+					<div id="scheduleAlertContainer"></div>
+
+					<form id="scheduleForm" onsubmit="submitScheduleSubscription(event)">
+						<div class="mb-3">
+							<label for="scheduleTargetUrl" class="form-label fw-semibold">Target URL</label>
+							<input type="url" id="scheduleTargetUrl" class="form-control" placeholder="https://example.com/api" required />
+							<div class="form-text">The endpoint or website to be audited once a day.</div>
+						</div>
+
+						<div class="mb-3">
+							<label for="scheduleEmail" class="form-label fw-semibold">Alert Email Address</label>
+							<input type="email" id="scheduleEmail" class="form-control" placeholder="security@yourcompany.com" required />
+							<div class="form-text">Where daily change reports and security alerts will be delivered.</div>
+						</div>
+
+						<!-- Verification Info Box -->
+						<div class="card bg-subtle border-0 mb-3 p-3">
+							<div class="d-flex align-items-start gap-2">
+								<span style="font-size: 1.25rem; line-height: 1;">🛡️</span>
+								<div class="small">
+									<div class="fw-bold mb-1">Ownership Confirmation (Anti-Abuse & Anti-Spam)</div>
+									<div>
+										• <strong>Matching Domain:</strong> If your email domain matches the target website (e.g. <code>alex@example.com</code> for <code>example.com</code>), a 1-click confirmation link is sent directly to your inbox.<br>
+										• <strong>External / Public Email:</strong> If using a public webmail (Gmail, etc.) or different domain, you will confirm via email and place a verification challenge token at <code>/.well-known/secmy-check.txt</code>.
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<!-- Privacy & Zero-Knowledge Badge -->
+						<div class="card bg-subtle border-0 mb-3 p-3">
+							<div class="d-flex align-items-start gap-2">
+								<span style="font-size: 1.25rem; line-height: 1;">🔐</span>
+								<div class="small">
+									<div class="fw-bold mb-1">Zero-Knowledge Email Privacy & Rate Limiting</div>
+									<div>
+										All emails are encrypted at rest with <strong>AES-256-GCM</strong> using an isolated Cloudflare Secret key. Blind HMAC-SHA256 indexing is used for lookups. Scans run strictly once per day per target domain. Every email includes a standard 1-click unsubscribe link.
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<div class="d-flex justify-content-end gap-2 mt-4">
+							<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+							<button type="submit" id="submitScheduleBtn" class="btn btn-primary">
+								<span>🔔 Activate Daily Monitoring</span>
+							</button>
+						</div>
+					</form>
 				</div>
 			</div>
 		</div>
