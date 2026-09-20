@@ -175,7 +175,13 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 		text: emailContent.text,
 	});
 
-	const isLocalDev = !env.SEND_EMAIL || request.url.includes('localhost') || request.url.includes('127.0.0.1');
+	const reqHost = new URL(request.url).hostname.toLowerCase();
+	const isLocalDev =
+		reqHost === 'localhost' ||
+		reqHost === '127.0.0.1' ||
+		reqHost === '[::1]' ||
+		reqHost === '::1' ||
+		env.DEV_MODE === 'true';
 
 	return new Response(
 		JSON.stringify({

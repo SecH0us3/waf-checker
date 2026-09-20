@@ -15,6 +15,7 @@ export interface WorkerEnv {
 	MONITOR_KV?: KVNamespace;
 	EMAIL_ENCRYPTION_KEY?: string;
 	TURNSTILE_SECRET_KEY?: string;
+	DEV_MODE?: string;
 }
 
 export type OwnershipMode = 'fast-track' | 'external';

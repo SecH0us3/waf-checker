@@ -94,6 +94,40 @@ describe('Schedule Handlers & Cron Execution', () => {
 		// KV should contain encrypted pending record
 		const pendingKeys = Array.from(mockKV.store.keys()).filter((k) => k.startsWith('pending:'));
 		expect(pendingKeys.length).toBe(1);
+		expect(json.devVerifyUrl).toBeUndefined();
+	});
+
+	it('does not leak devVerifyUrl in production even if SEND_EMAIL is missing', async () => {
+		const envNoEmail: WorkerEnv = { ...env, SEND_EMAIL: undefined };
+		const req = new Request('https://secmy.app/api/schedule/subscribe', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email: 'security@example.com', targetUrl: 'https://example.com' }),
+		});
+		const res = await handleScheduleSubscribe(req, envNoEmail);
+		const json = (await res.json()) as any;
+		expect(json.devVerifyUrl).toBeUndefined();
+	});
+
+	it('returns devVerifyUrl when called on localhost or with DEV_MODE', async () => {
+		const localReq = new Request('http://localhost:8787/api/schedule/subscribe', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email: 'security@example.com', targetUrl: 'https://example.com' }),
+		});
+		const localRes = await handleScheduleSubscribe(localReq, env);
+		const localJson = (await localRes.json()) as any;
+		expect(localJson.devVerifyUrl).toBeDefined();
+
+		const devModeEnv: WorkerEnv = { ...env, DEV_MODE: 'true' };
+		const prodReq = new Request('https://secmy.app/api/schedule/subscribe', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email: 'security@example.com', targetUrl: 'https://example.com' }),
+		});
+		const devModeRes = await handleScheduleSubscribe(prodReq, devModeEnv);
+		const devModeJson = (await devModeRes.json()) as any;
+		expect(devModeJson.devVerifyUrl).toBeDefined();
 	});
 
 	it('verifies fast-track subscription and activates it', async () => {
