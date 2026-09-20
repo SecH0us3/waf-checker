@@ -174,13 +174,17 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 		text: emailContent.text,
 	});
 
+	const isLocalDev = !env.SEND_EMAIL || request.url.includes('localhost') || request.url.includes('127.0.0.1');
+
 	return new Response(
 		JSON.stringify({
 			success: true,
 			message: 'Verification email dispatched. Please confirm to activate monitoring.',
 			mode,
+			ownershipToken: mode === 'external' ? ownershipToken : undefined,
 			ownershipChallengeFile:
 				mode === 'external' ? `${targetUrl}/.well-known/secmy-check.txt` : undefined,
+			devVerifyUrl: isLocalDev ? verifyUrl : undefined,
 		}),
 		{ status: 200, headers: { 'content-type': 'application/json' } }
 	);

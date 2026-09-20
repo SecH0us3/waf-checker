@@ -3116,6 +3116,13 @@ async function submitScheduleSubscription(event) {
 			<div class="mt-1">Domain match confirmed! Just click the link in the email to activate daily monitoring.</div>`;
 		}
 
+		if (data.devVerifyUrl) {
+			successHtml += `
+			<hr class="my-2">
+			<div class="small text-muted mb-1">🛠️ <strong>Dev / Preview Simulation:</strong> Email sending is simulated locally. Click below to confirm immediately:</div>
+			<div><a href="${escapeHtml(data.devVerifyUrl)}" target="_blank" class="btn btn-sm btn-outline-success mt-1">⚡ Complete Verification Link</a></div>`;
+		}
+
 		successHtml += `</div>`;
 
 		if (alertContainer) alertContainer.innerHTML = successHtml;
