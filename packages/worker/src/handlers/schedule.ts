@@ -179,12 +179,27 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 		ownershipToken,
 	});
 
-	await sendNotificationEmail(env, {
+	const emailResult = await sendNotificationEmail(env, {
 		to: email,
 		subject: emailContent.subject,
 		html: emailContent.html,
 		text: emailContent.text,
 	});
+
+	if (!emailResult.sent) {
+		if (env.MONITOR_KV) {
+			await env.MONITOR_KV.delete(`pending:${verifyToken}`);
+			if (blindIndex) {
+				await env.MONITOR_KV.delete(`pendingIdx:${blindIndex}`);
+			}
+		}
+		return new Response(
+			JSON.stringify({
+				error: 'Failed to dispatch verification email. Please try again later.',
+			}),
+			{ status: 500, headers: { 'content-type': 'application/json' } }
+		);
+	}
 
 	const reqHost = new URL(request.url).hostname.toLowerCase();
 	const isLocalDev =

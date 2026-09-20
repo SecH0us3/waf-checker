@@ -32,8 +32,9 @@ async function probeUserAgentBypass(
 ): Promise<UserAgentBypassInfo> {
 	// On Cloudflare Workers (50 subrequest limit), probe top 3 bots (Googlebot, Bingbot, Slackbot)
 	const candidateAgents = isWorker ? legitUserAgents.slice(0, 3) : legitUserAgents;
-	const info: UserAgentBypassInfo = { bypassed: false, tested: candidateAgents.length, hits: [] };
+	const info: UserAgentBypassInfo = { bypassed: false, tested: 0, hits: [] };
 	for (const ua of candidateAgents) {
+		info.tested++;
 		let res: any;
 		try {
 			res = await reissue(ua.userAgent);

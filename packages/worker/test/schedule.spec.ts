@@ -130,6 +130,23 @@ describe('Schedule Handlers & Cron Execution', () => {
 		expect(devModeJson.devVerifyUrl).toBeDefined();
 	});
 
+	it('handles email dispatch failure by cleaning up pending record and returning 500', async () => {
+		mockSendEmail.mockRejectedValueOnce(new Error('SMTP connection timed out'));
+		const req = new Request('https://secmy.app/api/schedule/subscribe', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email: 'security@example.com', targetUrl: 'https://example.com' }),
+		});
+		const res = await handleScheduleSubscribe(req, env);
+		expect(res.status).toBe(500);
+		const json = (await res.json()) as any;
+		expect(json.error).toContain('Failed to dispatch verification email');
+
+		// KV should NOT keep pending or pendingIdx record
+		const pendingKeys = Array.from(mockKV.store.keys()).filter((k) => k.startsWith('pending:') || k.startsWith('pendingIdx:'));
+		expect(pendingKeys.length).toBe(0);
+	});
+
 	it('verifies fast-track subscription and activates it', async () => {
 		// Subscribe first
 		const subReq = new Request('https://secmy.app/api/schedule/subscribe', {

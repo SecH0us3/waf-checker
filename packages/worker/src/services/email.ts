@@ -7,22 +7,26 @@ export async function sendNotificationEmail(
 	env: WorkerEnv,
 	options: EmailOptions
 ): Promise<{ sent: boolean; simulated: boolean }> {
-	const from = `${SENDER_NAME} <${SENDER_EMAIL}>`;
 	const headers = {
 		'X-Mailer': 'secmy-waf-monitor',
 		...(options.headers || {}),
 	};
 
 	if (env.SEND_EMAIL && typeof env.SEND_EMAIL.send === 'function') {
-		await env.SEND_EMAIL.send({
-			from: SENDER_EMAIL,
-			to: options.to,
-			subject: options.subject,
-			text: options.text,
-			html: options.html,
-			headers,
-		});
-		return { sent: true, simulated: false };
+		try {
+			await env.SEND_EMAIL.send({
+				from: SENDER_EMAIL,
+				to: options.to,
+				subject: options.subject,
+				text: options.text,
+				html: options.html,
+				headers,
+			});
+			return { sent: true, simulated: false };
+		} catch (err: any) {
+			console.error('Failed to send email notification:', err?.code || err);
+			return { sent: false, simulated: false };
+		}
 	}
 
 	console.log(`[SIMULATED EMAIL] To: ${options.to} | Subject: ${options.subject}`);
