@@ -1,4 +1,4 @@
-import { isValidTargetUrl, WAFDetector } from '@waf-checker/core';
+import { isValidTargetUrl } from '@waf-checker/core';
 import { isSelfScan } from '../api';
 import {
 	WorkerEnv,
@@ -23,6 +23,7 @@ import {
 	buildAlertEmail,
 } from '../services/email';
 import { computeFingerprint, diffFingerprints } from '../services/monitor';
+import { runMonitorScan, MonitorScanResult } from '../services/scan';
 import { checkRateLimit } from '../services/rate-limiter';
 
 const DEFAULT_SECRET = 'default-dev-secret-key-32-chars-long';
@@ -190,7 +191,11 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 	);
 }
 
-export async function handleScheduleVerify(request: Request, env: WorkerEnv): Promise<Response> {
+export async function handleScheduleVerify(
+	request: Request,
+	env: WorkerEnv,
+	scanFn?: (targetUrl: string) => Promise<MonitorScanResult>
+): Promise<Response> {
 	const url = new URL(request.url);
 	const token = url.searchParams.get('token');
 
@@ -241,11 +246,18 @@ export async function handleScheduleVerify(request: Request, env: WorkerEnv): Pr
 		}
 	}
 
-	// Compute initial baseline
-	const baseline = computeFingerprint({
-		wafDetected: 'Verified Target',
-		summary: { blocked: 0, passed: 0, total: 0 },
-	});
+	// Compute initial baseline via deterministic scan
+	let scanResult: MonitorScanResult;
+	try {
+		scanResult = scanFn ? await scanFn(pending.targetUrl) : await runMonitorScan(pending.targetUrl);
+	} catch (err) {
+		console.error('Initial baseline monitor scan failed:', err);
+		scanResult = {
+			wafDetected: 'None detected',
+			summary: { blocked: 0, passed: 0, total: 0 },
+		};
+	}
+	const baseline = computeFingerprint(scanResult);
 
 	const manageToken = generateSecureToken(24);
 	const activeRecord: SubscriptionRecord = {
@@ -387,15 +399,15 @@ export async function handleScheduledCron(
 			}
 
 			let scanResult: { wafDetected?: string; summary?: { blocked: number; passed: number; total: number } };
-			if (scanFn) {
-				scanResult = await scanFn(record.targetUrl);
-			} else {
-				const detector = new WAFDetector();
-				const detection = await detector.detect(record.targetUrl);
-				scanResult = {
-					wafDetected: detection.detectedWAF || 'None detected',
-					summary: { blocked: 50, passed: 0, total: 50 },
-				};
+			try {
+				if (scanFn) {
+					scanResult = await scanFn(record.targetUrl);
+				} else {
+					scanResult = await runMonitorScan(record.targetUrl);
+				}
+			} catch (scanErr) {
+				console.error(`Scheduled scan failed for ${record.targetUrl}, skipping:`, scanErr);
+				continue;
 			}
 
 			const newFp = computeFingerprint(scanResult);

@@ -217,4 +217,41 @@ describe('Schedule Handlers & Cron Execution', () => {
 			})
 		);
 	});
+
+	it('cron skips subscriber on scan error without updating baseline or sending email', async () => {
+		const manageToken = 'manage-error-test';
+		const originalLastScanned = Date.now() - 25 * 3600 * 1000;
+		const record: SubscriptionRecord = {
+			email: 'admin@example.com',
+			targetUrl: 'https://example.com',
+			status: 'ACTIVE',
+			manageToken,
+			baselineFingerprint: {
+				wafDetected: 'Cloudflare',
+				blockedCount: 50,
+				bypassedCount: 0,
+				totalCount: 50,
+				scanHash: 'Cloudflare:50:0:50',
+				scannedAt: originalLastScanned,
+			},
+			createdAt: Date.now() - 30 * 3600 * 1000,
+			lastScannedAt: originalLastScanned,
+		};
+
+		const encrypted = await (await import('../src/utils/crypto')).encryptPayload(record, secret);
+		await mockKV.put(`active:${manageToken}`, encrypted);
+
+		const failingScanFn = vi.fn().mockRejectedValue(new Error('Network timeout'));
+
+		await handleScheduledCron(env, failingScanFn);
+
+		// Should NOT send email
+		expect(mockSendEmail).not.toHaveBeenCalled();
+
+		// Record in KV should remain unmodified (lastScannedAt unchanged)
+		const currentEncrypted = await mockKV.get(`active:${manageToken}`);
+		const currentRecord = await decryptPayload<SubscriptionRecord>(currentEncrypted!, secret);
+		expect(currentRecord.lastScannedAt).toBe(originalLastScanned);
+		expect(currentRecord.baselineFingerprint?.scanHash).toBe('Cloudflare:50:0:50');
+	});
 });
