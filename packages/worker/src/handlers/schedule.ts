@@ -119,10 +119,12 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 
 	const secretKey = env.EMAIL_ENCRYPTION_KEY || DEFAULT_SECRET;
 	const host = extractHost(targetUrl);
+	const blindIndex = (env.MONITOR_KV && host)
+		? await computeBlindIndex(`${email}:${host}`, secretKey)
+		: null;
 
 	// Check if already actively subscribed
-	if (env.MONITOR_KV && host) {
-		const blindIndex = await computeBlindIndex(`${email}:${host}`, secretKey);
+	if (env.MONITOR_KV && blindIndex) {
 		const existingManageToken = await env.MONITOR_KV.get(`blind:${blindIndex}`);
 		if (existingManageToken) {
 			const existingActive = await env.MONITOR_KV.get(`active:${existingManageToken}`);
@@ -136,6 +138,12 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 					{ status: 200, headers: { 'content-type': 'application/json' } }
 				);
 			}
+		}
+
+		// Invalidate previous pending token if one was already issued for this (email, host)
+		const previousPendingToken = await env.MONITOR_KV.get(`pendingIdx:${blindIndex}`);
+		if (previousPendingToken) {
+			await env.MONITOR_KV.delete(`pending:${previousPendingToken}`);
 		}
 	}
 
@@ -156,6 +164,9 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 	if (env.MONITOR_KV) {
 		// Pending verification expires in 24 hours (86400s)
 		await env.MONITOR_KV.put(`pending:${verifyToken}`, encrypted, { expirationTtl: 86400 });
+		if (blindIndex) {
+			await env.MONITOR_KV.put(`pendingIdx:${blindIndex}`, verifyToken, { expirationTtl: 86400 });
+		}
 	}
 
 	const origin = new URL(request.url).origin;
@@ -277,13 +288,21 @@ export async function handleScheduleVerify(
 	};
 
 	const encryptedActive = await encryptPayload(activeRecord, secretKey);
-	const blindIndex = await computeBlindIndex(
-		`${pending.email}:${extractHost(pending.targetUrl)}`,
-		secretKey
-	);
+	const host = extractHost(pending.targetUrl);
+	const blindIndex = host
+		? await computeBlindIndex(`${pending.email}:${host}`, secretKey)
+		: null;
+
+	if (blindIndex) {
+		const existingManageToken = await env.MONITOR_KV.get(`blind:${blindIndex}`);
+		if (existingManageToken && existingManageToken !== manageToken) {
+			await env.MONITOR_KV.delete(`active:${existingManageToken}`);
+		}
+		await env.MONITOR_KV.put(`blind:${blindIndex}`, manageToken);
+		await env.MONITOR_KV.delete(`pendingIdx:${blindIndex}`);
+	}
 
 	await env.MONITOR_KV.put(`active:${manageToken}`, encryptedActive);
-	await env.MONITOR_KV.put(`blind:${blindIndex}`, manageToken);
 	await env.MONITOR_KV.delete(`pending:${token}`);
 
 	const origin = new URL(request.url).origin;
@@ -360,6 +379,7 @@ export async function handleScheduleUnsubscribe(request: Request, env: WorkerEnv
 				if (host) {
 					const blindIndex = await computeBlindIndex(`${record.email}:${host}`, secretKey);
 					await env.MONITOR_KV.delete(`blind:${blindIndex}`);
+					await env.MONITOR_KV.delete(`pendingIdx:${blindIndex}`);
 				}
 			} catch {}
 			await env.MONITOR_KV.delete(`active:${token}`);

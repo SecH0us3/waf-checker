@@ -212,6 +212,45 @@ describe('Schedule Handlers & Cron Execution', () => {
 		expect(json.alreadySubscribed).toBe(true);
 	});
 
+	it('subscribe x2 -> verify x2 leaves exactly 1 active record in KV without orphans', async () => {
+		// Subscribe 1st time
+		const sub1 = new Request('https://secmy.app/api/schedule/subscribe', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email: 'security@example.com', targetUrl: 'https://example.com' }),
+		});
+		await handleScheduleSubscribe(sub1, env);
+		const token1 = Array.from(mockKV.store.keys()).find((k) => k.startsWith('pending:'))!.replace('pending:', '');
+
+		// Subscribe 2nd time before verifying 1st
+		const sub2 = new Request('https://secmy.app/api/schedule/subscribe', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ email: 'security@example.com', targetUrl: 'https://example.com' }),
+		});
+		await handleScheduleSubscribe(sub2, env);
+		const pendingKeys = Array.from(mockKV.store.keys()).filter((k) => k.startsWith('pending:'));
+		expect(pendingKeys.length).toBe(1); // Old pending was deleted
+		const token2 = pendingKeys[0].replace('pending:', '');
+		expect(token2).not.toBe(token1);
+
+		// First verify link should now be invalid/expired
+		const verify1Res = await handleScheduleVerify(new Request(`https://secmy.app/api/schedule/verify?token=${token1}`), env);
+		expect(verify1Res.status).toBe(404);
+
+		// Second verify link succeeds
+		const verify2Res = await handleScheduleVerify(new Request(`https://secmy.app/api/schedule/verify?token=${token2}`), env);
+		expect(verify2Res.status).toBe(200);
+
+		// Exactly 1 active record in KV
+		const activeKeys = Array.from(mockKV.store.keys()).filter((k) => k.startsWith('active:'));
+		expect(activeKeys.length).toBe(1);
+
+		// pendingIdx should be cleaned up
+		const pendingIdxKeys = Array.from(mockKV.store.keys()).filter((k) => k.startsWith('pendingIdx:'));
+		expect(pendingIdxKeys.length).toBe(0);
+	});
+
 	it('cron detects degradation diff and sends alert email', async () => {
 		// Seed an active subscription with a baseline
 		const manageToken = 'manage-123';
