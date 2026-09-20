@@ -19,7 +19,52 @@ describe('Domain Ownership Service (Hybrid Mode)', () => {
 		expect(ok).toBe(true);
 		expect(mockFetch).toHaveBeenCalledWith(
 			'https://example.com/.well-known/secmy-check.txt',
-			expect.objectContaining({ redirect: 'follow' })
+			expect.objectContaining({ redirect: 'manual' })
+		);
+	});
+
+	it('fails HTTP ownership when redirected to link-local / cloud metadata (SSRF)', async () => {
+		const redirectResponse = new Response(null, {
+			status: 302,
+			headers: { Location: 'http://169.254.169.254/latest/meta-data/' },
+		});
+		const mockFetch = vi.fn().mockResolvedValue(redirectResponse);
+
+		const ok = await verifyHttpOwnership('https://example.com', 'expected-token-123', mockFetch as any);
+		expect(ok).toBe(false);
+		expect(mockFetch).toHaveBeenCalledTimes(1);
+	});
+
+	it('fails HTTP ownership when redirected to out-of-scope host', async () => {
+		const redirectResponse = new Response(null, {
+			status: 302,
+			headers: { Location: 'https://attacker.com/.well-known/secmy-check.txt' },
+		});
+		const mockFetch = vi.fn().mockResolvedValue(redirectResponse);
+
+		const ok = await verifyHttpOwnership('https://example.com', 'expected-token-123', mockFetch as any);
+		expect(ok).toBe(false);
+		expect(mockFetch).toHaveBeenCalledTimes(1);
+	});
+
+	it('follows valid in-scope redirect and verifies token', async () => {
+		const redirectResponse = new Response(null, {
+			status: 301,
+			headers: { Location: 'https://www.example.com/.well-known/secmy-check.txt' },
+		});
+		const successResponse = new Response('expected-token-123\n', { status: 200 });
+		const mockFetch = vi
+			.fn()
+			.mockResolvedValueOnce(redirectResponse)
+			.mockResolvedValueOnce(successResponse);
+
+		const ok = await verifyHttpOwnership('https://example.com', 'expected-token-123', mockFetch as any);
+		expect(ok).toBe(true);
+		expect(mockFetch).toHaveBeenCalledTimes(2);
+		expect(mockFetch).toHaveBeenNthCalledWith(
+			2,
+			'https://www.example.com/.well-known/secmy-check.txt',
+			expect.objectContaining({ redirect: 'manual' })
 		);
 	});
 
