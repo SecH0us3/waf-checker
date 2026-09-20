@@ -274,7 +274,7 @@ export async function handleScheduleVerify(request: Request, env: WorkerEnv): Pr
 	const welcomeEmail = buildAlertEmail({
 		targetUrl: pending.targetUrl,
 		isAlert: false,
-		diffDetails: ['Мониторинг успешно активирован. Ежедневные проверки запущены.'],
+		diffDetails: ['Security monitoring activated successfully. Daily audits initiated.'],
 		detectedWAF: baseline.wafDetected,
 		unsubscribeUrl,
 		manageUrl: origin,
@@ -295,9 +295,9 @@ export async function handleScheduleVerify(request: Request, env: WorkerEnv): Pr
 	if (acceptsHtml) {
 		return new Response(
 			`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;">
-				<h2 style="color:#00875a;">Мониторинг безопасности активирован!</h2>
-				<p>Ресурс <strong>${pending.targetUrl}</strong> добавлен в ежедневный аудит.</p>
-				<p><a href="${origin}">Перейти на secmy.app</a></p>
+				<h2 style="color:#00875a;">Security Monitoring Activated!</h2>
+				<p>Target endpoint <strong>${pending.targetUrl}</strong> has been added to daily security audits.</p>
+				<p><a href="${origin}">Return to secmy.app</a></p>
 			</body></html>`,
 			{ status: 200, headers: { 'content-type': 'text/html; charset=UTF-8' } }
 		);
@@ -352,8 +352,8 @@ export async function handleScheduleUnsubscribe(request: Request, env: WorkerEnv
 	if (acceptsHtml) {
 		return new Response(
 			`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;">
-				<h2>Вы успешно отписались</h2>
-				<p>Уведомления о мониторинге больше не будут приходить на этот адрес.</p>
+				<h2>Successfully Unsubscribed</h2>
+				<p>Security monitoring alerts will no longer be sent to this email address.</p>
 			</body></html>`,
 			{ status: 200, headers: { 'content-type': 'text/html; charset=UTF-8' } }
 		);
@@ -393,7 +393,7 @@ export async function handleScheduledCron(
 				const detector = new WAFDetector();
 				const detection = await detector.detect(record.targetUrl);
 				scanResult = {
-					wafDetected: detection.detectedWAF || 'Не обнаружен',
+					wafDetected: detection.detectedWAF || 'None detected',
 					summary: { blocked: 50, passed: 0, total: 50 },
 				};
 			}

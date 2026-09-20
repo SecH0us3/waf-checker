@@ -35,7 +35,7 @@ export function buildVerificationEmail(data: {
 	mode: OwnershipMode;
 	ownershipToken?: string;
 }): { subject: string; html: string; text: string } {
-	const subject = `[secmy.app] Подтвердите мониторинг безопасности для ${data.targetUrl}`;
+	const subject = `[secmy.app] Confirm Security Monitoring for ${data.targetUrl}`;
 
 	let instructionsHtml = '';
 	let instructionsText = '';
@@ -43,31 +43,31 @@ export function buildVerificationEmail(data: {
 	if (data.mode === 'external' && data.ownershipToken) {
 		instructionsHtml = `
 		<div style="background: #fdf6e2; border-left: 4px solid #b58900; padding: 12px; margin: 16px 0;">
-			<p><strong>Требуется подтверждение владения доменом:</strong></p>
-			<p>Так как домен вашей почты отличается от сканируемого сайта, создайте текстовый файл:</p>
+			<p><strong>Domain ownership verification required:</strong></p>
+			<p>Because your email domain does not match the target website, please create a text file at:</p>
 			<code>${data.targetUrl}/.well-known/secmy-check.txt</code>
-			<p>с содержимым:</p>
+			<p>with the following content:</p>
 			<pre style="background: #eee; padding: 8px;">${data.ownershipToken}</pre>
-			<p>После создания файла нажмите кнопку подтверждения ниже.</p>
+			<p>After creating the file, click the confirmation button below.</p>
 		</div>`;
-		instructionsText = `Требуется подтверждение владения: создайте файл ${data.targetUrl}/.well-known/secmy-check.txt с содержимым: ${data.ownershipToken}\n\n`;
+		instructionsText = `Domain ownership verification required: create file ${data.targetUrl}/.well-known/secmy-check.txt with content: ${data.ownershipToken}\n\n`;
 	}
 
 	const html = `
 	<!DOCTYPE html>
 	<html>
 	<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #222; line-height: 1.5; padding: 20px;">
-		<h2 style="color: #0052cc;">secmy.app — Мониторинг WAF</h2>
-		<p>Был запрошен ежедневный мониторинг защиты для <strong>${data.targetUrl}</strong>.</p>
+		<h2 style="color: #0052cc;">secmy.app — WAF Monitoring</h2>
+		<p>Daily security monitoring was requested for <strong>${data.targetUrl}</strong>.</p>
 		${instructionsHtml}
 		<p>
-			<a href="${data.verifyUrl}" style="background-color: #0052cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Подтвердить мониторинг</a>
+			<a href="${data.verifyUrl}" style="background-color: #0052cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Confirm Monitoring</a>
 		</p>
-		<p style="color: #666; font-size: 13px;">Ссылка действительна в течение 24 часов. Если вы не отправляли этот запрос, проигнорируйте письмо — никаких сканирований запущено не будет.</p>
+		<p style="color: #666; font-size: 13px;">This link is valid for 24 hours. If you did not request this, please ignore this email — no scans will be scheduled.</p>
 	</body>
 	</html>`;
 
-	const text = `secmy.app — Мониторинг WAF\n\nБыл запрошен ежедневный мониторинг для ${data.targetUrl}.\n\n${instructionsText}Для подтверждения перейдите по ссылке:\n${data.verifyUrl}\n\nСсылка действительна 24 часа. Если вы не запрашивали проверку, проигнорируйте письмо.`;
+	const text = `secmy.app — WAF Monitoring\n\nDaily security monitoring was requested for ${data.targetUrl}.\n\n${instructionsText}To confirm, please visit:\n${data.verifyUrl}\n\nThis link is valid for 24 hours. If you did not request this, please ignore this email.`;
 
 	return { subject, html, text };
 }
@@ -80,8 +80,8 @@ export function buildAlertEmail(data: {
 	unsubscribeUrl: string;
 	manageUrl: string;
 }): { subject: string; html: string; text: string } {
-	const prefix = data.isAlert ? '⚠️ [ВНИМАНИЕ]' : '🟢 [СТАТУС]';
-	const subject = `${prefix} Отчет безопасности WAF для ${data.targetUrl}`;
+	const prefix = data.isAlert ? '⚠️ [ALERT]' : '🟢 [STATUS]';
+	const subject = `${prefix} WAF Security Report for ${data.targetUrl}`;
 
 	const detailsList = data.diffDetails.map((d) => `<li>${d}</li>`).join('');
 
@@ -89,21 +89,21 @@ export function buildAlertEmail(data: {
 	<!DOCTYPE html>
 	<html>
 	<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #222; line-height: 1.5; padding: 20px;">
-		<h2 style="color: ${data.isAlert ? '#d9381e' : '#00875a'};">secmy.app — Ежедневный мониторинг WAF</h2>
-		<p><strong>Ресурс:</strong> ${data.targetUrl}</p>
-		<p><strong>Обнаруженный WAF:</strong> ${data.detectedWAF || 'Не обнаружен'}</p>
+		<h2 style="color: ${data.isAlert ? '#d9381e' : '#00875a'};">secmy.app — Daily WAF Monitoring</h2>
+		<p><strong>Target:</strong> ${data.targetUrl}</p>
+		<p><strong>Detected WAF:</strong> ${data.detectedWAF || 'None detected'}</p>
 		<div style="background: #f4f5f7; padding: 14px; border-radius: 4px; margin: 16px 0;">
-			<h4 style="margin-top: 0;">Изменения безопасности:</h4>
-			<ul>${detailsList || '<li>Без критических изменений</li>'}</ul>
+			<h4 style="margin-top: 0;">Security Posture Changes:</h4>
+			<ul>${detailsList || '<li>No critical changes detected</li>'}</ul>
 		</div>
 		<p style="margin-top: 24px; font-size: 12px; color: #777; border-top: 1px solid #ddd; padding-top: 12px;">
-			Вы получили это письмо, так как подписаны на мониторинг ${data.targetUrl}.<br/>
-			<a href="${data.unsubscribeUrl}" style="color: #777;">Отписаться от уведомлений в 1 клик</a>
+			You received this email because you are subscribed to monitoring for ${data.targetUrl}.<br/>
+			<a href="${data.unsubscribeUrl}" style="color: #777;">1-Click Unsubscribe</a>
 		</p>
 	</body>
 	</html>`;
 
-	const text = `${prefix} Отчет безопасности WAF для ${data.targetUrl}\n\nОбнаруженный WAF: ${data.detectedWAF || 'Не обнаружен'}\n\nИзменения:\n${data.diffDetails.join('\n')}\n\nОтписаться: ${data.unsubscribeUrl}`;
+	const text = `${prefix} WAF Security Report for ${data.targetUrl}\n\nDetected WAF: ${data.detectedWAF || 'None detected'}\n\nChanges:\n${data.diffDetails.join('\n')}\n\nUnsubscribe: ${data.unsubscribeUrl}`;
 
 	return { subject, html, text };
 }

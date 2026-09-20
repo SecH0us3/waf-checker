@@ -213,7 +213,7 @@ describe('Schedule Handlers & Cron Execution', () => {
 		expect(mockSendEmail).toHaveBeenCalledWith(
 			expect.objectContaining({
 				to: 'admin@example.com',
-				subject: expect.stringContaining('ВНИМАНИЕ'),
+				subject: expect.stringContaining('ALERT'),
 			})
 		);
 	});

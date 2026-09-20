@@ -66,13 +66,13 @@ describe('Email Service (send_email & templates)', () => {
 		const alert = buildAlertEmail({
 			targetUrl: 'https://example.com',
 			isAlert: true,
-			diffDetails: ['Обнаружен обход XSS'],
+			diffDetails: ['XSS bypass detected'],
 			detectedWAF: 'Cloudflare',
 			unsubscribeUrl: 'https://secmy.app/api/schedule/unsubscribe?token=tok-1',
 			manageUrl: 'https://secmy.app',
 		});
-		expect(alert.subject).toContain('ВНИМАНИЕ');
-		expect(alert.html).toContain('Обнаружен обход XSS');
+		expect(alert.subject).toContain('ALERT');
+		expect(alert.html).toContain('XSS bypass detected');
 		expect(alert.html).toContain('https://secmy.app/api/schedule/unsubscribe?token=tok-1');
 	});
 });

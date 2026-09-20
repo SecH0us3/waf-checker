@@ -35,7 +35,7 @@ describe('Monitor & Diff Engine', () => {
 		const diff = diffFingerprints(oldFp, newFp);
 		expect(diff.changed).toBe(true);
 		expect(diff.isAlert).toBe(true);
-		expect(diff.details.some((d) => d.includes('Увеличилось число пропущенных атак'))).toBe(true);
+		expect(diff.details.some((d) => d.includes('Increase in bypassed attack vectors'))).toBe(true);
 	});
 
 	it('detects WAF vendor change as alert', () => {
@@ -48,7 +48,7 @@ describe('Monitor & Diff Engine', () => {
 			scannedAt: 1000,
 		};
 		const newFp: BaselineFingerprint = {
-			wafDetected: 'Не обнаружен',
+			wafDetected: 'None detected',
 			blockedCount: 50,
 			bypassedCount: 0,
 			totalCount: 50,

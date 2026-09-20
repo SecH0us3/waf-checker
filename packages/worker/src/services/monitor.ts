@@ -4,7 +4,7 @@ export function computeFingerprint(result: {
 	wafDetected?: string;
 	summary?: { blocked: number; passed: number; total: number };
 }): BaselineFingerprint {
-	const wafDetected = result.wafDetected || 'Не обнаружен';
+	const wafDetected = result.wafDetected || 'None detected';
 	const blockedCount = result.summary?.blocked ?? 0;
 	const bypassedCount = result.summary?.passed ?? 0;
 	const totalCount = result.summary?.total ?? blockedCount + bypassedCount;
@@ -29,17 +29,17 @@ export function diffFingerprints(
 	let isAlert = false;
 
 	if (oldFp.wafDetected !== newFp.wafDetected) {
-		details.push(`Изменился статус WAF: было "${oldFp.wafDetected}", стало "${newFp.wafDetected}".`);
+		details.push(`WAF status changed: was "${oldFp.wafDetected}", now "${newFp.wafDetected}".`);
 		isAlert = true;
 	}
 
 	if (newFp.bypassedCount > oldFp.bypassedCount) {
 		const delta = newFp.bypassedCount - oldFp.bypassedCount;
-		details.push(`Увеличилось число пропущенных атак (+${delta}): теперь пропускается ${newFp.bypassedCount} из ${newFp.totalCount}.`);
+		details.push(`Increase in bypassed attack vectors (+${delta}): now ${newFp.bypassedCount} of ${newFp.totalCount} bypassing WAF.`);
 		isAlert = true;
 	} else if (newFp.bypassedCount < oldFp.bypassedCount) {
 		const delta = oldFp.bypassedCount - newFp.bypassedCount;
-		details.push(`Защита улучшилась: заблокировано на ${delta} атак больше.`);
+		details.push(`Security posture improved: ${delta} more attack vector(s) blocked.`);
 	}
 
 	const changed = details.length > 0 || oldFp.scanHash !== newFp.scanHash;

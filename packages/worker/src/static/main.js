@@ -291,8 +291,8 @@ function renderCategoryCheckboxes() {
 }
 
 function highlightCategoryCheckboxesByResults(results, falsePositiveMode = false) {
-	// В режиме false positive: выделяем категории где есть 403 (плохо)
-	// В обычном режиме: выделяем категории где есть 200 (плохо)
+	// False positive mode: highlight categories where 403 occurs (unexpected block)
+	// Normal mode: highlight categories where 200 occurs (bypass)
 	const categoriesWithBadStatus = new Set();
 	if (Array.isArray(results)) {
 		results.forEach((r) => {
@@ -307,7 +307,7 @@ function highlightCategoryCheckboxesByResults(results, falsePositiveMode = false
 			}
 		});
 	}
-	// Пробегаем по чекбоксам и выделяем нужные label
+	// Iterate through checkboxes and highlight corresponding labels
 	const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
 	categoryCheckboxes.forEach((cb) => {
 		const label = cb.parentElement.querySelector('.form-check-label');
@@ -431,7 +431,7 @@ async function fetchResults() {
 		return;
 	}
 
-	// Collect selected methods — ТОЛЬКО из .http-methods!
+	// Collect selected methods — ONLY from .http-methods!
 	const methodCheckboxes = document.querySelectorAll('.http-methods input[type=checkbox]');
 	const selectedMethods = Array.from(methodCheckboxes)
 		.filter((cb) => cb.checked)
@@ -485,7 +485,7 @@ async function fetchResults() {
 	const spoofUserAgentEl = document.getElementById('spoofUserAgent');
 	const spoofUserAgent = spoofUserAgentEl ? spoofUserAgentEl.checked : true;
 
-	// --- Сохраняем в localStorage ---
+	// --- Save to localStorage ---
 	safeStorage.setItem('wafchecker_url', url);
 	safeStorage.setItem('wafchecker_methods', JSON.stringify(selectedMethods));
 	safeStorage.setItem('wafchecker_categories', JSON.stringify(selectedCategories));
@@ -501,7 +501,7 @@ async function fetchResults() {
 	safeStorage.setItem('wafchecker_paddingSize', paddingSize);
 	safeStorage.setItem('wafchecker_spoofUserAgent', spoofUserAgent ? '1' : '0');
 
-	// --- Получаем шаблон и заголовки ---
+	// --- Get template and headers ---
 	let payloadTemplate = '';
 	const templateEl = document.getElementById('payloadTemplate');
 	if (templateEl) {
@@ -1719,7 +1719,7 @@ function initApp() {
 		});
 	}
 	renderCategoryCheckboxes();
-	// --- Кнопки select all/deselect all ---
+	// --- Select all/deselect all buttons ---
 	const selectAllBtn = document.getElementById('selectAllCategoriesBtn');
 	const deselectAllBtn = document.getElementById('deselectAllCategoriesBtn');
 	if (selectAllBtn) {
@@ -1738,7 +1738,7 @@ function initApp() {
 			});
 		});
 	}
-	// --- Enter в поле URL ---
+	// --- Enter key in URL input ---
 	const urlInput = document.getElementById('url');
 	if (urlInput) {
 		urlInput.addEventListener('keydown', function (e) {
@@ -1748,12 +1748,12 @@ function initApp() {
 			}
 		});
 	}
-	// --- Кнопка Check ---
+	// --- Check button ---
 	const checkBtn = document.getElementById('checkBtn');
 	if (checkBtn) {
 		checkBtn.onclick = fetchResults;
 	}
-	// --- Восстановить состояние ---
+	// --- Restore state from localStorage ---
 	restoreStateFromLocalStorage();
 
 	// The remediation banner is only meaningful after a scan; make sure it never
@@ -1770,7 +1770,7 @@ function initApp() {
 		cb.addEventListener('change', updatePayloadTemplateSection);
 	});
 	updatePayloadTemplateSection();
-	// Делегированный обработчик на #results
+	// Delegated listener on #results
 	const resultsDiv = document.getElementById('results');
 	if (resultsDiv) {
 		resultsDiv.addEventListener('change', function (e) {
@@ -1783,9 +1783,9 @@ function initApp() {
 				});
 				filterResultsTableByStatus();
 			}
-			// Обычные чекбоксы статусов
+			// Status filter checkboxes
 			if (target && target.classList.contains('status-filter-checkbox')) {
-				// Если хотя бы один снят — select all снимается, если все включены — включается
+				// If at least one is unchecked, uncheck select-all; if all checked, check select-all
 				const all = document.querySelectorAll('.status-filter-checkbox');
 				const checkedCount = Array.from(all).filter((cb) => cb.checked).length;
 				const selectAll = document.getElementById('statusSelectAll');

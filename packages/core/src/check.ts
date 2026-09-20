@@ -51,7 +51,7 @@ async function probeUserAgentBypass(
 	return info;
 }
 
-// Вспомогательная функция для отправки запроса с нужным методом и payload
+// Helper function to send request with specified method and payload
 export async function sendRequest(
 	url: string,
 	method: string,

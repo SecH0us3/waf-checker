@@ -103,7 +103,7 @@ async function runSimulation() {
 			headers: { Accept: 'text/html' },
 		});
 		console.log('   Status Code:', verifyRes.status);
-		if (verifyRes.status !== 200 || !verifyRes.text.includes('Мониторинг безопасности активирован')) {
+		if (verifyRes.status !== 200 || !verifyRes.text.includes('Security Monitoring Activated')) {
 			throw new Error('Verification failed: ' + verifyRes.text);
 		}
 		console.log('   ✅ Email verification succeeded! HTML confirmation page rendered.');
