@@ -5,6 +5,7 @@ import {
 	PendingVerificationRecord,
 	SubscriptionRecord,
 	EmailOptions,
+	BaselineFingerprint,
 } from '../types/monitor';
 import {
 	encryptPayload,
@@ -278,18 +279,19 @@ export async function handleScheduleVerify(
 		}
 	}
 
-	// Compute initial baseline via deterministic scan
-	let scanResult: MonitorScanResult;
+	// Compute initial baseline via deterministic scan.
+	// If the scan fails, activate without a baseline: the first cron run then
+	// establishes it instead of diffing against a fabricated zero-fingerprint,
+	// which would always produce a false "WAF status changed" alert.
+	let baseline: BaselineFingerprint | undefined;
 	try {
-		scanResult = scanFn ? await scanFn(pending.targetUrl) : await runMonitorScan(pending.targetUrl);
+		const scanResult = scanFn
+			? await scanFn(pending.targetUrl)
+			: await runMonitorScan(pending.targetUrl);
+		baseline = computeFingerprint(scanResult);
 	} catch (err) {
 		console.error('Initial baseline monitor scan failed:', err);
-		scanResult = {
-			wafDetected: 'None detected',
-			summary: { blocked: 0, passed: 0, total: 0 },
-		};
 	}
-	const baseline = computeFingerprint(scanResult);
 
 	const manageToken = generateSecureToken(24);
 	const activeRecord: SubscriptionRecord = {
@@ -327,7 +329,7 @@ export async function handleScheduleVerify(
 		targetUrl: pending.targetUrl,
 		isAlert: false,
 		diffDetails: ['Security monitoring activated successfully. Daily audits initiated.'],
-		detectedWAF: baseline.wafDetected,
+		detectedWAF: baseline?.wafDetected || 'Pending first scan',
 		unsubscribeUrl,
 		manageUrl: origin,
 	});
