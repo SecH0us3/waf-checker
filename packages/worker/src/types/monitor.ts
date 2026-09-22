@@ -46,6 +46,14 @@ export interface SubscriptionRecord {
 	baselineFingerprint?: BaselineFingerprint;
 	createdAt: number;
 	lastScannedAt?: number;
+	/**
+	 * How ownership was proven, and the proof itself. Retained so that the
+	 * unattended cron path can re-establish authorization: a proof accepted once
+	 * at subscribe time is not a standing mandate to scan a host forever.
+	 */
+	mode?: OwnershipMode;
+	ownershipToken?: string;
+	lastOwnershipVerifiedAt?: number;
 }
 
 export interface EmailOptions {

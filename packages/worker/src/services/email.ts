@@ -1,4 +1,5 @@
 import { EmailOptions, OwnershipMode, WorkerEnv } from '../types/monitor';
+import { escapeHtml } from '../utils/html';
 
 export const SENDER_EMAIL = 'waf@secmy.app';
 export const SENDER_NAME = 'secmy.app WAF Monitor';
@@ -49,9 +50,9 @@ export function buildVerificationEmail(data: {
 		<div style="background: #fdf6e2; border-left: 4px solid #b58900; padding: 12px; margin: 16px 0;">
 			<p><strong>Domain ownership verification required:</strong></p>
 			<p>Because your email domain does not match the target website, please create a text file at:</p>
-			<code>${data.targetUrl}/.well-known/secmy-check.txt</code>
+			<code>${escapeHtml(data.targetUrl)}/.well-known/secmy-check.txt</code>
 			<p>with the following content:</p>
-			<pre style="background: #eee; padding: 8px;">${data.ownershipToken}</pre>
+			<pre style="background: #eee; padding: 8px;">${escapeHtml(data.ownershipToken)}</pre>
 			<p>After creating the file, click the confirmation button below.</p>
 		</div>`;
 		instructionsText = `Domain ownership verification required: create file ${data.targetUrl}/.well-known/secmy-check.txt with content: ${data.ownershipToken}\n\n`;
@@ -62,10 +63,10 @@ export function buildVerificationEmail(data: {
 	<html>
 	<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #222; line-height: 1.5; padding: 20px;">
 		<h2 style="color: #0052cc;">secmy.app — WAF Monitoring</h2>
-		<p>Daily security monitoring was requested for <strong>${data.targetUrl}</strong>.</p>
+		<p>Daily security monitoring was requested for <strong>${escapeHtml(data.targetUrl)}</strong>.</p>
 		${instructionsHtml}
 		<p>
-			<a href="${data.verifyUrl}" style="background-color: #0052cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Confirm Monitoring</a>
+			<a href="${escapeHtml(data.verifyUrl)}" style="background-color: #0052cc; color: white; padding: 10px 20px; text-decoration: none; border-radius: 4px; display: inline-block;">Confirm Monitoring</a>
 		</p>
 		<p style="color: #666; font-size: 13px;">This link is valid for 24 hours. If you did not request this, please ignore this email — no scans will be scheduled.</p>
 	</body>
@@ -87,22 +88,22 @@ export function buildAlertEmail(data: {
 	const prefix = data.isAlert ? '⚠️ [ALERT]' : '🟢 [STATUS]';
 	const subject = `${prefix} WAF Security Report for ${data.targetUrl}`;
 
-	const detailsList = data.diffDetails.map((d) => `<li>${d}</li>`).join('');
+	const detailsList = data.diffDetails.map((d) => `<li>${escapeHtml(d)}</li>`).join('');
 
 	const html = `
 	<!DOCTYPE html>
 	<html>
 	<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #222; line-height: 1.5; padding: 20px;">
 		<h2 style="color: ${data.isAlert ? '#d9381e' : '#00875a'};">secmy.app — Daily WAF Monitoring</h2>
-		<p><strong>Target:</strong> ${data.targetUrl}</p>
-		<p><strong>Detected WAF:</strong> ${data.detectedWAF || 'None detected'}</p>
+		<p><strong>Target:</strong> ${escapeHtml(data.targetUrl)}</p>
+		<p><strong>Detected WAF:</strong> ${escapeHtml(data.detectedWAF || 'None detected')}</p>
 		<div style="background: #f4f5f7; padding: 14px; border-radius: 4px; margin: 16px 0;">
 			<h4 style="margin-top: 0;">Security Posture Changes:</h4>
 			<ul>${detailsList || '<li>No critical changes detected</li>'}</ul>
 		</div>
 		<p style="margin-top: 24px; font-size: 12px; color: #777; border-top: 1px solid #ddd; padding-top: 12px;">
-			You received this email because you are subscribed to monitoring for ${data.targetUrl}.<br/>
-			<a href="${data.unsubscribeUrl}" style="color: #777;">1-Click Unsubscribe</a>
+			You received this email because you are subscribed to monitoring for ${escapeHtml(data.targetUrl)}.<br/>
+			<a href="${escapeHtml(data.unsubscribeUrl)}" style="color: #777;">1-Click Unsubscribe</a>
 		</p>
 	</body>
 	</html>`;

@@ -6,6 +6,15 @@ compatibility_date = "2024-03-29"
 directory = "./src/static"
 binding = "ASSETS"
 
+# Required secrets (set with `wrangler secret put <NAME>`), NOT vars:
+#   EMAIL_ENCRYPTION_KEY  — record encryption + blind index key. Without it the
+#                           scheduled-monitoring endpoints refuse to serve (503)
+#                           rather than fall back to the in-repo dev secret.
+#   TURNSTILE_SECRET_KEY  — captcha. Also mandatory outside local development:
+#                           without it /api/schedule/subscribe returns 503.
+# DEV_MODE = "true" opts a non-loopback deployment into the dev fallbacks above.
+# Never set it on a public deployment.
+
 [[send_email]]
 name = "SEND_EMAIL"
 allowed_sender_addresses = ["waf@secmy.app"]

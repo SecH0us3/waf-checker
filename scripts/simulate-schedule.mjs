@@ -124,10 +124,16 @@ async function runSimulation() {
 		});
 		console.log('   Status Code:', dupSub.status);
 		console.log('   Response Body:', JSON.stringify(dupSub.json, null, 2));
-		if (!dupSub.json?.alreadySubscribed) {
-			throw new Error('Expected alreadySubscribed=true');
+		// The duplicate must be indistinguishable from a first-time subscription:
+		// a different status, message or flag would be an unauthenticated oracle
+		// for "does this address monitor this domain?".
+		if ('alreadySubscribed' in (dupSub.json || {})) {
+			throw new Error('Response leaks subscription state via alreadySubscribed');
 		}
-		console.log('   ✅ Blind HMAC index detected active subscription — duplicate scan blocked.\n');
+		if (dupSub.status !== subFast.status || dupSub.json?.message !== subFast.json?.message) {
+			throw new Error('Duplicate subscribe is distinguishable from a first-time subscribe');
+		}
+		console.log('   ✅ Duplicate silently ignored and response indistinguishable — no membership oracle.\n');
 
 		// --- Phase 5: Triggering Daily Scheduled Cron ---
 		console.log('6️⃣  PHASE 5: Triggering Cloudflare Workers Scheduled Cron (Daily Audit)');

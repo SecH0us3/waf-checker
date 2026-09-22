@@ -17,6 +17,7 @@ import {
 	determineOwnershipMode,
 	verifyHttpOwnership,
 	extractHost,
+	normalizeEmail,
 } from '../services/ownership';
 import {
 	sendNotificationEmail,
@@ -26,9 +27,56 @@ import {
 import { computeFingerprint, diffFingerprints } from '../services/monitor';
 import { runMonitorScan, MonitorScanResult } from '../services/scan';
 import { checkRateLimit } from '../services/rate-limiter';
+import { escapeHtml } from '../utils/html';
 
 const DEFAULT_SECRET = 'default-dev-secret-key-32-chars-long';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Re-prove external-mode domain ownership at least this often (30 days). */
+const OWNERSHIP_REVERIFY_INTERVAL_MS = 30 * 24 * 3600 * 1000;
+/** Upper bound on subscriptions audited in a single cron invocation. */
+const MAX_SUBSCRIPTIONS_PER_RUN = 25;
+
+/**
+ * A request is "development" only when it demonstrably originates from this
+ * machine, or when the operator opted in explicitly. Notably it is NOT inferred
+ * from a missing binding: a production deployment whose email binding broke
+ * must not silently become a dev deployment that hands out verification links.
+ */
+function isDevEnvironment(env: WorkerEnv, request?: Request): boolean {
+	if (env.DEV_MODE === 'true') return true;
+	if (!request) return false;
+	try {
+		const reqHost = new URL(request.url).hostname.toLowerCase();
+		return reqHost === 'localhost' || reqHost === '127.0.0.1' || reqHost === '[::1]' || reqHost === '::1';
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * Returns the record encryption key, or null when the deployment is not in a
+ * state where the confidentiality promise holds.
+ *
+ * Falling back to a hardcoded secret in production would mean every encrypted
+ * record and every blind index is derived from a value published in this
+ * repository — the stored data would be readable and enumerable by anyone who
+ * obtained a KV dump. Refusing to operate is the only honest option; the
+ * built-in fallback exists solely so local development and tests need no setup.
+ */
+function resolveSecret(env: WorkerEnv, request?: Request): string | null {
+	if (env.EMAIL_ENCRYPTION_KEY) return env.EMAIL_ENCRYPTION_KEY;
+	if (isDevEnvironment(env, request)) return DEFAULT_SECRET;
+	return null;
+}
+
+function misconfiguredResponse(detail: string): Response {
+	console.error(`Refusing to serve scheduled-monitoring request: ${detail}`);
+	return new Response(
+		JSON.stringify({ error: 'Scheduled monitoring is not available on this deployment.' }),
+		{ status: 503, headers: { 'content-type': 'application/json' } }
+	);
+}
 
 async function verifyTurnstile(token: string, secretKey: string, remoteIp?: string): Promise<boolean> {
 	try {
@@ -66,7 +114,7 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 		});
 	}
 
-	const email = typeof body.email === 'string' ? body.email.trim() : '';
+	const email = typeof body.email === 'string' ? normalizeEmail(body.email) : '';
 	const targetUrl = typeof body.targetUrl === 'string' ? body.targetUrl.trim() : '';
 	const turnstileToken = typeof body.turnstileToken === 'string' ? body.turnstileToken.trim() : '';
 
@@ -91,8 +139,13 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 		});
 	}
 
-	// Verify Turnstile captcha if configured
+	// Verify Turnstile captcha. Outside development the captcha is mandatory:
+	// an unconfigured secret used to disable the check entirely, which turned a
+	// missing binding into an open, automatable mail-sending endpoint.
 	const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
+	if (!env.TURNSTILE_SECRET_KEY && !isDevEnvironment(env, request)) {
+		return misconfiguredResponse('TURNSTILE_SECRET_KEY is not configured');
+	}
 	if (env.TURNSTILE_SECRET_KEY) {
 		if (!turnstileToken) {
 			return new Response(JSON.stringify({ error: 'Captcha verification required' }), {
@@ -118,34 +171,63 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 		);
 	}
 
-	const secretKey = env.EMAIL_ENCRYPTION_KEY || DEFAULT_SECRET;
+	const secretKey = resolveSecret(env, request);
+	if (!secretKey) {
+		return misconfiguredResponse('EMAIL_ENCRYPTION_KEY is not configured');
+	}
 	const host = extractHost(targetUrl);
 	const blindIndex = (env.MONITOR_KV && host)
 		? await computeBlindIndex(`${email}:${host}`, secretKey)
 		: null;
 
-	// Check if already actively subscribed
+	// Per-recipient throttle. The IP-keyed limit above does not protect the
+	// mailbox: rotating source addresses would otherwise let one address be
+	// mailed repeatedly on an attacker's schedule.
+	if (blindIndex) {
+		const recipientRl = await checkRateLimit(env.MONITOR_KV, `rl:mail:${blindIndex}`, 3, 3600);
+		if (!recipientRl.allowed) {
+			return new Response(
+				JSON.stringify({ error: 'Too many subscription requests. Please try again later.' }),
+				{ status: 429, headers: { 'content-type': 'application/json' } }
+			);
+		}
+	}
+
+	// Already actively subscribed: stop here, but answer exactly as a first-time
+	// subscription would. A distinguishable response is an unauthenticated
+	// oracle for "is this address monitoring this domain?".
+	let alreadyActive = false;
 	if (env.MONITOR_KV && blindIndex) {
 		const existingManageToken = await env.MONITOR_KV.get(`blind:${blindIndex}`);
 		if (existingManageToken) {
-			const existingActive = await env.MONITOR_KV.get(`active:${existingManageToken}`);
-			if (existingActive) {
-				return new Response(
-					JSON.stringify({
-						success: true,
-						message: 'This domain is already actively monitored with this email.',
-						alreadySubscribed: true,
-					}),
-					{ status: 200, headers: { 'content-type': 'application/json' } }
-				);
-			}
+			alreadyActive = Boolean(await env.MONITOR_KV.get(`active:${existingManageToken}`));
 		}
 
-		// Invalidate previous pending token if one was already issued for this (email, host)
-		const previousPendingToken = await env.MONITOR_KV.get(`pendingIdx:${blindIndex}`);
-		if (previousPendingToken) {
-			await env.MONITOR_KV.delete(`pending:${previousPendingToken}`);
+		if (!alreadyActive) {
+			// Invalidate previous pending token if one was already issued for this (email, host)
+			const previousPendingToken = await env.MONITOR_KV.get(`pendingIdx:${blindIndex}`);
+			if (previousPendingToken) {
+				await env.MONITOR_KV.delete(`pending:${previousPendingToken}`);
+			}
 		}
+	}
+
+	if (alreadyActive) {
+		// Mirror the first-time response field-for-field, including a freshly
+		// generated (and unused) ownership token for external mode, so the two
+		// cases are indistinguishable to the caller.
+		const decoyMode = determineOwnershipMode(email, targetUrl);
+		return new Response(
+			JSON.stringify({
+				success: true,
+				message: 'Verification email dispatched. Please confirm to activate monitoring.',
+				mode: decoyMode,
+				ownershipToken: decoyMode === 'external' ? `secmy-${generateSecureToken(16)}` : undefined,
+				ownershipChallengeFile:
+					decoyMode === 'external' ? `${targetUrl}/.well-known/secmy-check.txt` : undefined,
+			}),
+			{ status: 200, headers: { 'content-type': 'application/json' } }
+		);
 	}
 
 	const mode = determineOwnershipMode(email, targetUrl);
@@ -254,7 +336,10 @@ export async function handleScheduleVerify(
 		});
 	}
 
-	const secretKey = env.EMAIL_ENCRYPTION_KEY || DEFAULT_SECRET;
+	const secretKey = resolveSecret(env, request);
+	if (!secretKey) {
+		return misconfiguredResponse('EMAIL_ENCRYPTION_KEY is not configured');
+	}
 	let pending: PendingVerificationRecord;
 	try {
 		pending = await decryptPayload<PendingVerificationRecord>(encrypted, secretKey);
@@ -299,6 +384,9 @@ export async function handleScheduleVerify(
 		targetUrl: pending.targetUrl,
 		status: 'ACTIVE',
 		manageToken,
+		mode: pending.mode,
+		ownershipToken: pending.ownershipToken,
+		lastOwnershipVerifiedAt: Date.now(),
 		baselineFingerprint: baseline,
 		createdAt: Date.now(),
 		lastScannedAt: Date.now(),
@@ -350,8 +438,8 @@ export async function handleScheduleVerify(
 		return new Response(
 			`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;">
 				<h2 style="color:#00875a;">Security Monitoring Activated!</h2>
-				<p>Target endpoint <strong>${pending.targetUrl}</strong> has been added to daily security audits.</p>
-				<p><a href="${origin}">Return to secmy.app</a></p>
+				<p>Target endpoint <strong>${escapeHtml(pending.targetUrl)}</strong> has been added to daily security audits.</p>
+				<p><a href="${escapeHtml(origin)}">Return to secmy.app</a></p>
 			</body></html>`,
 			{ status: 200, headers: { 'content-type': 'text/html; charset=UTF-8' } }
 		);
@@ -390,7 +478,8 @@ export async function handleScheduleUnsubscribe(request: Request, env: WorkerEnv
 		const existing = await env.MONITOR_KV.get(`active:${token}`);
 		if (existing) {
 			try {
-				const secretKey = env.EMAIL_ENCRYPTION_KEY || DEFAULT_SECRET;
+				const secretKey = resolveSecret(env, request);
+				if (!secretKey) throw new Error('encryption key unavailable');
 				const record = await decryptPayload<SubscriptionRecord>(existing, secretKey);
 				const host = extractHost(record.targetUrl);
 				if (host) {
@@ -425,10 +514,21 @@ export async function handleScheduledCron(
 	scanFn?: (targetUrl: string) => Promise<{ wafDetected?: string; summary?: { blocked: number; passed: number; total: number } }>
 ): Promise<void> {
 	if (!env.MONITOR_KV) return;
-	const secret = env.EMAIL_ENCRYPTION_KEY || DEFAULT_SECRET;
+	const secret = resolveSecret(env);
+	if (!secret) {
+		console.error('Skipping scheduled run: EMAIL_ENCRYPTION_KEY is not configured');
+		return;
+	}
 
 	const listRes = await env.MONITOR_KV.list({ prefix: 'active:' });
+	let audited = 0;
 	for (const key of listRes.keys) {
+		if (audited >= MAX_SUBSCRIPTIONS_PER_RUN) {
+			console.warn(
+				`Scheduled run hit the per-run cap of ${MAX_SUBSCRIPTIONS_PER_RUN}; remaining subscriptions run next cycle`
+			);
+			break;
+		}
 		try {
 			const encrypted = await env.MONITOR_KV.get(key.name);
 			if (!encrypted) continue;
@@ -440,6 +540,30 @@ export async function handleScheduledCron(
 			if (record.lastScannedAt && Date.now() - record.lastScannedAt < 23 * 3600 * 1000) {
 				continue;
 			}
+
+			// Re-validate the stored target before using it. It was checked once at
+			// subscribe time; this is a different, unattended context reading a value
+			// back out of storage, and the deny-list may also have grown since.
+			if (!isValidTargetUrl(record.targetUrl) || isSelfScan(record.targetUrl)) {
+				console.error(`Skipping subscription ${key.name}: stored target is no longer an allowed scan target`);
+				continue;
+			}
+
+			// Re-prove ownership periodically. Domains change hands, and a one-time
+			// proof must not authorize scanning indefinitely.
+			if (record.mode === 'external') {
+				const lastProof = record.lastOwnershipVerifiedAt ?? 0;
+				if (Date.now() - lastProof > OWNERSHIP_REVERIFY_INTERVAL_MS) {
+					const stillOwned = await verifyHttpOwnership(record.targetUrl, record.ownershipToken || '');
+					if (!stillOwned) {
+						console.error(`Skipping subscription ${key.name}: ownership proof no longer present`);
+						continue;
+					}
+					record.lastOwnershipVerifiedAt = Date.now();
+				}
+			}
+
+			audited++;
 
 			let scanResult: { wafDetected?: string; summary?: { blocked: number; passed: number; total: number } };
 			try {

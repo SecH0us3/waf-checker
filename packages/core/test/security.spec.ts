@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isValidTargetUrl, isInScopeRedirect } from '../src/utils/security';
+import { isValidTargetUrl, isInScopeRedirect, normalizeHostname } from '../src/utils/security';
 
 describe('isValidTargetUrl', () => {
     describe('Valid URLs', () => {
@@ -213,4 +213,28 @@ describe('isInScopeRedirect', () => {
     it('should reject malformed URLs', () => {
         expect(isInScopeRedirect('not-a-url', 'https://example.com/')).toBe(false);
     });
+});
+
+describe('Host normalization parity (validation vs. comparison)', () => {
+	it('rejects the root-dot form of a blocked name', () => {
+		// `localhost.` resolves exactly like `localhost`, so an equality check
+		// against the literal name must see them as the same host.
+		expect(isValidTargetUrl('http://localhost./')).toBe(false);
+		expect(isValidTargetUrl('http://LOCALHOST./')).toBe(false);
+	});
+
+	it('rejects IPv6 site-local and 6to4 relay anycast', () => {
+		expect(isValidTargetUrl('http://[fec0::1]/')).toBe(false);
+		expect(isValidTargetUrl('http://192.88.99.1/')).toBe(false);
+	});
+
+	it('still accepts ordinary public targets', () => {
+		expect(isValidTargetUrl('https://example.com/')).toBe(true);
+		expect(isValidTargetUrl('https://example.com./')).toBe(true);
+	});
+
+	it('normalizes both sides of a redirect-scope comparison identically', () => {
+		expect(normalizeHostname('Example.COM.')).toBe('example.com');
+		expect(isInScopeRedirect('https://example.com/a', 'https://EXAMPLE.com./b')).toBe(true);
+	});
 });

@@ -6,6 +6,10 @@ compatibility_date = "2024-03-29"
 directory = "packages/worker/src/static"
 binding = "ASSETS"
 
+# Required secrets: EMAIL_ENCRYPTION_KEY and TURNSTILE_SECRET_KEY.
+# Both are mandatory outside local development — the scheduled-monitoring
+# endpoints return 503 rather than operate without them. See packages/worker/wrangler.toml.
+
 [[send_email]]
 name = "SEND_EMAIL"
 allowed_sender_addresses = ["waf@secmy.app"]

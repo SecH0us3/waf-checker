@@ -3093,12 +3093,10 @@ async function submitScheduleSubscription(event) {
 			return;
 		}
 
-		if (data.alreadySubscribed) {
-			if (alertContainer) {
-				alertContainer.innerHTML = `<div class="alert alert-info py-2 px-3 small">ℹ️ <strong>Already Monitored:</strong> ${escapeHtml(data.message)}</div>`;
-			}
-			return;
-		}
+		// Note: an address already monitoring this domain gets the same response as
+		// a first-time subscriber, on purpose — the server must not tell an
+		// anonymous caller whether a given address monitors a given domain. There
+		// is deliberately no "already monitored" branch here.
 
 		// Success message
 		let successHtml = `<div class="alert alert-success py-3 px-3 small">
