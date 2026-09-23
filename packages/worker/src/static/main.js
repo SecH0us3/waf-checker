@@ -1,3 +1,33 @@
+const safeStorage = {
+	getItem(key) {
+		try {
+			return localStorage.getItem(key);
+		} catch {
+			return null;
+		}
+	},
+	setItem(key, value) {
+		try {
+			localStorage.setItem(key, value);
+		} catch {}
+	},
+	removeItem(key) {
+		try {
+			localStorage.removeItem(key);
+		} catch {}
+	},
+};
+
+/** Mirrors the server's challengeUrlFor(): the challenge is origin-relative, so
+ *  appending it to a target that has a path would instruct the wrong location. */
+function challengeFileFor(target) {
+	try {
+		return new URL(target).origin + '/.well-known/secmy-check.txt';
+	} catch {
+		return '/.well-known/secmy-check.txt';
+	}
+}
+
 function escapeHtml(str) {
 	const div = document.createElement('div');
 	div.textContent = str;
@@ -132,6 +162,20 @@ function renderReport(results, falsePositiveMode = false) {
 	}
 
 	html += renderSummary(results, falsePositiveMode);
+	html += `<div class="card mb-3 mx-3 border-0 bg-subtle p-3 shadow-sm" style="border-radius: 8px;">
+		<div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+			<div class="d-flex align-items-center gap-2">
+				<span style="font-size: 1.3rem;">⏰</span>
+				<div>
+					<div class="fw-semibold">Automated Daily WAF Monitoring</div>
+					<small class="text-muted">Receive automatic alerts from <code>waf@secmy.app</code> when protection status or bypasses change.</small>
+				</div>
+			</div>
+			<button type="button" class="btn btn-sm btn-outline-primary" onclick="showScheduleModal()">
+				🔔 Set Up Daily Monitoring
+			</button>
+		</div>
+	</div>`;
 	html += `<div class="results-toolbar mb-2 px-3">
 		<input id="resultsSearch" class="form-control form-control-sm results-search" placeholder="🔍 Filter by category, payload, method or status…" oninput="filterResultsTableByStatus()" autocomplete="off">
 		<span id="resultsSearchCount" class="results-count"></span>
@@ -171,10 +215,15 @@ function renderReport(results, falsePositiveMode = false) {
 			const shown = names.slice(0, 3).map((n) => escapeHtml(n)).join(', ');
 			const extra = names.length > 3 ? ` (+${names.length - 3})` : '';
 			const originStatus = hits.length ? hits[0].status : '';
+			const tested = r.userAgentBypass.tested;
+			// Probing stops at the first identity that gets through (subrequest
+			// budget), so `hits` is the first one found, not the full set — the badge
+			// says "via" rather than counting bots, which would always read "1".
 			const title =
 				`Blocked with a normal User-Agent (403), but reached the origin (status ${originStatus}) ` +
-				`when the request claimed to be a trusted bot: ${escapeHtml(names.join(', '))}`;
-			uaBadge = `<span class="badge bg-danger ms-2" title="${title}">🕵️ UA bypass: ${names.length} bot(s): ${shown}${extra}</span>`;
+				`when the request claimed to be a trusted bot: ${escapeHtml(names.join(', '))}. ` +
+				`Probing stopped at the first bypass${tested ? ` after ${tested} identity/identities` : ''}.`;
+			uaBadge = `<span class="badge bg-danger ms-2" title="${title}">🕵️ UA bypass via ${shown}${extra}</span>`;
 			uaAttr = " data-ua-bypass='1'";
 		}
 		const rowClass = uaBadge ? ' class="ua-bypass-row"' : '';
@@ -240,6 +289,10 @@ const PAYLOAD_CATEGORIES = [
 function renderCategoryCheckboxes() {
 	const container = document.getElementById('categoryCheckboxes');
 	if (!container) return;
+	const existingCheckboxes = container.querySelectorAll ? container.querySelectorAll('input[type=checkbox]') : [];
+	if (existingCheckboxes.length === PAYLOAD_CATEGORIES.length) {
+		return;
+	}
 	container.innerHTML = '';
 	const defaultChecked = ['SQL Injection', 'XSS'];
 	PAYLOAD_CATEGORIES.forEach((cat, idx) => {
@@ -253,8 +306,8 @@ function renderCategoryCheckboxes() {
 }
 
 function highlightCategoryCheckboxesByResults(results, falsePositiveMode = false) {
-	// В режиме false positive: выделяем категории где есть 403 (плохо)
-	// В обычном режиме: выделяем категории где есть 200 (плохо)
+	// False positive mode: highlight categories where 403 occurs (unexpected block)
+	// Normal mode: highlight categories where 200 occurs (bypass)
 	const categoriesWithBadStatus = new Set();
 	if (Array.isArray(results)) {
 		results.forEach((r) => {
@@ -269,7 +322,7 @@ function highlightCategoryCheckboxesByResults(results, falsePositiveMode = false
 			}
 		});
 	}
-	// Пробегаем по чекбоксам и выделяем нужные label
+	// Iterate through checkboxes and highlight corresponding labels
 	const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
 	categoryCheckboxes.forEach((cb) => {
 		const label = cb.parentElement.querySelector('.form-check-label');
@@ -315,7 +368,7 @@ function toggleMoreSettings() {
 		}, 300);
 
 		button.innerHTML = '⚙️';
-		localStorage.setItem('wafchecker_moreSettingsExpanded', 'false');
+		safeStorage.setItem('wafchecker_moreSettingsExpanded', 'false');
 	} else {
 		// Start opening animation
 		panel.style.display = '';
@@ -334,13 +387,13 @@ function toggleMoreSettings() {
 		}, 300);
 
 		button.innerHTML = '⚙️';
-		localStorage.setItem('wafchecker_moreSettingsExpanded', 'true');
+		safeStorage.setItem('wafchecker_moreSettingsExpanded', 'true');
 	}
 }
 
 // Update description text based on false positive test mode
 function updateDescriptionText() {
-	const description = document.querySelector('.description-waf-check');
+	const description = typeof document !== 'undefined' && document.querySelector ? document.querySelector('.description-waf-check') : null;
 	if (description) {
 		description.innerHTML = `This project helps you check how well your Web Application Firewall (WAF) protects your product against common web attacks. You can also run audits from the command line using: <code>node packages/cli/dist/index.js check &lt;url&gt;</code>`;
 	}
@@ -383,23 +436,46 @@ function showResultsSkeleton() {
 
 async function fetchResults() {
 	const btn = document.getElementById('checkBtn');
-	btn.disabled = true;
-	const oldText = btn.textContent;
-	btn.textContent = 'Wait...';
-	showResultsSkeleton();
-    const cancelBtn = document.getElementById('cancelBtn');
-    if (cancelBtn) cancelBtn.style.display = 'flex';
+	if (!btn) return;
+
 	const url = getNormalizedUrlInput();
+	if (!url) {
+		alert('Please enter a target URL first (e.g. https://example.com)');
+		const urlInput = document.getElementById('url');
+		if (urlInput) urlInput.focus();
+		return;
+	}
+
+	// Collect selected methods — ONLY from .http-methods!
+	const methodCheckboxes = document.querySelectorAll('.http-methods input[type=checkbox]');
+	const selectedMethods = Array.from(methodCheckboxes)
+		.filter((cb) => cb.checked)
+		.map((cb) => cb.value);
+	if (selectedMethods.length === 0) {
+		alert('Please select at least one HTTP method (e.g. GET).');
+		return;
+	}
+
+	// Collect selected categories
+	const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
+	const selectedCategories = Array.from(categoryCheckboxes)
+		.filter((cb) => cb.checked)
+		.map((cb) => cb.value);
+	if (selectedCategories.length === 0) {
+		alert('Please select at least one attack category from the left panel.');
+		return;
+	}
+
+	btn.disabled = true;
+	btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Scanning...';
+	showResultsSkeleton();
+	const cancelBtn = document.getElementById('cancelBtn');
+	if (cancelBtn) cancelBtn.style.display = 'flex';
 
 	// Create test session
 	const sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 	const startTime = new Date().toISOString();
 
-	// Collect selected methods — ТОЛЬКО из .http-methods!
-	const methodCheckboxes = document.querySelectorAll('.http-methods input[type=checkbox]');
-	const selectedMethods = Array.from(methodCheckboxes)
-		.filter((cb) => cb.checked)
-		.map((cb) => cb.value);
 	// Follow redirect
 	const followRedirect = document.getElementById('followRedirect')?.checked ? true : false;
 	// False positive test
@@ -423,39 +499,36 @@ async function fetchResults() {
 	// requests as Googlebot/Slackbot/etc. to catch User-Agent allow-list bypasses.
 	const spoofUserAgentEl = document.getElementById('spoofUserAgent');
 	const spoofUserAgent = spoofUserAgentEl ? spoofUserAgentEl.checked : true;
-	// Collect selected categories
-	const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
-	const selectedCategories = Array.from(categoryCheckboxes)
-		.filter((cb) => cb.checked)
-		.map((cb) => cb.value);
-	// --- Сохраняем в localStorage ---
-	localStorage.setItem('wafchecker_url', url);
-	localStorage.setItem('wafchecker_methods', JSON.stringify(selectedMethods));
-	localStorage.setItem('wafchecker_categories', JSON.stringify(selectedCategories));
-	localStorage.setItem('wafchecker_followRedirect', followRedirect ? '1' : '0');
-	localStorage.setItem('wafchecker_falsePositiveTest', falsePositiveTest ? '1' : '0');
-	localStorage.setItem('wafchecker_caseSensitiveTest', caseSensitiveTest ? '1' : '0');
-	localStorage.setItem('wafchecker_enhancedPayloads', enhancedPayloads ? '1' : '0');
-	localStorage.setItem('wafchecker_useAdvancedPayloads', useAdvancedPayloads ? '1' : '0');
-	localStorage.setItem('wafchecker_autoDetectWAF', autoDetectWAF ? '1' : '0');
-	localStorage.setItem('wafchecker_useEncodingVariations', useEncodingVariations ? '1' : '0');
-	localStorage.setItem('wafchecker_httpManipulation', httpManipulation ? '1' : '0');
-	localStorage.setItem('wafchecker_enablePadding', enablePadding ? '1' : '0');
-	localStorage.setItem('wafchecker_paddingSize', paddingSize);
-	localStorage.setItem('wafchecker_spoofUserAgent', spoofUserAgent ? '1' : '0');
-	// --- Получаем шаблон и заголовки ---\n
+
+	// --- Save to localStorage ---
+	safeStorage.setItem('wafchecker_url', url);
+	safeStorage.setItem('wafchecker_methods', JSON.stringify(selectedMethods));
+	safeStorage.setItem('wafchecker_categories', JSON.stringify(selectedCategories));
+	safeStorage.setItem('wafchecker_followRedirect', followRedirect ? '1' : '0');
+	safeStorage.setItem('wafchecker_falsePositiveTest', falsePositiveTest ? '1' : '0');
+	safeStorage.setItem('wafchecker_caseSensitiveTest', caseSensitiveTest ? '1' : '0');
+	safeStorage.setItem('wafchecker_enhancedPayloads', enhancedPayloads ? '1' : '0');
+	safeStorage.setItem('wafchecker_useAdvancedPayloads', useAdvancedPayloads ? '1' : '0');
+	safeStorage.setItem('wafchecker_autoDetectWAF', autoDetectWAF ? '1' : '0');
+	safeStorage.setItem('wafchecker_useEncodingVariations', useEncodingVariations ? '1' : '0');
+	safeStorage.setItem('wafchecker_httpManipulation', httpManipulation ? '1' : '0');
+	safeStorage.setItem('wafchecker_enablePadding', enablePadding ? '1' : '0');
+	safeStorage.setItem('wafchecker_paddingSize', paddingSize);
+	safeStorage.setItem('wafchecker_spoofUserAgent', spoofUserAgent ? '1' : '0');
+
+	// --- Get template and headers ---
 	let payloadTemplate = '';
 	const templateEl = document.getElementById('payloadTemplate');
 	if (templateEl) {
 		payloadTemplate = templateEl.value;
-		localStorage.setItem('wafchecker_payloadTemplate', payloadTemplate);
+		safeStorage.setItem('wafchecker_payloadTemplate', payloadTemplate);
 	}
 
 	let customHeaders = '';
 	const headersEl = document.getElementById('customHeaders');
 	if (headersEl) {
 		customHeaders = headersEl.value;
-		localStorage.setItem('wafchecker_customHeaders', customHeaders);
+		safeStorage.setItem('wafchecker_customHeaders', customHeaders);
 	}
 	let page = 0;
 	let allResults = [];
@@ -481,13 +554,15 @@ async function fetchResults() {
 	}
 
 	try {
-        currentAbortController = new AbortController();
+		currentAbortController = new AbortController();
+		let requestErrorMsg = null;
 		while (true) {
 			const params = new URLSearchParams({
 				url,
 				methods: selectedMethods.join(','),
 				categories: selectedCategories.join(','),
-				page: page,
+				page: String(page),
+				pageSize: '15',
 				followRedirect: followRedirect ? '1' : '0',
 				falsePositiveTest: falsePositiveTest ? '1' : '0',
 				caseSensitiveTest: caseSensitiveTest ? '1' : '0',
@@ -509,13 +584,37 @@ async function fetchResults() {
 					customHeaders,
 					detectedWAF: detectedWAFType,
 				}),
-                signal: currentAbortController.signal
+				signal: currentAbortController.signal,
 			});
-			if (!resp.ok) break;
+			if (!resp.ok) {
+				const errorText = await resp.text().catch(() => '');
+				let parsedMsg = `Server error ${resp.status}`;
+				try {
+					const json = JSON.parse(errorText);
+					if (json && json.error) parsedMsg = json.error;
+				} catch {
+					if (errorText && errorText.length < 200) parsedMsg = errorText;
+				}
+				requestErrorMsg = parsedMsg;
+				break;
+			}
 			const results = await resp.json();
 			if (!results || !results.length) break;
 			allResults = allResults.concat(results);
+			btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Scanning (${allResults.length} done)...`;
+			document.getElementById('results').innerHTML = renderReport(allResults, falsePositiveTest);
+			highlightCategoryCheckboxesByResults(allResults, falsePositiveTest);
 			page++;
+		}
+
+		if (allResults.length === 0 && requestErrorMsg) {
+			document.getElementById('results').innerHTML = `<div class="alert alert-danger mb-3"><strong>Check Failed:</strong> ${escapeHtml(requestErrorMsg)}</div>`;
+			return;
+		}
+
+		if (allResults.length === 0) {
+			document.getElementById('results').innerHTML = '<div class="alert alert-warning mb-3">No test results returned for the specified configuration.</div>';
+			return;
 		}
 
 		const endTime = new Date().toISOString();
@@ -591,18 +690,22 @@ async function fetchResults() {
 		const descEl = document.querySelector('.description-waf-check');
 		if (descEl) descEl.style.display = 'none';
 	} catch (e) {
-        if (e.name === 'AbortError') {
-            document.getElementById('results').innerHTML = '<div class="alert alert-warning">Scan cancelled by user.</div>';
-        } else {
-            console.error('Scan error:', e);
-        }
-    } finally {
+		if (e.name === 'AbortError') {
+			document.getElementById('results').innerHTML = '<div class="alert alert-warning mb-3">Scan cancelled by user.</div>';
+		} else {
+			console.error('Scan error:', e);
+			document.getElementById('results').innerHTML = `<div class="alert alert-danger mb-3"><strong>Scan Error:</strong> ${escapeHtml(e.message || String(e))}</div>`;
+		}
+	} finally {
 		btn.disabled = false;
-		btn.textContent = oldText;
-        const cancelBtn = document.getElementById('cancelBtn');
-        if (cancelBtn) cancelBtn.style.display = 'none';
-        currentAbortController = null;
+		btn.innerHTML = '<span class="btn-icon">▶</span> <span class="check-label">Check</span>';
+		const cancelBtn = document.getElementById('cancelBtn');
+		if (cancelBtn) cancelBtn.style.display = 'none';
+		currentAbortController = null;
 	}
+}
+if (typeof window !== 'undefined') {
+	window.fetchResults = fetchResults;
 }
 
 async function runReverseEngineering() {
@@ -1153,31 +1256,33 @@ function downloadVpCode() {
 
 function restoreStateFromLocalStorage() {
 	// URL
-	const url = localStorage.getItem('wafchecker_url');
+	const url = safeStorage.getItem('wafchecker_url');
 	if (url) {
 		const urlInput = document.getElementById('url');
 		if (urlInput) urlInput.value = url;
 	}
 	// Methods
-	const methods = localStorage.getItem('wafchecker_methods');
+	const methods = safeStorage.getItem('wafchecker_methods');
 	if (methods) {
 		try {
 			const arr = JSON.parse(methods);
-			const methodCheckboxes = document.querySelectorAll('.http-methods input[type=checkbox]');
-			methodCheckboxes.forEach((cb) => {
-				cb.checked = arr.includes(cb.value);
-			});
+			if (Array.isArray(arr) && arr.length > 0) {
+				const methodCheckboxes = document.querySelectorAll('.http-methods input[type=checkbox]');
+				methodCheckboxes.forEach((cb) => {
+					cb.checked = arr.includes(cb.value);
+				});
+			}
 		} catch { }
 	}
 	// Follow redirect
-	const followRedirect = localStorage.getItem('wafchecker_followRedirect');
+	const followRedirect = safeStorage.getItem('wafchecker_followRedirect');
 	if (followRedirect !== null) {
 		const el = document.getElementById('followRedirect');
 		if (el) el.checked = !!parseInt(followRedirect, 10);
 	}
 
 	// False positive test
-	const falsePositiveTest = localStorage.getItem('wafchecker_falsePositiveTest');
+	const falsePositiveTest = safeStorage.getItem('wafchecker_falsePositiveTest');
 	if (falsePositiveTest !== null) {
 		const el = document.getElementById('falsePositiveTest');
 		if (el) {
@@ -1186,7 +1291,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Case sensitive test
-	const caseSensitiveTest = localStorage.getItem('wafchecker_caseSensitiveTest');
+	const caseSensitiveTest = safeStorage.getItem('wafchecker_caseSensitiveTest');
 	if (caseSensitiveTest !== null) {
 		const el = document.getElementById('caseSensitiveTest');
 		if (el) {
@@ -1195,7 +1300,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Enhanced payloads
-	const enhancedPayloads = localStorage.getItem('wafchecker_enhancedPayloads');
+	const enhancedPayloads = safeStorage.getItem('wafchecker_enhancedPayloads');
 	if (enhancedPayloads !== null) {
 		const el = document.getElementById('enhancedPayloads');
 		if (el) {
@@ -1204,7 +1309,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Use advanced WAF bypass payloads
-	const useAdvancedPayloads = localStorage.getItem('wafchecker_useAdvancedPayloads');
+	const useAdvancedPayloads = safeStorage.getItem('wafchecker_useAdvancedPayloads');
 	if (useAdvancedPayloads !== null) {
 		const el = document.getElementById('useAdvancedPayloadsCheckbox');
 		if (el) {
@@ -1213,7 +1318,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Auto detect WAF
-	const autoDetectWAF = localStorage.getItem('wafchecker_autoDetectWAF');
+	const autoDetectWAF = safeStorage.getItem('wafchecker_autoDetectWAF');
 	if (autoDetectWAF !== null) {
 		const el = document.getElementById('autoDetectWAF');
 		if (el) {
@@ -1222,7 +1327,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Use encoding variations
-	const useEncodingVariations = localStorage.getItem('wafchecker_useEncodingVariations');
+	const useEncodingVariations = safeStorage.getItem('wafchecker_useEncodingVariations');
 	if (useEncodingVariations !== null) {
 		const el = document.getElementById('useEncodingVariations');
 		if (el) {
@@ -1231,7 +1336,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// HTTP Manipulation
-	const httpManipulation = localStorage.getItem('wafchecker_httpManipulation');
+	const httpManipulation = safeStorage.getItem('wafchecker_httpManipulation');
 	if (httpManipulation !== null) {
 		const el = document.getElementById('httpManipulation');
 		if (el) {
@@ -1240,7 +1345,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Buffer Padding Evasion
-	const enablePadding = localStorage.getItem('wafchecker_enablePadding');
+	const enablePadding = safeStorage.getItem('wafchecker_enablePadding');
 	if (enablePadding !== null) {
 		const el = document.getElementById('enablePadding');
 		if (el) {
@@ -1248,7 +1353,7 @@ function restoreStateFromLocalStorage() {
 			togglePaddingSizeSelect();
 		}
 	}
-	const paddingSize = localStorage.getItem('wafchecker_paddingSize');
+	const paddingSize = safeStorage.getItem('wafchecker_paddingSize');
 	if (paddingSize !== null) {
 		const el = document.getElementById('paddingSizeSelect');
 		if (el) {
@@ -1257,7 +1362,7 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Legit User-Agent bypass test (defaults to on when never set)
-	const spoofUserAgent = localStorage.getItem('wafchecker_spoofUserAgent');
+	const spoofUserAgent = safeStorage.getItem('wafchecker_spoofUserAgent');
 	if (spoofUserAgent !== null) {
 		const el = document.getElementById('spoofUserAgent');
 		if (el) {
@@ -1266,25 +1371,27 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Categories
-	const categories = localStorage.getItem('wafchecker_categories');
+	const categories = safeStorage.getItem('wafchecker_categories');
 	if (categories) {
 		try {
 			const arr = JSON.parse(categories);
-			const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
-			categoryCheckboxes.forEach((cb) => {
-				cb.checked = arr.includes(cb.value);
-			});
+			if (Array.isArray(arr) && arr.length > 0) {
+				const categoryCheckboxes = document.querySelectorAll('#categoryCheckboxes input[type=checkbox]');
+				categoryCheckboxes.forEach((cb) => {
+					cb.checked = arr.includes(cb.value);
+				});
+			}
 		} catch { }
 	}
 	// Payload template
-	const payloadTemplate = localStorage.getItem('wafchecker_payloadTemplate');
+	const payloadTemplate = safeStorage.getItem('wafchecker_payloadTemplate');
 	if (payloadTemplate) {
 		const templateEl = document.getElementById('payloadTemplate');
 		if (templateEl) {
 			// Auto-fix legacy placeholder {{$$}} to {PAYLOAD}
 			if (payloadTemplate.includes('{{$$}}')) {
 				templateEl.value = payloadTemplate.replace(/\{\{\$\$\}\}/g, '{PAYLOAD}');
-				localStorage.setItem('wafchecker_payloadTemplate', templateEl.value);
+				safeStorage.setItem('wafchecker_payloadTemplate', templateEl.value);
 			} else {
 				templateEl.value = payloadTemplate;
 			}
@@ -1292,14 +1399,14 @@ function restoreStateFromLocalStorage() {
 	}
 
 	// Custom headers
-	const customHeaders = localStorage.getItem('wafchecker_customHeaders');
+	const customHeaders = safeStorage.getItem('wafchecker_customHeaders');
 	if (customHeaders) {
 		const headersEl = document.getElementById('customHeaders');
 		if (headersEl) headersEl.value = customHeaders;
 	}
 
 	// More Settings panel state
-	const moreSettingsExpanded = localStorage.getItem('wafchecker_moreSettingsExpanded');
+	const moreSettingsExpanded = safeStorage.getItem('wafchecker_moreSettingsExpanded');
 	if (moreSettingsExpanded === 'true') {
 		const panel = document.getElementById('moreSettingsPanel');
 		const button = document.getElementById('moreSettingsToggle');
@@ -1315,27 +1422,34 @@ function restoreStateFromLocalStorage() {
 
 // Theme logic
 function setTheme(theme) {
-	document.body.setAttribute('data-theme', theme);
-	localStorage.setItem('theme', theme);
+	if (document.body) {
+		document.body.setAttribute('data-theme', theme);
+	}
+	safeStorage.setItem('theme', theme);
 	// Use unicode sun/moon for theme toggle
-	document.getElementById('themeToggle').textContent = theme === 'dark' ? '\u2600' : '\u263E';
+	const themeToggle = document.getElementById('themeToggle');
+	if (themeToggle) {
+		themeToggle.textContent = theme === 'dark' ? '\u2600' : '\u263E';
+	}
 	// Adjust subtitle color for dark/light
 	const subtitle = document.getElementById('subtitle');
 	if (subtitle) {
-		if (theme === 'dark') {
-			subtitle.style.color = '#bfc6ce';
-		} else {
-			subtitle.style.color = '#6c757d';
-		}
+		subtitle.style.color = theme === 'dark' ? '#bfc6ce' : '#6c757d';
 	}
 	// Adjust input placeholder color for dark/light
 	const urlInput = document.getElementById('url');
-	urlInput.classList.toggle('dark-placeholder', theme === 'dark');
+	if (urlInput) {
+		urlInput.classList.toggle('dark-placeholder', theme === 'dark');
+	}
 }
 function getPreferredTheme() {
-	const stored = localStorage.getItem('theme');
+	const stored = safeStorage.getItem('theme');
 	if (stored) return stored;
-	return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+	try {
+		return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+	} catch {
+		return 'light';
+	}
 }
 
 // WAF Detection functionality
@@ -1607,13 +1721,20 @@ function displayHTTPManipulationResults(data) {
 
 // Initialize application
 function initApp() {
-	setTheme(getPreferredTheme());
-	document.getElementById('themeToggle').addEventListener('click', function () {
-		const current = document.body.getAttribute('data-theme') || getPreferredTheme();
-		setTheme(current === 'dark' ? 'light' : 'dark');
-	});
+	try {
+		setTheme(getPreferredTheme());
+	} catch (e) {
+		console.warn('Failed to set theme:', e);
+	}
+	const themeToggle = document.getElementById('themeToggle');
+	if (themeToggle) {
+		themeToggle.addEventListener('click', function () {
+			const current = (document.body && document.body.getAttribute('data-theme')) || getPreferredTheme();
+			setTheme(current === 'dark' ? 'light' : 'dark');
+		});
+	}
 	renderCategoryCheckboxes();
-	// --- Кнопки select all/deselect all ---
+	// --- Select all/deselect all buttons ---
 	const selectAllBtn = document.getElementById('selectAllCategoriesBtn');
 	const deselectAllBtn = document.getElementById('deselectAllCategoriesBtn');
 	if (selectAllBtn) {
@@ -1632,7 +1753,7 @@ function initApp() {
 			});
 		});
 	}
-	// --- Enter в поле URL ---
+	// --- Enter key in URL input ---
 	const urlInput = document.getElementById('url');
 	if (urlInput) {
 		urlInput.addEventListener('keydown', function (e) {
@@ -1642,7 +1763,12 @@ function initApp() {
 			}
 		});
 	}
-	// --- Восстановить состояние ---
+	// --- Check button ---
+	const checkBtn = document.getElementById('checkBtn');
+	if (checkBtn) {
+		checkBtn.onclick = fetchResults;
+	}
+	// --- Restore state from localStorage ---
 	restoreStateFromLocalStorage();
 
 	// The remediation banner is only meaningful after a scan; make sure it never
@@ -1659,7 +1785,7 @@ function initApp() {
 		cb.addEventListener('change', updatePayloadTemplateSection);
 	});
 	updatePayloadTemplateSection();
-	// Делегированный обработчик на #results
+	// Delegated listener on #results
 	const resultsDiv = document.getElementById('results');
 	if (resultsDiv) {
 		resultsDiv.addEventListener('change', function (e) {
@@ -1672,9 +1798,9 @@ function initApp() {
 				});
 				filterResultsTableByStatus();
 			}
-			// Обычные чекбоксы статусов
+			// Status filter checkboxes
 			if (target && target.classList.contains('status-filter-checkbox')) {
-				// Если хотя бы один снят — select all снимается, если все включены — включается
+				// If at least one is unchecked, uncheck select-all; if all checked, check select-all
 				const all = document.querySelectorAll('.status-filter-checkbox');
 				const checkedCount = Array.from(all).filter((cb) => cb.checked).length;
 				const selectAll = document.getElementById('statusSelectAll');
@@ -1692,7 +1818,13 @@ function initApp() {
 }
 
 // Initialize the application when DOM is loaded
-document.addEventListener('DOMContentLoaded', initApp);
+if (typeof document !== 'undefined') {
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', initApp);
+	} else if (document.readyState === 'interactive' || document.readyState === 'complete') {
+		initApp();
+	}
+}
 
 function filterResultsTableByStatus() {
 	const checkedStatuses = Array.from(document.querySelectorAll('.status-filter-checkbox:checked')).map((cb) =>
@@ -2899,4 +3031,129 @@ function validateBatchUrls() {
 		urlsTextarea.style.borderColor = '';
 		urlsTextarea.title = '';
 	}
+}
+
+// Scheduled Daily Monitoring Functions
+function showScheduleModal(targetUrl) {
+	const modalEl = document.getElementById('scheduleModal');
+	if (!modalEl) return;
+	const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+
+	const urlInput = document.getElementById('scheduleTargetUrl');
+	if (urlInput) {
+		const currentUrl = targetUrl || getNormalizedUrlInput();
+		if (currentUrl) {
+			urlInput.value = currentUrl;
+		}
+	}
+
+	// Reset alerts and buttons
+	const alertContainer = document.getElementById('scheduleAlertContainer');
+	if (alertContainer) alertContainer.innerHTML = '';
+
+	const submitBtn = document.getElementById('submitScheduleBtn');
+	if (submitBtn) {
+		submitBtn.disabled = false;
+		submitBtn.innerHTML = '<span>🔔 Activate Daily Monitoring</span>';
+	}
+
+	modal.show();
+}
+
+async function submitScheduleSubscription(event) {
+	if (event && event.preventDefault) event.preventDefault();
+
+	const targetUrlEl = document.getElementById('scheduleTargetUrl');
+	const emailEl = document.getElementById('scheduleEmail');
+	const alertContainer = document.getElementById('scheduleAlertContainer');
+	const submitBtn = document.getElementById('submitScheduleBtn');
+
+	if (!targetUrlEl || !emailEl || !submitBtn) return;
+
+	const targetUrl = normalizeUrl(targetUrlEl.value.trim());
+	const email = emailEl.value.trim();
+
+	if (!targetUrl) {
+		if (alertContainer) {
+			alertContainer.innerHTML = '<div class="alert alert-danger py-2 px-3 small">Please provide a valid target URL.</div>';
+		}
+		return;
+	}
+
+	if (!email || !email.includes('@')) {
+		if (alertContainer) {
+			alertContainer.innerHTML = '<div class="alert alert-danger py-2 px-3 small">Please provide a valid email address.</div>';
+		}
+		return;
+	}
+
+	submitBtn.disabled = true;
+	submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1" role="status"></span> Sending...';
+	if (alertContainer) alertContainer.innerHTML = '';
+
+	try {
+		const resp = await fetch('/api/schedule/subscribe', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ targetUrl, email }),
+		});
+
+		const data = await resp.json().catch(() => ({}));
+
+		if (!resp.ok) {
+			const errMsg = data.error || `Server error (${resp.status})`;
+			if (alertContainer) {
+				alertContainer.innerHTML = `<div class="alert alert-danger py-2 px-3 small"><strong>Subscription Failed:</strong> ${escapeHtml(errMsg)}</div>`;
+			}
+			return;
+		}
+
+		// Note: an address already monitoring this domain gets the same response as
+		// a first-time subscriber, on purpose — the server must not tell an
+		// anonymous caller whether a given address monitors a given domain. There
+		// is deliberately no "already monitored" branch here.
+
+		// Success message
+		let successHtml = `<div class="alert alert-success py-3 px-3 small">
+			<div class="fw-bold mb-1">✅ Verification Email Dispatched!</div>
+			<div>We sent a confirmation link to <strong>${escapeHtml(email)}</strong> from <code>waf@secmy.app</code>.</div>`;
+
+		if (data.mode === 'external' && data.ownershipToken) {
+			successHtml += `
+			<hr class="my-2">
+			<div><strong>Anti-Abuse Verification:</strong> Since this is an external or public email, please also place this token:</div>
+			<div class="my-1"><code class="p-1 user-select-all bg-dark text-white rounded">${escapeHtml(data.ownershipToken)}</code></div>
+			<div>in file: <code>${escapeHtml(data.ownershipChallengeFile || challengeFileFor(targetUrl))}</code>, then click the link in your email to activate.</div>`;
+		} else {
+			successHtml += `
+			<div class="mt-1">Domain match confirmed! Just click the link in the email to activate daily monitoring.</div>`;
+		}
+
+		if (data.devVerifyUrl) {
+			successHtml += `
+			<hr class="my-2">
+			<div class="small text-muted mb-1">🛠️ <strong>Dev / Preview Simulation:</strong> Email sending is simulated locally. Click below to confirm immediately:</div>
+			<div><a href="${escapeHtml(data.devVerifyUrl)}" target="_blank" class="btn btn-sm btn-outline-success mt-1">⚡ Complete Verification Link</a></div>`;
+		}
+
+		successHtml += `</div>`;
+
+		if (alertContainer) alertContainer.innerHTML = successHtml;
+
+		// Clear email input on success
+		emailEl.value = '';
+	} catch (err) {
+		console.error('Subscription error:', err);
+		if (alertContainer) {
+			alertContainer.innerHTML = `<div class="alert alert-danger py-2 px-3 small"><strong>Network Error:</strong> ${escapeHtml(err.message || String(err))}</div>`;
+		}
+	} finally {
+		submitBtn.disabled = false;
+		submitBtn.innerHTML = '<span>🔔 Activate Daily Monitoring</span>';
+	}
+}
+
+if (typeof window !== 'undefined') {
+	window.showScheduleModal = showScheduleModal;
+	window.submitScheduleSubscription = submitScheduleSubscription;
 }

@@ -3,6 +3,13 @@ import { handleWAFDetection } from './handlers/waf-detect';
 import { handleHTTPManipulation } from './handlers/http-manip';
 import { handleBatchStart, handleBatchStatus, handleBatchStop } from './handlers/batch';
 import { isValidTargetUrl, runReverseEngineeringAudit, generateVirtualPatches, WAFDetector } from '@waf-checker/core';
+import {
+	handleScheduleSubscribe,
+	handleScheduleVerify,
+	handleScheduleUnsubscribe,
+	handleScheduledCron,
+} from './handlers/schedule';
+import { WorkerEnv } from './types/monitor';
 
 export const SELF_HOSTS = ['secmy.org', 'secmy.app'];
 
@@ -20,7 +27,7 @@ export function isSelfScan(targetUrlOrHost: string): boolean {
 }
 
 export default {
-	async fetch(request: Request, env: { ASSETS: { fetch: typeof fetch } }): Promise<Response> {
+	async fetch(request: Request, env: WorkerEnv): Promise<Response> {
 		const urlObj = new URL(request.url);
 		if (!urlObj.pathname.startsWith('/api/')) {
 			return env.ASSETS.fetch(request);
@@ -154,7 +161,7 @@ export default {
 				urlObj.searchParams.get('envelope') === 'true' ||
 				request.headers.get('accept')?.includes('application/vnd.waf-checker.v2+json');
 			const pageSizeParam = urlObj.searchParams.get('pageSize') || urlObj.searchParams.get('limit');
-			const pageSize = pageSizeParam ? parseInt(pageSizeParam, 10) : undefined;
+			const pageSize = pageSizeParam ? parseInt(pageSizeParam, 10) : 15;
 
 			const envelope = await handleApiCheckWithEnvelope(
 				url,
@@ -279,6 +286,28 @@ export default {
 		if (urlObj.pathname === '/api/batch/stop') {
 			return await handleBatchStop(request);
 		}
+		if (urlObj.pathname === '/api/schedule/subscribe') {
+			return await handleScheduleSubscribe(request, env);
+		}
+		if (urlObj.pathname === '/api/schedule/verify') {
+			return await handleScheduleVerify(request, env);
+		}
+		if (urlObj.pathname === '/api/schedule/unsubscribe') {
+			return await handleScheduleUnsubscribe(request, env);
+		}
 		return new Response('Not found', { status: 404 });
+	},
+	async scheduled(event: ScheduledEvent, env: WorkerEnv, ctx?: ExecutionContext): Promise<void> {
+		// Awaited, and failures rethrown, so a broken run is recorded as a failed
+		// cron invocation. Handing the promise to waitUntil() without a catch made
+		// every rejection an unhandled one and every run look successful.
+		const run = handleScheduledCron(env).catch((err) => {
+			console.error('Scheduled monitoring run failed:', err);
+			throw err;
+		});
+		if (ctx && typeof ctx.waitUntil === 'function') {
+			ctx.waitUntil(run);
+		}
+		await run;
 	},
 };

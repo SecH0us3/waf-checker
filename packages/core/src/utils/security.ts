@@ -1,3 +1,25 @@
+/**
+ * The single host normalizer. Every place that validates a host, compares two
+ * hosts, or derives a key from one must route through this, so that validation
+ * and use can never disagree about what the host is.
+ *
+ * Canonicalizes: case, and the trailing root dot (`localhost.` and `localhost`
+ * resolve identically, so they must compare identically — a mismatch here is a
+ * silent bypass of any equality check against a blocked name).
+ *
+ * The WHATWG URL parser has already canonicalized IPv4 literals in every
+ * notation (`0177.0.0.1`, `2130706433`, `127.1` all arrive as `127.0.0.1`) and
+ * compressed IPv6, so this deliberately does not re-implement that.
+ */
+export function normalizeHostname(host: string): string {
+	let normalized = host.toLowerCase().trim();
+	// IPv6 literals keep their brackets; only DNS names carry a root dot.
+	if (!normalized.startsWith('[') && normalized.endsWith('.')) {
+		normalized = normalized.slice(0, -1);
+	}
+	return normalized;
+}
+
 export function isValidTargetUrl(urlString: string, options: { allowLocal?: boolean } = {}): boolean {
 	try {
 		const url = new URL(urlString);
@@ -10,7 +32,7 @@ export function isValidTargetUrl(urlString: string, options: { allowLocal?: bool
 			return true;
 		}
 
-		let hostname = url.hostname;
+		let hostname = normalizeHostname(url.hostname);
 
 		// Block localhost and link-local ranges
 		if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1') {
@@ -39,6 +61,15 @@ export function isValidTargetUrl(urlString: string, options: { allowLocal?: bool
 			ipv6Normalized.toLowerCase().startsWith('fe9') ||
 			ipv6Normalized.toLowerCase().startsWith('fea') ||
 			ipv6Normalized.toLowerCase().startsWith('feb')
+		) {
+			return false;
+		}
+		// Site-Local Address (fec0::/10, deprecated but still routed on some networks)
+		if (
+			ipv6Normalized.toLowerCase().startsWith('fec') ||
+			ipv6Normalized.toLowerCase().startsWith('fed') ||
+			ipv6Normalized.toLowerCase().startsWith('fee') ||
+			ipv6Normalized.toLowerCase().startsWith('fef')
 		) {
 			return false;
 		}
@@ -125,6 +156,8 @@ const match = hex.match(/^ac1[0-9a-f]/);
 			if (octets[0] === 192 && octets[1] === 0 && octets[2] === 2) return false;
 			// 192.168.0.0/16
 			if (octets[0] === 192 && octets[1] === 168) return false;
+			// 192.88.99.0/24 (6to4 relay anycast)
+			if (octets[0] === 192 && octets[1] === 88 && octets[2] === 99) return false;
 			// 198.18.0.0/15 (Benchmarking)
 			if (octets[0] === 198 && octets[1] >= 18 && octets[1] <= 19) return false;
 			// 198.51.100.0/24 (TEST-NET-2)
@@ -156,8 +189,8 @@ const match = hex.match(/^ac1[0-9a-f]/);
  */
 export function isInScopeRedirect(fromUrl: string, toUrl: string): boolean {
 	try {
-		const from = new URL(fromUrl).hostname.toLowerCase().replace(/\.$/, '');
-		const to = new URL(toUrl).hostname.toLowerCase().replace(/\.$/, '');
+		const from = normalizeHostname(new URL(fromUrl).hostname);
+		const to = normalizeHostname(new URL(toUrl).hostname);
 
 		if (!from || !to) return false;
 		if (from === to) return true;

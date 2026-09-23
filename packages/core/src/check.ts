@@ -28,9 +28,13 @@ async function probeUserAgentBypass(
 	legitUserAgents: LegitUserAgent[],
 	detection: WAFDetectionResult | undefined,
 	probedPayload: string | undefined,
+	isWorker?: boolean,
 ): Promise<UserAgentBypassInfo> {
-	const info: UserAgentBypassInfo = { bypassed: false, tested: legitUserAgents.length, hits: [] };
-	for (const ua of legitUserAgents) {
+	// On Cloudflare Workers (50 subrequest limit), probe top 3 bots (Googlebot, Bingbot, Slackbot)
+	const candidateAgents = isWorker ? legitUserAgents.slice(0, 3) : legitUserAgents;
+	const info: UserAgentBypassInfo = { bypassed: false, tested: 0, hits: [] };
+	for (const ua of candidateAgents) {
+		info.tested++;
 		let res: any;
 		try {
 			res = await reissue(ua.userAgent);
@@ -42,12 +46,13 @@ async function probeUserAgentBypass(
 		if (!blocked) {
 			info.bypassed = true;
 			info.hits.push({ name: ua.name, userAgent: ua.userAgent, status, verdict: verdict as 'passed' | 'exposed' });
+			break; // Found bypass, stop probing further to save subrequests
 		}
 	}
 	return info;
 }
 
-// Вспомогательная функция для отправки запроса с нужным методом и payload
+// Helper function to send request with specified method and payload
 export async function sendRequest(
 	url: string,
 	method: string,
@@ -520,7 +525,7 @@ export async function handleApiCheckWithEnvelope(
 	// Legitimate-User-Agent bypass test: identities to replay blocked requests with.
 	const legitUserAgents = resolveLegitUserAgents(options?.spoofUserAgents);
 	let baseUrl: string;
-	const limit = options?.pageSize && options.pageSize > 0 ? options.pageSize : 50;
+	const limit = options?.pageSize && options.pageSize > 0 ? options.pageSize : (options?.isWorker ? 15 : 50);
 	const start = page * limit;
 	const end = start + limit;
 	let offset = 0;
@@ -691,6 +696,7 @@ export async function handleApiCheckWithEnvelope(
 									legitUserAgents,
 									wafDetectionResult,
 									currentPayload,
+									options?.isWorker,
 								);
 							}
 
@@ -766,6 +772,7 @@ export async function handleApiCheckWithEnvelope(
 							legitUserAgents,
 							wafDetectionResult,
 							payload,
+							options?.isWorker,
 						);
 					}
 
@@ -855,6 +862,7 @@ export async function handleApiCheckWithEnvelope(
 							legitUserAgents,
 							wafDetectionResult,
 							payload,
+							options?.isWorker,
 						);
 						}
 

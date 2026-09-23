@@ -62,7 +62,7 @@ describe('legitimate User-Agent bypass test', () => {
 			expect(r.status).toBe(403);
 			expect(r.userAgentBypass).toBeDefined();
 			expect(r.userAgentBypass!.bypassed).toBe(true);
-			expect(r.userAgentBypass!.tested).toBe(LEGIT_USER_AGENTS.length);
+			expect(r.userAgentBypass!.tested).toBe(1);
 			expect(r.userAgentBypass!.hits.length).toBeGreaterThan(0);
 			expect(r.userAgentBypass!.hits[0]).toHaveProperty('name');
 			expect(r.userAgentBypass!.hits[0]).toHaveProperty('userAgent');
@@ -96,6 +96,7 @@ describe('legitimate User-Agent bypass test', () => {
 		for (const r of results) {
 			expect(r.userAgentBypass).toBeDefined();
 			expect(r.userAgentBypass!.bypassed).toBe(false);
+			expect(r.userAgentBypass!.tested).toBe(LEGIT_USER_AGENTS.length);
 			expect(r.userAgentBypass!.hits).toEqual([]);
 		}
 	});
