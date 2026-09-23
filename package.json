@@ -6,7 +6,7 @@
   ],
   "devDependencies": {
     "esbuild": "^0.28.2",
-    "fast-check": "^4.10.0",
+    "fast-check": "^4.10.1",
     "typescript": "^7.0.2",
     "vite-node": "^6.0.0",
     "vitest": "~5.0.0",
