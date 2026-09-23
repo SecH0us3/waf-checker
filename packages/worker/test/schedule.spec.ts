@@ -10,13 +10,24 @@ import { decryptPayload } from '../src/utils/crypto';
 
 let originalFetch: typeof globalThis.fetch;
 
-/** Stands in for the Turnstile siteverify endpoint so handlers can run the real
- *  captcha path instead of the (now refused) unconfigured one. */
+const TURNSTILE_VERIFY_HOST = 'challenges.cloudflare.com';
+
+/** Stands in for the Turnstile siteverify endpoint so handlers exercise the real
+ *  captcha path. Matches on the parsed hostname rather than a substring of the
+ *  URL: `https://evil.example/?x=challenges.cloudflare.com` contains the name
+ *  without being it, and a stub that answers for the wrong host silently tests
+ *  something other than what it claims. */
 function stubTurnstile() {
 	originalFetch = globalThis.fetch;
 	globalThis.fetch = vi.fn(async (input: any) => {
-		const url = typeof input === 'string' ? input : input?.url || '';
-		if (url.includes('challenges.cloudflare.com')) {
+		const rawUrl = typeof input === 'string' ? input : input?.url || '';
+		let hostname = '';
+		try {
+			hostname = new URL(rawUrl).hostname.toLowerCase();
+		} catch {
+			hostname = '';
+		}
+		if (hostname === TURNSTILE_VERIFY_HOST) {
 			return new Response(JSON.stringify({ success: true }), {
 				status: 200,
 				headers: { 'content-type': 'application/json' },
