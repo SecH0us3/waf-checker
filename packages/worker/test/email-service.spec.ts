@@ -32,15 +32,28 @@ describe('Email Service (send_email & templates)', () => {
 		);
 	});
 
-	it('falls back gracefully to simulation when env.SEND_EMAIL is missing', async () => {
-		const env: WorkerEnv = { ASSETS: { fetch: vi.fn() } };
-		const res = await sendNotificationEmail(env, {
+	it('simulates the send only for a development deployment', async () => {
+		const devEnv: WorkerEnv = { ASSETS: { fetch: vi.fn() }, DEV_MODE: 'true' };
+		const res = await sendNotificationEmail(devEnv, {
 			to: 'user@example.com',
 			subject: 'Fallback Test',
 			text: 'Simulation test',
 		});
 		expect(res.sent).toBe(true);
 		expect(res.simulated).toBe(true);
+	});
+
+	it('reports failure rather than success when the binding is missing in production', async () => {
+		// Reporting a delivered notification here would let a subscription persist
+		// with no mail sent, and would drop every cron alert without a trace.
+		const prodEnv: WorkerEnv = { ASSETS: { fetch: vi.fn() } };
+		const res = await sendNotificationEmail(prodEnv, {
+			to: 'user@example.com',
+			subject: 'Fallback Test',
+			text: 'Simulation test',
+		});
+		expect(res.sent).toBe(false);
+		expect(res.simulated).toBe(false);
 	});
 
 	it('builds clear verification email for fast-track and external modes', () => {

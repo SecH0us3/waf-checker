@@ -18,6 +18,16 @@ const safeStorage = {
 	},
 };
 
+/** Mirrors the server's challengeUrlFor(): the challenge is origin-relative, so
+ *  appending it to a target that has a path would instruct the wrong location. */
+function challengeFileFor(target) {
+	try {
+		return new URL(target).origin + '/.well-known/secmy-check.txt';
+	} catch {
+		return '/.well-known/secmy-check.txt';
+	}
+}
+
 function escapeHtml(str) {
 	const div = document.createElement('div');
 	div.textContent = str;
@@ -205,10 +215,15 @@ function renderReport(results, falsePositiveMode = false) {
 			const shown = names.slice(0, 3).map((n) => escapeHtml(n)).join(', ');
 			const extra = names.length > 3 ? ` (+${names.length - 3})` : '';
 			const originStatus = hits.length ? hits[0].status : '';
+			const tested = r.userAgentBypass.tested;
+			// Probing stops at the first identity that gets through (subrequest
+			// budget), so `hits` is the first one found, not the full set — the badge
+			// says "via" rather than counting bots, which would always read "1".
 			const title =
 				`Blocked with a normal User-Agent (403), but reached the origin (status ${originStatus}) ` +
-				`when the request claimed to be a trusted bot: ${escapeHtml(names.join(', '))}`;
-			uaBadge = `<span class="badge bg-danger ms-2" title="${title}">🕵️ UA bypass: ${names.length} bot(s): ${shown}${extra}</span>`;
+				`when the request claimed to be a trusted bot: ${escapeHtml(names.join(', '))}. ` +
+				`Probing stopped at the first bypass${tested ? ` after ${tested} identity/identities` : ''}.`;
+			uaBadge = `<span class="badge bg-danger ms-2" title="${title}">🕵️ UA bypass via ${shown}${extra}</span>`;
 			uaAttr = " data-ua-bypass='1'";
 		}
 		const rowClass = uaBadge ? ' class="ua-bypass-row"' : '';
@@ -3108,7 +3123,7 @@ async function submitScheduleSubscription(event) {
 			<hr class="my-2">
 			<div><strong>Anti-Abuse Verification:</strong> Since this is an external or public email, please also place this token:</div>
 			<div class="my-1"><code class="p-1 user-select-all bg-dark text-white rounded">${escapeHtml(data.ownershipToken)}</code></div>
-			<div>in file: <code>${escapeHtml(data.ownershipChallengeFile || targetUrl + '/.well-known/secmy-check.txt')}</code>, then click the link in your email to activate.</div>`;
+			<div>in file: <code>${escapeHtml(data.ownershipChallengeFile || challengeFileFor(targetUrl))}</code>, then click the link in your email to activate.</div>`;
 		} else {
 			successHtml += `
 			<div class="mt-1">Domain match confirmed! Just click the link in the email to activate daily monitoring.</div>`;

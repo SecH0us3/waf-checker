@@ -10,10 +10,13 @@ binding = "ASSETS"
 #   EMAIL_ENCRYPTION_KEY  — record encryption + blind index key. Without it the
 #                           scheduled-monitoring endpoints refuse to serve (503)
 #                           rather than fall back to the in-repo dev secret.
-#   TURNSTILE_SECRET_KEY  — captcha. Also mandatory outside local development:
-#                           without it /api/schedule/subscribe returns 503.
-# DEV_MODE = "true" opts a non-loopback deployment into the dev fallbacks above.
-# Never set it on a public deployment.
+#   TURNSTILE_SECRET_KEY  — captcha. Optional, but strongly recommended: with it
+#                           unset there is no human-action gate in front of a
+#                           mail-sending endpoint, only the rate limits.
+# DEV_MODE = "true" is the ONLY switch that enables dev behaviour (in-repo secret
+# fallback, simulated email sends, verification link returned in the response).
+# It is never inferred from the request, because the request host is
+# client-supplied. Never set it on a public deployment.
 
 [[send_email]]
 name = "SEND_EMAIL"

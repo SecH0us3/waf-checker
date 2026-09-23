@@ -18,6 +18,7 @@ import {
 	verifyHttpOwnership,
 	extractHost,
 	normalizeEmail,
+	challengeUrlFor,
 } from '../services/ownership';
 import {
 	sendNotificationEmail,
@@ -28,6 +29,7 @@ import { computeFingerprint, diffFingerprints } from '../services/monitor';
 import { runMonitorScan, MonitorScanResult } from '../services/scan';
 import { checkRateLimit } from '../services/rate-limiter';
 import { escapeHtml } from '../utils/html';
+import { isDevEnvironment } from '../utils/env';
 
 const DEFAULT_SECRET = 'default-dev-secret-key-32-chars-long';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -36,23 +38,6 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const OWNERSHIP_REVERIFY_INTERVAL_MS = 30 * 24 * 3600 * 1000;
 /** Upper bound on subscriptions audited in a single cron invocation. */
 const MAX_SUBSCRIPTIONS_PER_RUN = 25;
-
-/**
- * A request is "development" only when it demonstrably originates from this
- * machine, or when the operator opted in explicitly. Notably it is NOT inferred
- * from a missing binding: a production deployment whose email binding broke
- * must not silently become a dev deployment that hands out verification links.
- */
-function isDevEnvironment(env: WorkerEnv, request?: Request): boolean {
-	if (env.DEV_MODE === 'true') return true;
-	if (!request) return false;
-	try {
-		const reqHost = new URL(request.url).hostname.toLowerCase();
-		return reqHost === 'localhost' || reqHost === '127.0.0.1' || reqHost === '[::1]' || reqHost === '::1';
-	} catch {
-		return false;
-	}
-}
 
 /**
  * Returns the record encryption key, or null when the deployment is not in a
@@ -64,9 +49,9 @@ function isDevEnvironment(env: WorkerEnv, request?: Request): boolean {
  * obtained a KV dump. Refusing to operate is the only honest option; the
  * built-in fallback exists solely so local development and tests need no setup.
  */
-function resolveSecret(env: WorkerEnv, request?: Request): string | null {
+function resolveSecret(env: WorkerEnv): string | null {
 	if (env.EMAIL_ENCRYPTION_KEY) return env.EMAIL_ENCRYPTION_KEY;
-	if (isDevEnvironment(env, request)) return DEFAULT_SECRET;
+	if (isDevEnvironment(env)) return DEFAULT_SECRET;
 	return null;
 }
 
@@ -139,13 +124,11 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 		});
 	}
 
-	// Verify Turnstile captcha. Outside development the captcha is mandatory:
-	// an unconfigured secret used to disable the check entirely, which turned a
-	// missing binding into an open, automatable mail-sending endpoint.
+	// Verify Turnstile captcha when one is configured. Note the deliberate gap:
+	// with no TURNSTILE_SECRET_KEY there is no human-action gate in front of a
+	// mail-sending endpoint, and the only remaining brake is the per-recipient
+	// and per-IP throttle. Configuring the captcha is what closes it.
 	const clientIp = request.headers.get('cf-connecting-ip') || 'unknown';
-	if (!env.TURNSTILE_SECRET_KEY && !isDevEnvironment(env, request)) {
-		return misconfiguredResponse('TURNSTILE_SECRET_KEY is not configured');
-	}
 	if (env.TURNSTILE_SECRET_KEY) {
 		if (!turnstileToken) {
 			return new Response(JSON.stringify({ error: 'Captcha verification required' }), {
@@ -171,7 +154,7 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 		);
 	}
 
-	const secretKey = resolveSecret(env, request);
+	const secretKey = resolveSecret(env);
 	if (!secretKey) {
 		return misconfiguredResponse('EMAIL_ENCRYPTION_KEY is not configured');
 	}
@@ -224,7 +207,7 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 				mode: decoyMode,
 				ownershipToken: decoyMode === 'external' ? `secmy-${generateSecureToken(16)}` : undefined,
 				ownershipChallengeFile:
-					decoyMode === 'external' ? `${targetUrl}/.well-known/secmy-check.txt` : undefined,
+					decoyMode === 'external' ? challengeUrlFor(targetUrl) : undefined,
 			}),
 			{ status: 200, headers: { 'content-type': 'application/json' } }
 		);
@@ -260,6 +243,7 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 		verifyUrl,
 		mode,
 		ownershipToken,
+		challengeUrl: mode === 'external' ? challengeUrlFor(targetUrl) : undefined,
 	});
 
 	const emailResult = await sendNotificationEmail(env, {
@@ -284,13 +268,7 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 		);
 	}
 
-	const reqHost = new URL(request.url).hostname.toLowerCase();
-	const isLocalDev =
-		reqHost === 'localhost' ||
-		reqHost === '127.0.0.1' ||
-		reqHost === '[::1]' ||
-		reqHost === '::1' ||
-		env.DEV_MODE === 'true';
+	const isLocalDev = isDevEnvironment(env);
 
 	return new Response(
 		JSON.stringify({
@@ -299,7 +277,7 @@ export async function handleScheduleSubscribe(request: Request, env: WorkerEnv):
 			mode,
 			ownershipToken: mode === 'external' ? ownershipToken : undefined,
 			ownershipChallengeFile:
-				mode === 'external' ? `${targetUrl}/.well-known/secmy-check.txt` : undefined,
+				mode === 'external' ? challengeUrlFor(targetUrl) : undefined,
 			devVerifyUrl: isLocalDev ? verifyUrl : undefined,
 		}),
 		{ status: 200, headers: { 'content-type': 'application/json' } }
@@ -336,7 +314,7 @@ export async function handleScheduleVerify(
 		});
 	}
 
-	const secretKey = resolveSecret(env, request);
+	const secretKey = resolveSecret(env);
 	if (!secretKey) {
 		return misconfiguredResponse('EMAIL_ENCRYPTION_KEY is not configured');
 	}
@@ -357,7 +335,7 @@ export async function handleScheduleVerify(
 			return new Response(
 				JSON.stringify({
 					error: 'Domain ownership verification failed.',
-					instruction: `Please create file ${pending.targetUrl}/.well-known/secmy-check.txt with token: ${pending.ownershipToken}`,
+					instruction: `Please create file ${challengeUrlFor(pending.targetUrl)} with token: ${pending.ownershipToken}`,
 				}),
 				{ status: 400, headers: { 'content-type': 'application/json' } }
 			);
@@ -461,9 +439,18 @@ export async function handleScheduleUnsubscribe(request: Request, env: WorkerEnv
 	let token = url.searchParams.get('token');
 
 	if (!token && request.method === 'POST') {
+		const contentType = request.headers.get('content-type') || '';
 		try {
-			const body: any = await request.clone().json();
-			if (typeof body?.token === 'string') token = body.token;
+			if (contentType.includes('form')) {
+				// The confirmation page below posts a form; RFC 8058 one-click also
+				// posts form-encoded, though it carries the token in the query string.
+				const form = await request.clone().formData();
+				const formToken = form.get('token');
+				if (typeof formToken === 'string') token = formToken;
+			} else {
+				const body: any = await request.clone().json();
+				if (typeof body?.token === 'string') token = body.token;
+			}
 		} catch {}
 	}
 
@@ -474,12 +461,32 @@ export async function handleScheduleUnsubscribe(request: Request, env: WorkerEnv
 		});
 	}
 
+	// A GET must not delete anything. Mail-security proxies, corporate link
+	// scanners and clients that prefetch links all follow the unsubscribe URL in
+	// a delivered email, which would silently cancel monitoring nobody cancelled.
+	// RFC 8058 one-click unsubscribe POSTs, so requiring POST keeps that working.
+	if (request.method !== 'POST') {
+		return new Response(
+			`<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;">
+				<h2>Confirm Unsubscribe</h2>
+				<p>Press the button to stop security monitoring alerts for this subscription.</p>
+				<form method="POST" action="/api/schedule/unsubscribe">
+					<input type="hidden" name="token" value="${escapeHtml(token)}" />
+					<button type="submit" style="background:#d9381e;color:#fff;border:0;padding:10px 20px;border-radius:4px;cursor:pointer;">Unsubscribe</button>
+				</form>
+			</body></html>`,
+			{ status: 200, headers: { 'content-type': 'text/html; charset=UTF-8' } }
+		);
+	}
+
 	if (env.MONITOR_KV) {
 		const existing = await env.MONITOR_KV.get(`active:${token}`);
 		if (existing) {
+			const secretKey = resolveSecret(env);
+			if (!secretKey) {
+				return misconfiguredResponse('EMAIL_ENCRYPTION_KEY is not configured');
+			}
 			try {
-				const secretKey = resolveSecret(env, request);
-				if (!secretKey) throw new Error('encryption key unavailable');
 				const record = await decryptPayload<SubscriptionRecord>(existing, secretKey);
 				const host = extractHost(record.targetUrl);
 				if (host) {
@@ -487,7 +494,16 @@ export async function handleScheduleUnsubscribe(request: Request, env: WorkerEnv
 					await env.MONITOR_KV.delete(`blind:${blindIndex}`);
 					await env.MONITOR_KV.delete(`pendingIdx:${blindIndex}`);
 				}
-			} catch {}
+			} catch (err) {
+				// The blind index could not be resolved, so deleting the record here
+				// would leave `blind:<idx>` pointing at a dead manage token and make
+				// duplicate detection lie. Keep both and surface the failure.
+				console.error(`Unsubscribe could not resolve the blind index for ${token}:`, err);
+				return new Response(
+					JSON.stringify({ error: 'Unsubscribe failed. Please try again later.' }),
+					{ status: 500, headers: { 'content-type': 'application/json' } }
+				);
+			}
 			await env.MONITOR_KV.delete(`active:${token}`);
 		}
 	}
@@ -520,17 +536,27 @@ export async function handleScheduledCron(
 		return;
 	}
 
-	const listRes = await env.MONITOR_KV.list({ prefix: 'active:' });
-	let audited = 0;
-	for (const key of listRes.keys) {
-		if (audited >= MAX_SUBSCRIPTIONS_PER_RUN) {
-			console.warn(
-				`Scheduled run hit the per-run cap of ${MAX_SUBSCRIPTIONS_PER_RUN}; remaining subscriptions run next cycle`
-			);
-			break;
-		}
+	// Enumerate every page: a single list() call returns at most 1000 keys, and a
+	// truncated listing would make the tail of the subscriber set invisible.
+	const keyNames: string[] = [];
+	let cursor: string | undefined;
+	do {
+		const page = await env.MONITOR_KV.list({ prefix: 'active:', cursor });
+		keyNames.push(...page.keys.map((k) => k.name));
+		cursor = page.list_complete ? undefined : page.cursor;
+	} while (cursor);
+
+	// Decrypt first, then audit the least-recently-scanned subscriptions.
+	//
+	// Taking the per-run cap off the front of the key listing starves the tail:
+	// cron fires daily, so yesterday's batch is always past the 23h threshold and
+	// always refills the budget, and a subscription beyond the cap would never be
+	// reached at all. Ordering by staleness makes the cap a throughput limit
+	// rather than a permanent cutoff.
+	const candidates: { keyName: string; record: SubscriptionRecord }[] = [];
+	for (const keyName of keyNames) {
 		try {
-			const encrypted = await env.MONITOR_KV.get(key.name);
+			const encrypted = await env.MONITOR_KV.get(keyName);
 			if (!encrypted) continue;
 
 			const record = await decryptPayload<SubscriptionRecord>(encrypted, secret);
@@ -540,6 +566,24 @@ export async function handleScheduledCron(
 			if (record.lastScannedAt && Date.now() - record.lastScannedAt < 23 * 3600 * 1000) {
 				continue;
 			}
+
+			candidates.push({ keyName, record });
+		} catch (err) {
+			console.error(`Error reading subscription ${keyName}:`, err);
+		}
+	}
+
+	candidates.sort((a, b) => (a.record.lastScannedAt ?? 0) - (b.record.lastScannedAt ?? 0));
+
+	if (candidates.length > MAX_SUBSCRIPTIONS_PER_RUN) {
+		console.warn(
+			`Scheduled run has ${candidates.length} due subscriptions; auditing the ${MAX_SUBSCRIPTIONS_PER_RUN} stalest, the rest lead the next run`
+		);
+	}
+
+	for (const { keyName, record } of candidates.slice(0, MAX_SUBSCRIPTIONS_PER_RUN)) {
+		const key = { name: keyName };
+		try {
 
 			// Re-validate the stored target before using it. It was checked once at
 			// subscribe time; this is a different, unattended context reading a value
@@ -560,10 +604,12 @@ export async function handleScheduledCron(
 						continue;
 					}
 					record.lastOwnershipVerifiedAt = Date.now();
+					// Persist the renewed proof now. The scan below may fail and skip the
+					// write at the end of the loop, which would otherwise re-fetch the
+					// challenge file on every run for as long as the target stays down.
+					await env.MONITOR_KV.put(key.name, await encryptPayload(record, secret));
 				}
 			}
-
-			audited++;
 
 			let scanResult: { wafDetected?: string; summary?: { blocked: number; passed: number; total: number } };
 			try {

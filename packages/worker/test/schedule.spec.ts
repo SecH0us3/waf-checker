@@ -137,7 +137,9 @@ describe('Schedule Handlers & Cron Execution', () => {
 		expect(json.devVerifyUrl).toBeUndefined();
 	});
 
-	it('returns devVerifyUrl when called on localhost or with DEV_MODE', async () => {
+	it('returns devVerifyUrl only for DEV_MODE, never for a loopback Host header', async () => {
+		// The request hostname comes from the client-supplied Host header on
+		// Workers, so a loopback-looking host must not unlock the dev-only link.
 		const localReq = new Request('http://localhost:8787/api/schedule/subscribe', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -145,7 +147,7 @@ describe('Schedule Handlers & Cron Execution', () => {
 		});
 		const localRes = await handleScheduleSubscribe(localReq, env);
 		const localJson = (await localRes.json()) as any;
-		expect(localJson.devVerifyUrl).toBeDefined();
+		expect(localJson.devVerifyUrl).toBeUndefined();
 
 		const devModeEnv: WorkerEnv = { ...env, DEV_MODE: 'true' };
 		const prodReq = new Request('https://secmy.app/api/schedule/subscribe', {
@@ -554,5 +556,101 @@ describe('Security invariants (design-review acceptance criteria)', () => {
 			globalThis.fetch = originalFetch;
 		}
 		expect(scanFn).not.toHaveBeenCalled();
+	});
+});
+
+describe('Cron scheduling fairness and unsubscribe safety', () => {
+	const secret = 'test-secret-key-32-characters-minimum';
+	let mockKV: any;
+	let env: WorkerEnv;
+
+	beforeEach(() => {
+		const store = new Map<string, string>();
+		mockKV = {
+			store,
+			async get(key: string) {
+				return store.get(key) ?? null;
+			},
+			async put(key: string, value: string) {
+				store.set(key, value);
+			},
+			async delete(key: string) {
+				store.delete(key);
+			},
+			async list(options?: { prefix?: string; cursor?: string }) {
+				const prefix = options?.prefix || '';
+				return {
+					keys: Array.from(store.keys())
+						.filter((k) => k.startsWith(prefix))
+						.map((name) => ({ name })),
+					list_complete: true,
+					cursor: '',
+				};
+			},
+		};
+		env = {
+			ASSETS: { fetch: vi.fn() },
+			MONITOR_KV: mockKV,
+			SEND_EMAIL: { send: vi.fn().mockResolvedValue(undefined) },
+			EMAIL_ENCRYPTION_KEY: secret,
+		};
+	});
+
+	// The per-run cap must be a throughput limit, not a permanent cutoff: taking
+	// the first N keys off the listing starves everything past the cap forever.
+	it('audits the stalest subscriptions first so no subscription is starved', async () => {
+		const { encryptPayload } = await import('../src/utils/crypto');
+		const dayMs = 24 * 3600 * 1000;
+		// 30 subscriptions; the ones listed last were scanned longest ago.
+		for (let i = 0; i < 30; i++) {
+			const record: SubscriptionRecord = {
+				email: `owner${i}@example.com`,
+				targetUrl: `https://example${i}.com`,
+				status: 'ACTIVE',
+				manageToken: `tok-${String(i).padStart(2, '0')}`,
+				createdAt: Date.now(),
+				lastScannedAt: Date.now() - (i + 1) * dayMs,
+			};
+			mockKV.store.set(`active:tok-${String(i).padStart(2, '0')}`, await encryptPayload(record, secret));
+		}
+
+		const scanned: string[] = [];
+		await handleScheduledCron(env, async (targetUrl) => {
+			scanned.push(targetUrl);
+			return { wafDetected: 'Cloudflare', summary: { blocked: 5, passed: 0, total: 5 } };
+		});
+
+		expect(scanned).toHaveLength(25);
+		// example29 is the stalest and must be in the first run, even though its key
+		// sorts last in the listing.
+		expect(scanned).toContain('https://example29.com');
+		expect(scanned).not.toContain('https://example0.com');
+	});
+
+	it('does not delete a subscription on a bare GET', async () => {
+		const { encryptPayload } = await import('../src/utils/crypto');
+		const record: SubscriptionRecord = {
+			email: 'owner@example.com',
+			targetUrl: 'https://example.com',
+			status: 'ACTIVE',
+			manageToken: 'tok-get',
+			createdAt: Date.now(),
+		};
+		mockKV.store.set('active:tok-get', await encryptPayload(record, secret));
+
+		const res = await handleScheduleUnsubscribe(
+			new Request('https://secmy.app/api/schedule/unsubscribe?token=tok-get'),
+			env
+		);
+		expect(res.status).toBe(200);
+		// A link scanner or prefetch must not have cancelled anything.
+		expect(mockKV.store.has('active:tok-get')).toBe(true);
+
+		const posted = await handleScheduleUnsubscribe(
+			new Request('https://secmy.app/api/schedule/unsubscribe?token=tok-get', { method: 'POST' }),
+			env
+		);
+		expect(posted.status).toBe(200);
+		expect(mockKV.store.has('active:tok-get')).toBe(false);
 	});
 });

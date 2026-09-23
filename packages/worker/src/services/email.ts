@@ -1,5 +1,7 @@
 import { EmailOptions, OwnershipMode, WorkerEnv } from '../types/monitor';
 import { escapeHtml } from '../utils/html';
+import { isDevEnvironment } from '../utils/env';
+import { challengeUrlFor } from './ownership';
 
 export const SENDER_EMAIL = 'waf@secmy.app';
 export const SENDER_NAME = 'secmy.app WAF Monitor';
@@ -30,8 +32,16 @@ export async function sendNotificationEmail(
 		}
 	}
 
-	console.log(`[SIMULATED EMAIL] To: ${options.to} | Subject: ${options.subject}`);
-	return { sent: true, simulated: true };
+	// No binding. Simulating a send is only honest in development: reporting
+	// success in production would let the caller persist a pending subscription
+	// and let cron drop every alert, with nothing anywhere saying mail never left.
+	if (isDevEnvironment(env)) {
+		console.log(`[SIMULATED EMAIL] To: ${options.to} | Subject: ${options.subject}`);
+		return { sent: true, simulated: true };
+	}
+
+	console.error('SEND_EMAIL binding is not configured; refusing to report a delivered notification');
+	return { sent: false, simulated: false };
 }
 
 export function buildVerificationEmail(data: {
@@ -39,6 +49,8 @@ export function buildVerificationEmail(data: {
 	verifyUrl: string;
 	mode: OwnershipMode;
 	ownershipToken?: string;
+	/** Where the challenge file must be published, as the verifier will read it. */
+	challengeUrl?: string;
 }): { subject: string; html: string; text: string } {
 	const subject = `[secmy.app] Confirm Security Monitoring for ${data.targetUrl}`;
 
@@ -46,16 +58,19 @@ export function buildVerificationEmail(data: {
 	let instructionsText = '';
 
 	if (data.mode === 'external' && data.ownershipToken) {
+		// Derived here when the caller did not supply it, so the instruction can
+		// never drift from the location the verifier actually reads.
+		const challengeUrl = data.challengeUrl || challengeUrlFor(data.targetUrl);
 		instructionsHtml = `
 		<div style="background: #fdf6e2; border-left: 4px solid #b58900; padding: 12px; margin: 16px 0;">
 			<p><strong>Domain ownership verification required:</strong></p>
 			<p>Because your email domain does not match the target website, please create a text file at:</p>
-			<code>${escapeHtml(data.targetUrl)}/.well-known/secmy-check.txt</code>
+			<code>${escapeHtml(challengeUrl)}</code>
 			<p>with the following content:</p>
 			<pre style="background: #eee; padding: 8px;">${escapeHtml(data.ownershipToken)}</pre>
 			<p>After creating the file, click the confirmation button below.</p>
 		</div>`;
-		instructionsText = `Domain ownership verification required: create file ${data.targetUrl}/.well-known/secmy-check.txt with content: ${data.ownershipToken}\n\n`;
+		instructionsText = `Domain ownership verification required: create file ${challengeUrl} with content: ${data.ownershipToken}\n\n`;
 	}
 
 	const html = `

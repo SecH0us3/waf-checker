@@ -23,7 +23,10 @@ async function runSimulation() {
 	console.log('====================================================\n');
 
 	console.log('1️⃣  Starting Wrangler Dev Server on port', PORT, '...');
-	const wrangler = spawn('npx', ['wrangler', 'dev', '--port', String(PORT), '--test-scheduled'], {
+	// DEV_MODE is the only signal that puts the worker in development mode (a
+	// loopback Host header is client-supplied and must not grant it), so the
+	// simulation has to pass it explicitly to exercise the dev-only paths.
+	const wrangler = spawn('npx', ['wrangler', 'dev', '--port', String(PORT), '--test-scheduled', '--var', 'DEV_MODE:true'], {
 		cwd: process.cwd() + '/packages/worker',
 		stdio: ['ignore', 'pipe', 'pipe'],
 		detached: true,
@@ -165,6 +168,14 @@ async function runSimulation() {
 		}
 		if (!subExt.json?.ownershipToken || !subExt.json.ownershipToken.startsWith('secmy-')) {
 			throw new Error('Missing or invalid ownershipToken');
+		}
+		// The instructed challenge location must match what the verifier fetches:
+		// origin-relative, never appended to the target's path.
+		const expectedChallenge = new URL('https://mycorp.com').origin + '/.well-known/secmy-check.txt';
+		if (subExt.json?.ownershipChallengeFile !== expectedChallenge) {
+			throw new Error(
+				`Challenge path mismatch: instructed ${subExt.json?.ownershipChallengeFile}, verifier reads ${expectedChallenge}`
+			);
 		}
 		console.log('   ✅ External mode recognized: anti-abuse ownership challenge issued:');
 		console.log('      File:', subExt.json.ownershipChallengeFile);

@@ -36,6 +36,20 @@ async function readCapped(resp: Response, maxBytes: number): Promise<string> {
 	return new TextDecoder().decode(merged);
 }
 
+/**
+ * The one place that decides where the ownership challenge lives.
+ *
+ * It is origin-relative on purpose, and both the verifier and every instruction
+ * shown to the user must derive it from here: telling someone to publish
+ * `https://example.com/api/.well-known/secmy-check.txt` while the verifier reads
+ * `https://example.com/.well-known/secmy-check.txt` makes external verification
+ * fail permanently for any target that has a path or a query string.
+ */
+export function challengeUrlFor(targetUrl: string): string {
+	const parsed = new URL(targetUrl);
+	return `${parsed.protocol}//${parsed.host}/.well-known/secmy-check.txt`;
+}
+
 export function extractHost(urlStr: string): string | null {
 	try {
 		// Same normalizer the redirect-scope check and the URL validator use, so
@@ -74,8 +88,14 @@ export async function verifyHttpOwnership(
 	const timeout = setTimeout(() => controller.abort(), 7000);
 
 	try {
-		const parsed = new URL(targetUrl);
-		const challengeUrl = `${parsed.protocol}//${parsed.host}/.well-known/secmy-check.txt`;
+		// An empty expected token must never verify: `''.split(/\r?\n/)` is `['']`,
+		// so a blank challenge file would otherwise "contain" it and any host
+		// serving an empty 200 would pass.
+		if (!expectedToken.trim()) {
+			return false;
+		}
+
+		const challengeUrl = challengeUrlFor(targetUrl);
 
 		if (!isValidTargetUrl(challengeUrl)) {
 			return false;

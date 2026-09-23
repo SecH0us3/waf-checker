@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { determineOwnershipMode, verifyHttpOwnership } from '../src/services/ownership';
+import { determineOwnershipMode, verifyHttpOwnership, challengeUrlFor } from '../src/services/ownership';
 
 describe('Domain Ownership Service (Hybrid Mode)', () => {
 	it('matches domain on exact match or subdomain (fast-track)', () => {
@@ -76,5 +76,24 @@ describe('Domain Ownership Service (Hybrid Mode)', () => {
 		const mockFetchWrong = vi.fn().mockResolvedValue(new Response('wrong-token', { status: 200 }));
 		const okWrong = await verifyHttpOwnership('https://example.com', 'token', mockFetchWrong as any);
 		expect(okWrong).toBe(false);
+	});
+});
+
+describe('Challenge location and empty-token handling', () => {
+	it('derives the challenge URL origin-relative, ignoring path and query', () => {
+		expect(challengeUrlFor('https://example.com/api?q=1')).toBe(
+			'https://example.com/.well-known/secmy-check.txt'
+		);
+		expect(challengeUrlFor('https://example.com:8443/deep/path')).toBe(
+			'https://example.com:8443/.well-known/secmy-check.txt'
+		);
+	});
+
+	it('never verifies an empty expected token against an empty body', async () => {
+		// `''.split(/\r?\n/)` is `['']`, so a blank challenge file would otherwise
+		// "contain" an empty token and any host serving an empty 200 would pass.
+		const fetchFn = vi.fn().mockResolvedValue(new Response('', { status: 200 }));
+		await expect(verifyHttpOwnership('https://example.com', '', fetchFn)).resolves.toBe(false);
+		expect(fetchFn).not.toHaveBeenCalled();
 	});
 });

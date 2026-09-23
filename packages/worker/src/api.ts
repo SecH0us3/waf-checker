@@ -298,10 +298,16 @@ export default {
 		return new Response('Not found', { status: 404 });
 	},
 	async scheduled(event: ScheduledEvent, env: WorkerEnv, ctx?: ExecutionContext): Promise<void> {
+		// Awaited, and failures rethrown, so a broken run is recorded as a failed
+		// cron invocation. Handing the promise to waitUntil() without a catch made
+		// every rejection an unhandled one and every run look successful.
+		const run = handleScheduledCron(env).catch((err) => {
+			console.error('Scheduled monitoring run failed:', err);
+			throw err;
+		});
 		if (ctx && typeof ctx.waitUntil === 'function') {
-			ctx.waitUntil(handleScheduledCron(env));
-		} else {
-			await handleScheduledCron(env);
+			ctx.waitUntil(run);
 		}
+		await run;
 	},
 };
