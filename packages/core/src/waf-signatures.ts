@@ -1,6 +1,11 @@
 export interface WAFSignature {
 	name: string;
 	headers: { [key: string]: string | RegExp };
+	/**
+	 * Headers that uniquely and definitively identify the WAF with 100% confidence,
+	 * even on standard non-blocked responses (e.g., HTTP 200 OK).
+	 */
+	definitiveHeaders?: { [key: string]: string | RegExp };
 	statusCodes?: number[];
 	bodyPatterns?: RegExp[];
 	cookiePatterns?: RegExp[];
@@ -53,6 +58,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// BunkerWeb (Next-Gen WAF)
 	{
 		name: 'BunkerWeb',
+		definitiveHeaders: {
+			server: /bunkerweb/i,
+		},
 		headers: {
 			server: /bunkerweb/i,
 			'x-bunkerweb': /.*/i,
@@ -87,6 +95,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// DDoS-Guard
 	{
 		name: 'DDoS-Guard',
+		definitiveHeaders: {
+			server: /ddos-guard/i,
+		},
 		headers: {
 			server: /ddos-guard/i,
 		},
@@ -97,7 +108,10 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 
 	// Qrator Labs
 	{
-		name: 'Qrator',
+		name: 'Qrator WAF',
+		definitiveHeaders: {
+			server: /qrator/i,
+		},
 		headers: {
 			server: /qrator/i,
 			'x-qrator-trace-id': /.*/,
@@ -127,6 +141,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// Alibaba Cloud WAF (AliYunDun)
 	{
 		name: 'Alibaba Cloud WAF',
+		definitiveHeaders: {
+			'x-powered-by-aliwaf': /.*/,
+		},
 		headers: {
 			'x-powered-by-aliwaf': /.*/,
 			'x-ali-cluster': /.*/,
@@ -139,6 +156,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// StormWall
 	{
 		name: 'StormWall',
+		definitiveHeaders: {
+			server: /stormwall/i,
+		},
 		headers: {
 			server: /stormwall/i,
 			'x-stormwall-id': /.*/,
@@ -151,6 +171,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// Yandex Cloud WAF & SmartCaptcha
 	{
 		name: 'Yandex Cloud WAF',
+		definitiveHeaders: {
+			'x-yandex-waf': /.*/,
+		},
 		headers: {
 			'x-yandex-waf': /.*/,
 		},
@@ -173,6 +196,10 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// Positive Technologies (PT AF)
 	{
 		name: 'PT Application Firewall',
+		definitiveHeaders: {
+			'x-ptaf': /.*/,
+			'x-pt-af': /.*/,
+		},
 		headers: {
 			'x-ptaf': /.*/,
 			'x-pt-af': /.*/,
@@ -226,6 +253,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// Akamai
 	{
 		name: 'Akamai',
+		definitiveHeaders: {
+			server: /AkamaiGHost/i,
+		},
 		headers: {
 			server: /AkamaiGHost/i,
 			'akamai-origin-hop': /.*/,
@@ -448,6 +478,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// Reblaze
 	{
 		name: 'Reblaze',
+		definitiveHeaders: {
+			server: /Reblaze Secure Web Gateway/i,
+		},
 		headers: {
 			server: /Reblaze Secure Web Gateway/i,
 		},
@@ -459,6 +492,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// DotDefender
 	{
 		name: 'DotDefender',
+		definitiveHeaders: {
+			'x-dotdefender-denied': /.*/,
+		},
 		headers: {
 			'x-dotdefender-denied': /.*/,
 		},
@@ -481,6 +517,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// Jiasule (SCloud / 加速乐)
 	{
 		name: 'Jiasule',
+		definitiveHeaders: {
+			server: /jiasule-waf/i,
+		},
 		headers: {
 			server: /jiasule-waf/i,
 		},
@@ -512,6 +551,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// Comodo cWatch WAF
 	{
 		name: 'Comodo cWatch',
+		definitiveHeaders: {
+			server: /Protected by COMODO WAF/i,
+		},
 		headers: {
 			server: /Protected by COMODO WAF/i,
 		},
@@ -522,6 +564,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// Nemesida WAF
 	{
 		name: 'Nemesida',
+		definitiveHeaders: {
+			server: /nemesida/i,
+		},
 		headers: {
 			server: /nemesida/i,
 		},
@@ -542,6 +587,9 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 	// Anquanbao (安全宝)
 	{
 		name: 'Anquanbao',
+		definitiveHeaders: {
+			'x-powered-by-anquanbao': /.*/i,
+		},
 		headers: {
 			'x-powered-by-anquanbao': /.*/i,
 		},
