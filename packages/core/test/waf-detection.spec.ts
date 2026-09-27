@@ -7,7 +7,7 @@ describe('WAFDetector', () => {
 		expect(wafs).toContain('Cloudflare');
 		expect(wafs).toContain('AWS WAF');
 		expect(wafs).toContain('DDoS-Guard');
-		expect(wafs).toContain('Qrator');
+		expect(wafs).toContain('Qrator WAF');
 		expect(wafs).toContain('Wordfence');
 		expect(wafs).toContain('Alibaba Cloud WAF');
 		expect(wafs).toContain('StormWall');
@@ -74,9 +74,25 @@ describe('WAFDetector', () => {
 
 		const result = await WAFDetector.detectFromResponse(mockResponse);
 		expect(result.detected).toBe(true);
-		expect(result.wafType).toBe('Qrator');
+		expect(result.wafType).toBe('Qrator WAF');
 		expect(result.confidence).toBeGreaterThan(40);
 		expect(result.suggestedBypassTechniques.length).toBeGreaterThan(0);
+	});
+
+	it('should detect Qrator WAF with 100% confidence on HTTP 200 when server: QRATOR header is present', async () => {
+		const mockResponse = {
+			status: 200,
+			headers: {
+				get: (name: string) => (name.toLowerCase() === 'server' ? 'QRATOR' : null),
+			},
+		} as unknown as Response;
+
+		const result = await WAFDetector.detectFromResponse(mockResponse);
+		expect(result.detected).toBe(true);
+		expect(result.wafType).toBe('Qrator WAF');
+		expect(result.confidence).toBe(100);
+		expect(result.confidencePercent).toBe(100);
+		expect(result.evidence.some((e) => e.includes('Definitive header server: QRATOR (100% confidence)'))).toBe(true);
 	});
 
 	it('should detect Wordfence WAF from headers, cookies, and body', async () => {
@@ -554,6 +570,89 @@ describe('WAFDetector', () => {
 
 			const result = await WAFDetector.activeDetection('http://example.com/api', { fetch: mockFetch as any, isWorker: true });
 
+			expect(result.detected).toBe(false);
+			expect(result.wafType).toBe('Unknown');
+		});
+	});
+
+	describe('definitive headers detection on HTTP 200 OK', () => {
+		const mock200Response = (headers: Record<string, string>): Response =>
+			({
+				status: 200,
+				headers: {
+					get: (name: string) => headers[name.toLowerCase()] ?? null,
+				},
+			}) as unknown as Response;
+
+		it('detects Qrator WAF on HTTP 200 with server: QRATOR', async () => {
+			const res = mock200Response({ server: 'QRATOR' });
+			const result = await WAFDetector.detectFromResponse(res);
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('Qrator WAF');
+			expect(result.confidence).toBe(100);
+			expect(result.confidencePercent).toBe(100);
+			expect(result.evidence.some((e) => e.includes('Definitive header server: QRATOR (100% confidence)'))).toBe(true);
+		});
+
+		it('detects DDoS-Guard on HTTP 200 with server: ddos-guard', async () => {
+			const res = mock200Response({ server: 'ddos-guard' });
+			const result = await WAFDetector.detectFromResponse(res);
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('DDoS-Guard');
+			expect(result.confidence).toBe(100);
+		});
+
+		it('detects StormWall on HTTP 200 with server: stormwall', async () => {
+			const res = mock200Response({ server: 'stormwall' });
+			const result = await WAFDetector.detectFromResponse(res);
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('StormWall');
+			expect(result.confidence).toBe(100);
+		});
+
+		it('detects Akamai on HTTP 200 with server: AkamaiGHost', async () => {
+			const res = mock200Response({ server: 'AkamaiGHost' });
+			const result = await WAFDetector.detectFromResponse(res);
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('Akamai');
+			expect(result.confidence).toBe(100);
+		});
+
+		it('detects BunkerWeb on HTTP 200 with server: bunkerweb', async () => {
+			const res = mock200Response({ server: 'bunkerweb' });
+			const result = await WAFDetector.detectFromResponse(res);
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('BunkerWeb');
+			expect(result.confidence).toBe(100);
+		});
+
+		it('detects Yandex Cloud WAF on HTTP 200 with x-yandex-waf', async () => {
+			const res = mock200Response({ 'x-yandex-waf': 'active' });
+			const result = await WAFDetector.detectFromResponse(res);
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('Yandex Cloud WAF');
+			expect(result.confidence).toBe(100);
+		});
+
+		it('detects PT Application Firewall on HTTP 200 with x-ptaf', async () => {
+			const res = mock200Response({ 'x-ptaf': '1' });
+			const result = await WAFDetector.detectFromResponse(res);
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('PT Application Firewall');
+			expect(result.confidence).toBe(100);
+		});
+
+		it('detects Alibaba Cloud WAF on HTTP 200 with x-powered-by-aliwaf', async () => {
+			const res = mock200Response({ 'x-powered-by-aliwaf': 'AliWAF' });
+			const result = await WAFDetector.detectFromResponse(res);
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('Alibaba Cloud WAF');
+			expect(result.confidence).toBe(100);
+		});
+
+		it('ignores injected headers on HTTP 200 when running in Cloudflare Worker', async () => {
+			const res = mock200Response({ server: 'cloudflare' });
+			const result = await WAFDetector.detectFromResponse(res, undefined, undefined, true);
 			expect(result.detected).toBe(false);
 			expect(result.wafType).toBe('Unknown');
 		});

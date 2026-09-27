@@ -55,26 +55,55 @@ export class WAFDetector {
 			let confidence = 0;
 			const matchEvidence: string[] = [];
 
-			// Check headers
-			for (const [headerName, pattern] of Object.entries(signature.headers)) {
-				const headerValue = response.headers.get(headerName);
-				if (headerValue) {
-					// Cloudflare Workers inject cf-* and server: cloudflare headers into fetch responses
-					if (isWorker && signature.name === 'Cloudflare' && (headerName === 'server' || headerName.startsWith('cf-'))) {
-						continue;
-					}
-
-					if (typeof pattern === 'string') {
-						if (headerValue.toLowerCase().includes(pattern.toLowerCase())) {
-							confidence += 30;
-							const displayValue = redactHeaders({ [headerName]: headerValue })[headerName];
-							matchEvidence.push(`Header ${headerName}: ${displayValue}`);
+			// Check definitive headers (100% confidence match)
+			let hasDefinitiveMatch = false;
+			if (signature.definitiveHeaders) {
+				for (const [headerName, pattern] of Object.entries(signature.definitiveHeaders)) {
+					const headerValue = response.headers.get(headerName);
+					if (headerValue) {
+						// Cloudflare Workers inject cf-* and server: cloudflare headers into fetch responses
+						if (isWorker && signature.name === 'Cloudflare' && (headerName === 'server' || headerName.startsWith('cf-'))) {
+							continue;
 						}
-					} else if (pattern instanceof RegExp) {
-						if (pattern.test(headerValue)) {
-							confidence += 30;
+
+						const isMatch = typeof pattern === 'string'
+							? headerValue.toLowerCase().includes(pattern.toLowerCase())
+							: pattern.test(headerValue);
+
+						if (isMatch) {
+							hasDefinitiveMatch = true;
 							const displayValue = redactHeaders({ [headerName]: headerValue })[headerName];
-							matchEvidence.push(`Header ${headerName}: ${displayValue} (matches ${pattern})`);
+							matchEvidence.push(`Definitive header ${headerName}: ${displayValue} (100% confidence)`);
+							break;
+						}
+					}
+				}
+			}
+
+			if (hasDefinitiveMatch) {
+				confidence = 100;
+			} else {
+				// Check standard headers
+				for (const [headerName, pattern] of Object.entries(signature.headers)) {
+					const headerValue = response.headers.get(headerName);
+					if (headerValue) {
+						// Cloudflare Workers inject cf-* and server: cloudflare headers into fetch responses
+						if (isWorker && signature.name === 'Cloudflare' && (headerName === 'server' || headerName.startsWith('cf-'))) {
+							continue;
+						}
+
+						if (typeof pattern === 'string') {
+							if (headerValue.toLowerCase().includes(pattern.toLowerCase())) {
+								confidence += 30;
+								const displayValue = redactHeaders({ [headerName]: headerValue })[headerName];
+								matchEvidence.push(`Header ${headerName}: ${displayValue}`);
+							}
+						} else if (pattern instanceof RegExp) {
+							if (pattern.test(headerValue)) {
+								confidence += 30;
+								const displayValue = redactHeaders({ [headerName]: headerValue })[headerName];
+								matchEvidence.push(`Header ${headerName}: ${displayValue} (matches ${pattern})`);
+							}
 						}
 					}
 				}
@@ -82,7 +111,9 @@ export class WAFDetector {
 
 			// Check status codes
 			if (signature.statusCodes && signature.statusCodes.includes(response.status)) {
-				confidence += 20;
+				if (!hasDefinitiveMatch) {
+					confidence += 20;
+				}
 				matchEvidence.push(`Status code: ${response.status}`);
 			}
 
@@ -92,7 +123,9 @@ export class WAFDetector {
 				if (cookies) {
 					for (const pattern of signature.cookiePatterns) {
 						if (pattern.test(cookies)) {
-							confidence += 25;
+							if (!hasDefinitiveMatch) {
+								confidence += 25;
+							}
 							matchEvidence.push(`Cookie pattern match: ${pattern}`);
 						}
 					}
@@ -103,14 +136,16 @@ export class WAFDetector {
 			if (responseBody && signature.bodyPatterns) {
 				for (const pattern of signature.bodyPatterns) {
 					if (pattern.test(responseBody)) {
-						confidence += 25;
+						if (!hasDefinitiveMatch) {
+							confidence += 25;
+						}
 						matchEvidence.push(`Body pattern match: ${pattern}`);
 					}
 				}
 			}
 
 			// Check response time patterns (WAFs often add latency)
-			if (responseTime && responseTime > 500) {
+			if (!hasDefinitiveMatch && responseTime && responseTime > 500) {
 				confidence += 5;
 				// Don't add to evidence as it's circumstantial
 			}
@@ -309,6 +344,13 @@ export class WAFDetector {
 				'Content-Type manipulation',
 			],
 			'DDoS-Guard': [
+				'HTTP parameter pollution',
+				'Double URL encoding',
+				'Request rate pacing',
+				'Header case manipulation',
+				'Alternative whitespace characters',
+			],
+			'Qrator WAF': [
 				'HTTP parameter pollution',
 				'Double URL encoding',
 				'Request rate pacing',

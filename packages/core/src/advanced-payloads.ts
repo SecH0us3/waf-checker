@@ -87,6 +87,9 @@ export function generateWAFSpecificPayloads(wafType: string, basePayload: string
 			return WAFBypasses.reblazeBypass(basePayload);
 		case 'dotdefender':
 			return WAFBypasses.dotDefenderBypass(basePayload);
+		case 'qrator':
+		case 'qrator waf':
+			return PayloadEncoder.generateBypassVariations(basePayload);
 		default:
 			return PayloadEncoder.generateBypassVariations(basePayload);
 	}
