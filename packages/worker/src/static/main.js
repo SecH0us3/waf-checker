@@ -55,6 +55,53 @@ function getNormalizedUrlInput() {
 	return norm;
 }
 
+// Mirrors the URL input into an overlay so the protocol ("https://") can be
+// shown in green while the rest of the URL keeps the default text color.
+function initUrlHighlight() {
+	const el = document.getElementById('url');
+	const field = el && el.closest('.url-field');
+	const text = field && field.querySelector('.url-highlight-text');
+	if (!text) return;
+
+	const render = () => {
+		const v = el.value;
+		const m = v.match(/^[a-z][a-z0-9+.\-]*:\/\//i);
+		text.textContent = '';
+		if (m) {
+			const proto = document.createElement('span');
+			proto.className = 'url-protocol';
+			proto.textContent = m[0];
+			text.appendChild(proto);
+		}
+		text.appendChild(document.createTextNode(m ? v.slice(m[0].length) : v));
+		syncScroll();
+	};
+	const syncScroll = () => {
+		text.style.transform = `translateX(${-el.scrollLeft}px)`;
+	};
+
+	// Programmatic assignments (restore from storage, normalization on blur)
+	// don't fire 'input', so hook the value setter too.
+	const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+	Object.defineProperty(el, 'value', {
+		configurable: true,
+		get() {
+			return desc.get.call(this);
+		},
+		set(v) {
+			desc.set.call(this, v);
+			render();
+		},
+	});
+
+	el.addEventListener('input', render);
+	['scroll', 'keyup', 'keydown', 'click', 'select', 'focus', 'blur'].forEach((evt) =>
+		el.addEventListener(evt, () => requestAnimationFrame(syncScroll)),
+	);
+	field.classList.add('has-highlight');
+	render();
+}
+
 let currentAbortController = null;
 function cancelCurrentScan() {
     if (currentAbortController) {
@@ -1754,6 +1801,7 @@ function initApp() {
 		});
 	}
 	// --- Enter key in URL input ---
+	initUrlHighlight();
 	const urlInput = document.getElementById('url');
 	if (urlInput) {
 		urlInput.addEventListener('keydown', function (e) {
