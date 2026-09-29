@@ -322,6 +322,65 @@ body[data-theme='light'] .hero-header h1 {
 	transition: border-color 0.2s, box-shadow 0.2s;
 }
 
+/* Protocol highlighting: the input text is made transparent and a
+   pointer-events-free overlay renders the same text on top, with the scheme
+   ("https://") in green and the rest in the default text color. The class is
+   added by JS, so without it the plain input stays readable. */
+.url-field {
+	position: relative;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.url-field .form-control,
+.url-highlight {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.url-field.has-highlight .form-control {
+	color: transparent !important;
+	caret-color: var(--bs-body-color);
+}
+
+.url-highlight {
+	position: absolute;
+	inset: 0;
+	border: 1.5px solid transparent;
+	padding: 0.65rem 1rem;
+	font-size: 0.95rem;
+	line-height: 1.5;
+	white-space: pre;
+	overflow: hidden;
+	pointer-events: none;
+	color: var(--bs-body-color);
+	display: none;
+}
+
+.url-field.has-highlight .url-highlight {
+	display: block;
+}
+
+.url-highlight-text {
+	display: inline-block;
+}
+
+.url-highlight .url-protocol {
+	color: #16a34a;
+}
+
+body[data-theme='dark'] .url-highlight {
+	color: #e2e8f0;
+}
+
+body[data-theme='dark'] .url-field.has-highlight .form-control {
+	caret-color: #e2e8f0;
+}
+
+body[data-theme='dark'] .url-highlight .url-protocol {
+	color: #22c55e;
+}
+
 .url-input-group .form-control:focus {
 	border-color: var(--accent);
 	box-shadow: 0 0 0 3px var(--accent-glow);
