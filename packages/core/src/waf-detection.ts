@@ -178,6 +178,86 @@ export class WAFDetector {
 	}
 
 	/**
+	 * Probe a target URL with an optional attack payload and return detection result.
+	 */
+	private static async probeUrl(
+		targetUrl: string,
+		payload: string | undefined,
+		fetchFn: typeof fetch,
+		options?: { isWorker?: boolean; allowLocal?: boolean },
+	): Promise<WAFDetectionResult | null> {
+		let currentUrl = targetUrl;
+		if (payload !== undefined) {
+			const separator = targetUrl.includes('?') ? '&' : '?';
+			currentUrl = `${targetUrl}${separator}test=${encodeURIComponent(payload)}`;
+		}
+
+		try {
+			let redirectCount = 0;
+			const maxRedirects = 3;
+
+			while (true) {
+				const startTime = Date.now();
+				const controller = new AbortController();
+				const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+				let response: Response;
+				try {
+					response = await fetchFn(currentUrl, {
+						method: 'GET',
+						redirect: 'manual',
+						headers: {
+							'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+							'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+						},
+						signal: controller.signal,
+					});
+				} finally {
+					clearTimeout(timeoutId);
+				}
+				const responseTime = Date.now() - startTime;
+
+				let responseBody = '';
+				try {
+					const contentLength = response.headers?.get?.('content-length');
+					if (contentLength && parseInt(contentLength, 10) > 1048576) {
+						responseBody = '[Response Too Large]';
+					} else if (typeof response.text === 'function') {
+						responseBody = await response.text();
+					}
+				} catch {
+					responseBody = '';
+				}
+
+				const detection = await this.detectFromResponse(response, responseBody, responseTime, options?.isWorker);
+
+				// If definitive match or captcha detected on this response, return immediately
+				if (detection.detected || detection.captchaDetected) {
+					return detection;
+				}
+
+				// If redirect and we haven't exceeded max redirects, follow safely while verifying SSRF
+				if (response.status >= 300 && response.status < 400 && redirectCount < maxRedirects) {
+					const location = response.headers?.get?.('location');
+					if (location) {
+						const nextUrl = new URL(location, currentUrl).toString();
+						if (isValidTargetUrl(nextUrl, { allowLocal: options?.allowLocal })) {
+							currentUrl = nextUrl;
+							redirectCount++;
+							continue;
+						}
+					}
+				}
+
+				return detection.detected || detection.captchaDetected ? detection : null;
+			}
+		} catch (error) {
+			console.error('Active detection probe failed:', error);
+			return null;
+		}
+	}
+
+	/**
 	 * Perform active WAF detection by sending probe requests
 	 */
 	static async activeDetection(url: string, options?: { fetch?: typeof fetch; isWorker?: boolean; allowLocal?: boolean }): Promise<WAFDetectionResult> {
@@ -187,48 +267,28 @@ export class WAFDetector {
 		const fetchFn = options?.fetch || globalThis.fetch;
 		const probePayloads = ["' OR '1'='1", '<script>alert(1)</script>', '../../../etc/passwd', 'UNION SELECT 1,2,3--'];
 
-		const probePromises = probePayloads.map(async (payload) => {
-			try {
-				const separator = url.includes('?') ? '&' : '?';
-				const startTime = Date.now();
-				const controller = new AbortController();
-				const timeoutId = setTimeout(() => controller.abort(), 10000);
+		// 1. Send clean baseline probe first to inspect standard headers and cookies.
+		// If a definitive match (100% confidence) is found, return immediately without triggering attack alarms.
+		const baselineResult = await this.probeUrl(url, undefined, fetchFn, options);
+		if (baselineResult && baselineResult.confidence === 100) {
+			return baselineResult;
+		}
 
-				let response;
-				try {
-					response = await fetchFn(`${url}${separator}test=${encodeURIComponent(payload)}`, {
-						method: 'GET',
-						redirect: 'manual',
-						signal: controller.signal,
-					});
-				} finally {
-					clearTimeout(timeoutId);
-				}
-				const responseTime = Date.now() - startTime;
+		// 2. Run attack payload probes and Cloudflare /cdn-cgi edge probe in parallel.
+		const probePromises = probePayloads.map((payload) => this.probeUrl(url, payload, fetchFn, options));
 
-				let responseBody = '';
-				const contentLength = response.headers.get('content-length');
-				if (contentLength && parseInt(contentLength, 10) > 1048576) {
-					responseBody = '[Response Too Large]';
-				} else {
-					responseBody = await response.text();
-				}
-
-				const detection = await this.detectFromResponse(response, responseBody, responseTime, options?.isWorker);
-				return detection.detected || detection.captchaDetected ? detection : null;
-			} catch (error) {
-				console.error('Active detection probe failed:', error);
-				return null;
-			}
-		});
-
-		// Run the payload probes and the Cloudflare /cdn-cgi edge probe in parallel.
 		const [payloadResults, cdnCgiResult] = await Promise.all([
 			Promise.all(probePromises),
 			this.detectViaCdnCgi(url, fetchFn, options?.isWorker),
 		]);
 
-		const results = payloadResults.filter((r): r is WAFDetectionResult => r !== null);
+		const results: WAFDetectionResult[] = [];
+		if (baselineResult) {
+			results.push(baselineResult);
+		}
+		for (const r of payloadResults) {
+			if (r) results.push(r);
+		}
 		if (cdnCgiResult) {
 			results.push(cdnCgiResult);
 		}

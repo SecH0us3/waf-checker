@@ -656,5 +656,64 @@ describe('WAFDetector', () => {
 			expect(result.detected).toBe(false);
 			expect(result.wafType).toBe('Unknown');
 		});
+
+		it('detects Qrator WAF on clean baseline request via activeDetection without needing attack probes', async () => {
+			const mockFetch = vi.fn().mockImplementation((url: string) => {
+				if (url.includes('test=')) {
+					// Simulating WAF dropping/tarpitting attack probes
+					throw new Error('Connection reset or dropped by firewall');
+				}
+				return Promise.resolve({
+					status: 200,
+					headers: {
+						get: (name: string) => (name.toLowerCase() === 'server' ? 'QRATOR' : null),
+					},
+					text: () => Promise.resolve('Normal page content'),
+				});
+			});
+
+			const result = await WAFDetector.activeDetection('https://example.com/', { fetch: mockFetch as any });
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('Qrator WAF');
+			expect(result.confidence).toBe(100);
+			expect(result.confidencePercent).toBe(100);
+			expect(result.evidence.some((e) => e.includes('Definitive header server: QRATOR'))).toBe(true);
+			// Confirms it returned immediately without calling attack probes
+			expect(mockFetch).toHaveBeenCalledTimes(1);
+			expect(mockFetch).toHaveBeenCalledWith('https://example.com/', expect.anything());
+		});
+
+		it('detects Qrator WAF via activeDetection following safe redirects', async () => {
+			const mockFetch = vi.fn().mockImplementation((url: string) => {
+				if (url === 'https://example.com/') {
+					return Promise.resolve({
+						status: 302,
+						headers: {
+							get: (name: string) => {
+								if (name.toLowerCase() === 'location') return 'https://example.com/feed';
+								return null;
+							},
+						},
+						text: () => Promise.resolve(''),
+					});
+				}
+				if (url === 'https://example.com/feed') {
+					return Promise.resolve({
+						status: 200,
+						headers: {
+							get: (name: string) => (name.toLowerCase() === 'server' ? 'QRATOR' : null),
+						},
+						text: () => Promise.resolve('Feed content'),
+					});
+				}
+				throw new Error('Unexpected URL: ' + url);
+			});
+
+			const result = await WAFDetector.activeDetection('https://example.com/', { fetch: mockFetch as any });
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('Qrator WAF');
+			expect(result.confidence).toBe(100);
+		});
 	});
 });
+
