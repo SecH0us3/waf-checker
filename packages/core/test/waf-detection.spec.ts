@@ -717,7 +717,7 @@ describe('WAFDetector', () => {
 
 		it('does not follow redirects off the target domain or report that host\'s WAF', async () => {
 			const mockFetch = vi.fn().mockImplementation((url: string) => {
-				if (url.startsWith('https://sso.other-provider.com')) {
+				if (new URL(url).hostname === 'sso.other-provider.com') {
 					return Promise.resolve({
 						status: 200,
 						headers: {
@@ -737,7 +737,7 @@ describe('WAFDetector', () => {
 
 			const result = await WAFDetector.activeDetection('https://example.com/', { fetch: mockFetch as any });
 			expect(result.detected).toBe(false);
-			expect(mockFetch.mock.calls.some(([url]) => String(url).startsWith('https://sso.other-provider.com'))).toBe(false);
+			expect(mockFetch.mock.calls.some(([url]) => new URL(String(url)).hostname === 'sso.other-provider.com')).toBe(false);
 		});
 	});
 });
