@@ -560,7 +560,21 @@ export async function handleApiCheckWithEnvelope(
 
 	// Auto-detect WAF if requested
 	let wafDetectionResult: WAFDetectionResult | undefined;
-	if (autoDetectWAF) {
+	if (autoDetectWAF && detectedWAF) {
+		// The caller already detected the WAF (the UI does so once before paging).
+		// Re-probing here would repeat the whole detection against the target on
+		// every page, so carry the known type instead. Only `detected` and
+		// `wafType` are read below; the result is never returned to the caller.
+		wafDetectionResult = {
+			detected: true,
+			wafType: detectedWAF,
+			confidence: 100,
+			confidencePercent: 100,
+			confidenceThreshold: 40,
+			evidence: ['WAF type supplied by caller'],
+			suggestedBypassTechniques: [],
+		};
+	} else if (autoDetectWAF) {
 		try {
 			wafDetectionResult = await WAFDetector.activeDetection(url.replace(/\{PAYLOAD\}/g, ''), options);
 			if (!options?.quiet) {
