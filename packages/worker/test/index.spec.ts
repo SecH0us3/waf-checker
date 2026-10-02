@@ -71,18 +71,15 @@ describe('WAF Checker API', () => {
 		expect(Array.isArray(data)).toBe(true);
 	});
 
-	it('returns 400 for /api/batch/status without jobId', async () => {
-		const response = await SELF.fetch('https://example.com/api/batch/status');
-		expect(response.status).toBe(400);
-	});
-
-	it('returns 400 for /api/batch/stop without jobId', async () => {
-		const response = await SELF.fetch('https://example.com/api/batch/stop', {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({})
-		});
-		expect(response.status).toBe(400);
+	it('no longer serves the removed server-side batch API', async () => {
+		for (const path of ['/api/batch/start', '/api/batch/status', '/api/batch/stop']) {
+			const response = await SELF.fetch(`https://example.com${path}`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ urls: ['https://example.com'] }),
+			});
+			expect(response.status).toBe(404);
+		}
 	});
 
 	it('returns 405 for /api/virtual-patch with GET request', async () => {
