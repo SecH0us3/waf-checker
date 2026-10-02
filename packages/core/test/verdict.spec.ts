@@ -114,6 +114,32 @@ describe('WAF Verdict Evaluation', () => {
 		}
 	});
 
+	it('should return every item in one page when pageSize is MAX_SAFE_INTEGER (CLI mode)', async () => {
+		const mockFetch = async () => new Response('404 Not Found', { status: 404 });
+		const envelope = await handleApiCheckWithEnvelope(
+			'http://example.com/api',
+			0,
+			['GET'],
+			undefined,
+			undefined,
+			false,
+			undefined,
+			false,
+			false,
+			false,
+			false,
+			false,
+			false,
+			undefined,
+			undefined,
+			{ fetch: mockFetch as any, quiet: true, pageSize: Number.MAX_SAFE_INTEGER }
+		);
+
+		expect(envelope.total).toBeGreaterThan(50);
+		expect(envelope.results.length).toBe(envelope.total);
+		expect(envelope.hasMore).toBe(false);
+	});
+
 	it('should not mark ordinary application status/error page mentioning incident id as blocked without WAF context', () => {
 		const body = '<html><h1>Service Status</h1><p>Incident ID: INC-98765. Our team is investigating.</p></html>';
 		const verdict = evaluateWAFVerdict(200, body);

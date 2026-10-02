@@ -384,6 +384,15 @@ describe('CLI Argument Processing', () => {
 			);
 		});
 
+		it('should request the whole payload set in a single page', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com'])
+			).resolves.toBeDefined();
+
+			const options = vi.mocked(core.handleApiCheckFiltered).mock.calls[0][15];
+			expect(options?.pageSize).toBe(Number.MAX_SAFE_INTEGER);
+		});
+
 		it('should load custom headers from file when path exists', async () => {
 			mockFileContent = 'X-Header: test\nCookie: name=value';
 			await expect(
@@ -641,6 +650,18 @@ describe('CLI Argument Processing', () => {
 			expect(core.handleApiCheckFiltered).toHaveBeenCalledTimes(2);
 			expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining('Skipping invalid or restricted target URL'));
 			expect(exitCode).toBeNull();
+		});
+
+		it('should request the whole payload set for every batch target', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'batch', mockFile])
+			).resolves.toBeDefined();
+
+			const calls = vi.mocked(core.handleApiCheckFiltered).mock.calls;
+			expect(calls.length).toBe(2);
+			for (const call of calls) {
+				expect(call[15]?.pageSize).toBe(Number.MAX_SAFE_INTEGER);
+			}
 		});
 
 		it('should fail if no valid URLs found in file', async () => {
