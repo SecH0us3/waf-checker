@@ -2,7 +2,7 @@
 // Based on response headers, behavior patterns, and timing analysis
 
 import { redactHeaders } from './utils/payload-utils';
-import { isValidTargetUrl } from './utils/security';
+import { isValidTargetUrl, isInScopeRedirect } from './utils/security';
 
 export interface WAFDetectionResult {
 	detected: boolean;
@@ -236,12 +236,14 @@ export class WAFDetector {
 					return detection;
 				}
 
-				// If redirect and we haven't exceeded max redirects, follow safely while verifying SSRF
+				// If redirect and we haven't exceeded max redirects, follow safely while verifying SSRF.
+				// Stay on the target's own domain: a redirect to an SSO provider or CDN would
+				// otherwise get that host's WAF reported as the target's.
 				if (response.status >= 300 && response.status < 400 && redirectCount < maxRedirects) {
 					const location = response.headers?.get?.('location');
 					if (location) {
 						const nextUrl = new URL(location, currentUrl).toString();
-						if (isValidTargetUrl(nextUrl, { allowLocal: options?.allowLocal })) {
+						if (isValidTargetUrl(nextUrl, { allowLocal: options?.allowLocal }) && isInScopeRedirect(currentUrl, nextUrl)) {
 							currentUrl = nextUrl;
 							redirectCount++;
 							continue;
