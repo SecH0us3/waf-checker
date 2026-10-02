@@ -37,6 +37,12 @@ const supportedMethods = [
 const supportedCategories = Object.keys(PAYLOADS);
 const supportedWafs = WAFDetector.getSupportedWafs();
 
+// The CLI runs the whole payload set in one call. Without an explicit page size
+// core falls back to 50 items per page, and since the CLI only requests page 0
+// every scan silently stopped after the first 50 tests. (Infinity is unusable
+// here: page 0 * Infinity is NaN, which would select nothing.)
+const ALL_PAYLOADS_PAGE_SIZE = Number.MAX_SAFE_INTEGER;
+
 const detailedHelp = `
 Supported HTTP Methods (-m, --methods):
 ${supportedMethods.map((m: string) => `  - ${m}`).join('\n')}
@@ -218,7 +224,7 @@ checkCmd
 
 			const results = await handleApiCheckFiltered(
 				url,
-				0, // Start with page 0 (all payloads by default for CLI)
+				0, // Single page holding every payload (see ALL_PAYLOADS_PAGE_SIZE)
 				methods,
 				categories,
 				options.payloadTemplate,
@@ -232,7 +238,7 @@ checkCmd
 				options.encodingVariations,
 				options.detectedWaf,
 				httpManipulationOpts,
-				{ fetch: customFetch, color: useColor, quiet: isQuiet, allowLocal, spoofUserAgents: options.spoofUserAgent !== false }
+				{ fetch: customFetch, color: useColor, quiet: isQuiet, allowLocal, spoofUserAgents: options.spoofUserAgent !== false, pageSize: ALL_PAYLOADS_PAGE_SIZE }
 			);
 
 			let reverseReport: ReverseEngineeringReport | undefined = undefined;
@@ -532,7 +538,7 @@ batchCmd
 							options.encodingVariations,
 							options.detectedWaf,
 							httpManipulationOpts,
-							{ fetch: customFetch, color: useColor, quiet: isQuiet }
+							{ fetch: customFetch, color: useColor, quiet: isQuiet, pageSize: ALL_PAYLOADS_PAGE_SIZE }
 						);
 
 						const blocked = res.filter((r: any) => r.status === 403 || r.status === 'BLOCKED');
