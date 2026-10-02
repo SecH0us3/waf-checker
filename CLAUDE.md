@@ -14,7 +14,6 @@ All backend source files are located in `app/src/`:
   - [app/src/api.ts](app/src/api.ts) — Receives all incoming HTTP requests, handles routing, and processes query parameters.
 - **API Request Handlers**:
   - [app/src/handlers/check.ts](app/src/handlers/check.ts) — Main handler for checking payloads against target WAFs.
-  - [app/src/handlers/batch.ts](app/src/handlers/batch.ts) — Handler for batch URL testing with concurrency and queue management.
   - [app/src/handlers/waf-detect.ts](app/src/handlers/waf-detect.ts) — Handler for detecting the target WAF type.
   - [app/src/handlers/http-manip.ts](app/src/handlers/http-manip.ts) — Handler for testing HTTP protocol manipulations.
 - **Core Logic & Business Logic**:
