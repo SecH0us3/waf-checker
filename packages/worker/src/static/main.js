@@ -581,12 +581,15 @@ async function fetchResults() {
 	let allResults = [];
 	let detectedWAFType = window.detectedWAF || null;
 	let wafDetection = null;
+	// Set once the up-front detection has answered, whatever it found.
+	let upfrontDetectionDone = false;
 
 	// Auto-detect WAF first if enabled
 	if (autoDetectWAF && !detectedWAFType) {
 		try {
 			const wafResponse = await fetch(`/api/waf-detect?url=${encodeURIComponent(url)}`);
 			if (wafResponse.ok) {
+				upfrontDetectionDone = true;
 				const wafData = await wafResponse.json();
 				if (wafData.detection && wafData.detection.detected) {
 					detectedWAFType = wafData.detection.wafType;
@@ -615,7 +618,10 @@ async function fetchResults() {
 				caseSensitiveTest: caseSensitiveTest ? '1' : '0',
 				enhancedPayloads: enhancedPayloads ? '1' : '0',
 				useAdvancedPayloads: useAdvancedPayloads ? '1' : '0',
-				autoDetectWAF: autoDetectWAF ? '1' : '0',
+				// Detection already ran above. With a known type the server reuses it;
+				// if detection answered and found nothing, asking the server to detect
+				// again would only repeat the same probes against the target per page.
+				autoDetectWAF: autoDetectWAF && (detectedWAFType || !upfrontDetectionDone) ? '1' : '0',
 				useEncodingVariations: useEncodingVariations ? '1' : '0',
 				httpManipulation: httpManipulation ? '1' : '0',
 				enablePadding: enablePadding ? '1' : '0',
@@ -2844,6 +2850,10 @@ async function testSingleUrlClient(url, config) {
 
 	let allResults = [];
 	let page = 0;
+	// Detection runs with the first page only; later pages carry its outcome so
+	// the server does not re-probe the target for every page.
+	let autoDetectWAF = Boolean(config.autoDetectWAF);
+	let detectedWAF = '';
 
 	while (true) {
 		const params = new URLSearchParams({
@@ -2856,7 +2866,8 @@ async function testSingleUrlClient(url, config) {
 			caseSensitiveTest: config.caseSensitiveTest ? '1' : '0',
 			enhancedPayloads: config.enhancedPayloads ? '1' : '0',
 			useAdvancedPayloads: config.useAdvancedPayloads ? '1' : '0',
-			autoDetectWAF: config.autoDetectWAF ? '1' : '0',
+			autoDetectWAF: autoDetectWAF ? '1' : '0',
+			detectedWAF,
 			useEncodingVariations: config.useEncodingVariations ? '1' : '0',
 			httpManipulation: config.httpManipulation ? '1' : '0',
 		});
@@ -2874,6 +2885,14 @@ async function testSingleUrlClient(url, config) {
 
 		const results = await response.json();
 		if (!results || !results.length) break;
+
+		if (page === 0 && autoDetectWAF) {
+			if (results[0].wafDetected && results[0].wafType) {
+				detectedWAF = results[0].wafType;
+			} else {
+				autoDetectWAF = false;
+			}
+		}
 
 		allResults = allResults.concat(results);
 		page++;

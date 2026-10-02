@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { evaluateWAFVerdict, handleApiCheckWithEnvelope } from '../src/check';
 import { WAFDetector, WAFDetectionResult } from '../src/waf-detection';
 
@@ -111,6 +111,69 @@ describe('WAF Verdict Evaluation', () => {
 			expect(item.blocked).toBe(false);
 			expect(item.verdict).toBe('passed');
 			expect(item.error).toBeNull();
+		}
+	});
+
+	it('should reuse a caller-supplied WAF type instead of re-probing when autoDetectWAF is set', async () => {
+		const detectSpy = vi.spyOn(WAFDetector, 'activeDetection');
+		const mockFetch = async () => new Response('404 Not Found', { status: 404 });
+		try {
+			const envelope = await handleApiCheckWithEnvelope(
+				'http://example.com/api',
+				1,
+				['GET'],
+				['SQL Injection'],
+				undefined,
+				false,
+				undefined,
+				false,
+				false,
+				false,
+				false,
+				true, // autoDetectWAF
+				false,
+				'Cloudflare', // detectedWAF already known
+				undefined,
+				{ fetch: mockFetch as any, quiet: true, pageSize: 5 }
+			);
+
+			expect(detectSpy).not.toHaveBeenCalled();
+			expect(envelope.results.length).toBeGreaterThan(0);
+			for (const item of envelope.results) {
+				expect(item.wafDetected).toBe(true);
+				expect(item.wafType).toBe('Cloudflare');
+			}
+		} finally {
+			detectSpy.mockRestore();
+		}
+	});
+
+	it('should still run detection when autoDetectWAF is set without a known WAF type', async () => {
+		const detectSpy = vi.spyOn(WAFDetector, 'activeDetection');
+		const mockFetch = async () => new Response('404 Not Found', { status: 404 });
+		try {
+			await handleApiCheckWithEnvelope(
+				'http://example.com/api',
+				0,
+				['GET'],
+				['SQL Injection'],
+				undefined,
+				false,
+				undefined,
+				false,
+				false,
+				false,
+				false,
+				true, // autoDetectWAF
+				false,
+				undefined,
+				undefined,
+				{ fetch: mockFetch as any, quiet: true, pageSize: 5 }
+			);
+
+			expect(detectSpy).toHaveBeenCalledTimes(1);
+		} finally {
+			detectSpy.mockRestore();
 		}
 	});
 
