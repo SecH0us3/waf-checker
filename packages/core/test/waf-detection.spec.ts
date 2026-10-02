@@ -714,6 +714,31 @@ describe('WAFDetector', () => {
 			expect(result.wafType).toBe('Qrator WAF');
 			expect(result.confidence).toBe(100);
 		});
+
+		it('does not follow redirects off the target domain or report that host\'s WAF', async () => {
+			const mockFetch = vi.fn().mockImplementation((url: string) => {
+				if (url.startsWith('https://sso.other-provider.com')) {
+					return Promise.resolve({
+						status: 200,
+						headers: {
+							get: (name: string) => (name.toLowerCase() === 'server' ? 'QRATOR' : null),
+						},
+						text: () => Promise.resolve('Login'),
+					});
+				}
+				return Promise.resolve({
+					status: 302,
+					headers: {
+						get: (name: string) => (name.toLowerCase() === 'location' ? 'https://sso.other-provider.com/login' : null),
+					},
+					text: () => Promise.resolve(''),
+				});
+			});
+
+			const result = await WAFDetector.activeDetection('https://example.com/', { fetch: mockFetch as any });
+			expect(result.detected).toBe(false);
+			expect(mockFetch.mock.calls.some(([url]) => String(url).startsWith('https://sso.other-provider.com'))).toBe(false);
+		});
 	});
 });
 
