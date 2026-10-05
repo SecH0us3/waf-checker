@@ -10,10 +10,13 @@
     "typescript": "^7.0.2",
     "vite-node": "^6.0.0",
     "vitest": "~5.0.2",
-    "wrangler": "^4.141.0"
+    "wrangler": "^4.147.0"
   },
   "overrides": {
-    "sharp": "0.35.4"
+    "sharp": "0.35.4",
+    "miniflare": {
+      "undici": "7.29.1"
+    }
   },
   "scripts": {
     "test": "npm run test --workspaces --if-present",
