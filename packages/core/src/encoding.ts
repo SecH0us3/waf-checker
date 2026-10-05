@@ -627,14 +627,4 @@ export class WAFBypasses {
 		bypasses.push(payload.replace(/script/gi, 'scr/**/ipt'));
 		return [...new Set(bypasses)];
 	}
-
-	/**
-	 * Generate random case variations
-	 */
-	private static randomCase(str: string): string {
-		return str
-			.split('')
-			.map((char) => (Math.random() > 0.5 ? char.toUpperCase() : char.toLowerCase()))
-			.join('');
-	}
 }

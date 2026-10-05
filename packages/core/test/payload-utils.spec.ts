@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { processCustomHeaders, substitutePayload, randomUppercase, redactUrl, redactHeaders } from '../src/utils/payload-utils';
+import { processCustomHeaders, substitutePayload, randomUppercase, seededRandom, redactUrl, redactHeaders } from '../src/utils/payload-utils';
 
 describe('payload-utils', () => {
 	describe('processCustomHeaders', () => {
@@ -108,6 +108,34 @@ describe('payload-utils', () => {
 			expect(Object.prototype.hasOwnProperty.call(result, 'prototype')).toBe(false);
 			// @ts-ignore
 			expect({}.polluted).toBeUndefined();
+		});
+	});
+
+	describe('seededRandom', () => {
+		it('returns the same sequence for the same seed', () => {
+			const a = seededRandom("' OR 1=1--");
+			const b = seededRandom("' OR 1=1--");
+			const seqA = Array.from({ length: 20 }, () => a());
+			const seqB = Array.from({ length: 20 }, () => b());
+			expect(seqA).toEqual(seqB);
+		});
+
+		it('returns values in [0, 1) that differ across seeds', () => {
+			const seqA = Array.from({ length: 20 }, seededRandom('union select'));
+			const seqB = Array.from({ length: 20 }, seededRandom('<script>'));
+			for (const v of [...seqA, ...seqB]) {
+				expect(v).toBeGreaterThanOrEqual(0);
+				expect(v).toBeLessThan(1);
+			}
+			expect(seqA).not.toEqual(seqB);
+		});
+
+		it('makes randomUppercase reproducible while still mixing case', () => {
+			const payload = '<script>alert(document.cookie)</script>';
+			const first = randomUppercase(payload, seededRandom(payload));
+			expect(randomUppercase(payload, seededRandom(payload))).toBe(first);
+			expect(first).not.toBe(payload);
+			expect(first.toLowerCase()).toBe(payload.toLowerCase());
 		});
 	});
 

@@ -203,6 +203,46 @@ describe('WAF Verdict Evaluation', () => {
 		expect(envelope.hasMore).toBe(false);
 	});
 
+	it('should count payload variations in total, and page through the same plan as one full call', async () => {
+		const mockFetch = async () => new Response('404 Not Found', { status: 404 });
+		const run = (page: number, pageSize: number) =>
+			handleApiCheckWithEnvelope(
+				'http://example.com/api',
+				page,
+				['GET', 'POST'],
+				['SQL Injection'],
+				undefined,
+				false,
+				undefined,
+				false,
+				true, // caseSensitiveTest: case is randomized per payload
+				false,
+				false,
+				false,
+				true, // useEncodingVariations
+				'Cloudflare', // WAF-specific variations
+				undefined,
+				{ fetch: mockFetch as any, quiet: true, pageSize }
+			);
+		const key = (r: { payload: string; method: string }) => `${r.method} ${r.payload}`;
+
+		const all = await run(0, Number.MAX_SAFE_INTEGER);
+		expect(all.results.length).toBe(all.total);
+
+		// Each page is a separate call. Paging must walk exactly the same items, in
+		// the same order, as the single full call: no skips, repeats or drift.
+		const paged: string[] = [];
+		let page = 0;
+		for (;;) {
+			const envelope = await run(page, 25);
+			expect(envelope.total).toBe(all.total);
+			paged.push(...envelope.results.map(key));
+			if (!envelope.hasMore) break;
+			page++;
+		}
+		expect(paged).toEqual(all.results.map(key));
+	});
+
 	it('should not mark ordinary application status/error page mentioning incident id as blocked without WAF context', () => {
 		const body = '<html><h1>Service Status</h1><p>Incident ID: INC-98765. Our team is investigating.</p></html>';
 		const verdict = evaluateWAFVerdict(200, body);
