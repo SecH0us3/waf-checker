@@ -600,13 +600,46 @@ export async function handleApiCheckWithEnvelope(
 			? Object.entries(payloadSource).filter(([cat]) => categories.includes(cat))
 			: Object.entries(payloadSource)) as [string, any][];
 
+	// ParamCheck payloads expand into WAF-specific and encoding variations. Plan
+	// them once, up front, so the reported total counts exactly the requests the
+	// loop below makes; some generators randomize case, so generating twice could
+	// disagree after deduplication.
+	const wafTypeForVariations = detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined);
+	const planParamVariations = (payload: string, category: string): string[] => {
+		const payloadVariations = [payload];
+
+		// Add WAF-specific bypass variations if WAF is detected
+		if (wafTypeForVariations) {
+			const wafSpecificPayloads = generateWAFSpecificPayloads(wafTypeForVariations, payload);
+			if (wafSpecificPayloads.length > 1) {
+				payloadVariations.push(...wafSpecificPayloads.slice(1));
+			}
+		}
+
+		// Add encoding variations if enabled (works alongside WAF-specific)
+		if (useEncodingVariations) {
+			payloadVariations.push(...PayloadEncoder.generateBypassVariations(payload, category));
+		}
+
+		// Deduplicate
+		return [...new Set(payloadVariations)];
+	};
+	const plannedParamChecks = new Map<string, { payload: string; payloadVariations: string[] }[]>();
+
 	// Calculate total items matching category/method filters
 	let totalItems = 0;
-	for (const [_, info] of payloadEntries) {
+	for (const [category, info] of payloadEntries) {
 		const checkType = info.type || 'ParamCheck';
 		const payloads = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
 		if (checkType === 'ParamCheck') {
-			totalItems += payloads.length * METHODS.length;
+			const planned = payloads.map((original: string) => {
+				const payload = caseSensitiveTest ? randomUppercase(original) : original;
+				return { payload, payloadVariations: planParamVariations(payload, category) };
+			});
+			plannedParamChecks.set(category, planned);
+			for (const { payloadVariations } of planned) {
+				totalItems += payloadVariations.length * METHODS.length;
+			}
 		} else if (checkType === 'FileCheck') {
 			totalItems += payloads.length;
 		} else if (checkType === 'Header') {
@@ -618,33 +651,7 @@ export async function handleApiCheckWithEnvelope(
 		const checkType = info.type || 'ParamCheck';
 		const payloads = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
 		if (checkType === 'ParamCheck') {
-			for (let payload of payloads) {
-				// Use let so we can reassign
-				if (caseSensitiveTest) {
-					payload = randomUppercase(payload); // Modify payload
-				}
-
-				// Generate payload variations
-				let payloadVariations = [payload];
-
-				// Add WAF-specific bypass variations if WAF is detected
-				const wafType = detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined);
-				if (wafType) {
-					const wafSpecificPayloads = generateWAFSpecificPayloads(wafType, payload);
-					if (wafSpecificPayloads.length > 1) {
-						payloadVariations.push(...wafSpecificPayloads.slice(1));
-					}
-				}
-
-				// Add encoding variations if enabled (works alongside WAF-specific)
-				if (useEncodingVariations) {
-					const encodedVariations = PayloadEncoder.generateBypassVariations(payload, category);
-					payloadVariations.push(...encodedVariations);
-				}
-
-				// Deduplicate
-				payloadVariations = [...new Set(payloadVariations)];
-
+			for (const { payload, payloadVariations } of plannedParamChecks.get(category) || []) {
 				for (const currentPayload of payloadVariations) {
 					for (const method of METHODS) {
 						if (offset >= end) {
