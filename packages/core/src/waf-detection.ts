@@ -251,7 +251,8 @@ export class WAFDetector {
 					}
 				}
 
-				return detection.detected || detection.captchaDetected ? detection : null;
+				// Nothing detected here (detections return above) and no redirect to follow.
+				return null;
 			}
 		} catch (error) {
 			console.error('Active detection probe failed:', error);
