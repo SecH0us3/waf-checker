@@ -1,7 +1,6 @@
 import { handleApiCheckFiltered, handleApiCheckWithEnvelope } from './handlers/check';
 import { handleWAFDetection } from './handlers/waf-detect';
 import { handleHTTPManipulation } from './handlers/http-manip';
-import { handleBatchStart, handleBatchStatus, handleBatchStop } from './handlers/batch';
 import { isValidTargetUrl, runReverseEngineeringAudit, generateVirtualPatches, WAFDetector } from '@waf-checker/core';
 import {
 	handleScheduleSubscribe,
@@ -276,15 +275,6 @@ export default {
 		}
 		if (urlObj.pathname === '/api/http-manipulation') {
 			return await handleHTTPManipulation(request);
-		}
-		if (urlObj.pathname === '/api/batch/start') {
-			return await handleBatchStart(request);
-		}
-		if (urlObj.pathname === '/api/batch/status') {
-			return await handleBatchStatus(request);
-		}
-		if (urlObj.pathname === '/api/batch/stop') {
-			return await handleBatchStop(request);
 		}
 		if (urlObj.pathname === '/api/schedule/subscribe') {
 			return await handleScheduleSubscribe(request, env);
