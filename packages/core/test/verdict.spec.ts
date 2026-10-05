@@ -203,50 +203,44 @@ describe('WAF Verdict Evaluation', () => {
 		expect(envelope.hasMore).toBe(false);
 	});
 
-	it('should count payload variations in total, matching the requests actually made', async () => {
-		// Some variation generators randomize case; pin it so independent page
-		// calls plan the same variations.
-		const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.7);
-		try {
-			const mockFetch = async () => new Response('404 Not Found', { status: 404 });
-			const run = (page: number, pageSize: number) =>
-				handleApiCheckWithEnvelope(
-					'http://example.com/api',
-					page,
-					['GET', 'POST'],
-					['SQL Injection'],
-					undefined,
-					false,
-					undefined,
-					false,
-					true, // caseSensitiveTest: randomized, must still match
-					false,
-					false,
-					false,
-					true, // useEncodingVariations
-					'Cloudflare', // WAF-specific variations
-					undefined,
-					{ fetch: mockFetch as any, quiet: true, pageSize }
-				);
+	it('should count payload variations in total, and page through the same plan as one full call', async () => {
+		const mockFetch = async () => new Response('404 Not Found', { status: 404 });
+		const run = (page: number, pageSize: number) =>
+			handleApiCheckWithEnvelope(
+				'http://example.com/api',
+				page,
+				['GET', 'POST'],
+				['SQL Injection'],
+				undefined,
+				false,
+				undefined,
+				false,
+				true, // caseSensitiveTest: case is randomized per payload
+				false,
+				false,
+				false,
+				true, // useEncodingVariations
+				'Cloudflare', // WAF-specific variations
+				undefined,
+				{ fetch: mockFetch as any, quiet: true, pageSize }
+			);
+		const key = (r: { payload: string; method: string }) => `${r.method} ${r.payload}`;
 
-			const all = await run(0, Number.MAX_SAFE_INTEGER);
-			expect(all.results.length).toBe(all.total);
+		const all = await run(0, Number.MAX_SAFE_INTEGER);
+		expect(all.results.length).toBe(all.total);
 
-			// Paging through still stops on hasMore and yields the same number of items.
-			let collected = 0;
-			let page = 0;
-			let reportedTotal = 0;
-			for (;;) {
-				const envelope = await run(page, 25);
-				collected += envelope.results.length;
-				reportedTotal = envelope.total;
-				if (!envelope.hasMore) break;
-				page++;
-			}
-			expect(collected).toBe(reportedTotal);
-		} finally {
-			randomSpy.mockRestore();
+		// Each page is a separate call. Paging must walk exactly the same items, in
+		// the same order, as the single full call: no skips, repeats or drift.
+		const paged: string[] = [];
+		let page = 0;
+		for (;;) {
+			const envelope = await run(page, 25);
+			expect(envelope.total).toBe(all.total);
+			paged.push(...envelope.results.map(key));
+			if (!envelope.hasMore) break;
+			page++;
 		}
+		expect(paged).toEqual(all.results.map(key));
 	});
 
 	it('should not mark ordinary application status/error page mentioning incident id as blocked without WAF context', () => {

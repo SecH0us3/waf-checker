@@ -40,14 +40,32 @@ export function processCustomHeaders(customHeadersStr: string, payload?: string)
 }
 
 /**
+ * Deterministic pseudo-random generator seeded from a string (FNV-1a hash
+ * feeding mulberry32). The same seed always yields the same sequence, which
+ * lets a paged scan randomize a payload identically on every page.
+ */
+export function seededRandom(seed: string): () => number {
+	let state = 0x811c9dc5;
+	for (let i = 0; i < seed.length; i++) {
+		state = Math.imul(state ^ seed.charCodeAt(i), 0x01000193);
+	}
+	return () => {
+		state = (state + 0x6d2b79f5) | 0;
+		let t = Math.imul(state ^ (state >>> 15), 1 | state);
+		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
+
+/**
  * Helper function to randomly uppercase characters in a string
  */
-export function randomUppercase(str: string): string {
+export function randomUppercase(str: string, random: () => number = Math.random): string {
 	let result = '';
 	for (let i = 0; i < str.length; i++) {
 		const char = str[i];
 		// Randomly uppercase 50% of alphabetic characters
-		if (char.match(/[a-zA-Z]/) && Math.random() > 0.5) {
+		if (char.match(/[a-zA-Z]/) && random() > 0.5) {
 			if (char === char.toLowerCase()) {
 				result += char.toUpperCase();
 			} else {

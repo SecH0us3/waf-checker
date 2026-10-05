@@ -9,7 +9,7 @@ import {
 } from './advanced-payloads';
 import { HTTPManipulationOptions, HTTPManipulator } from './http-manipulation';
 import { isValidTargetUrl, isInScopeRedirect } from './utils/security';
-import { substitutePayload, processCustomHeaders, randomUppercase, redactHeaders, redactUrl } from './utils/payload-utils';
+import { substitutePayload, processCustomHeaders, randomUppercase, seededRandom, redactHeaders, redactUrl } from './utils/payload-utils';
 import { AuditResultItem, CheckResultEnvelope, UserAgentBypassInfo } from './reports/types';
 import { LegitUserAgent, resolveLegitUserAgents } from './payloads-data/legit-user-agents';
 
@@ -602,8 +602,7 @@ export async function handleApiCheckWithEnvelope(
 
 	// ParamCheck payloads expand into WAF-specific and encoding variations. Plan
 	// them once, up front, so the reported total counts exactly the requests the
-	// loop below makes; some generators randomize case, so generating twice could
-	// disagree after deduplication.
+	// loop below makes.
 	const wafTypeForVariations = detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined);
 	const planParamVariations = (payload: string, category: string): string[] => {
 		const payloadVariations = [payload];
@@ -633,7 +632,10 @@ export async function handleApiCheckWithEnvelope(
 		const payloads = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
 		if (checkType === 'ParamCheck') {
 			const planned = payloads.map((original: string) => {
-				const payload = caseSensitiveTest ? randomUppercase(original) : original;
+				// Seeded by the payload: every page of a paged scan is a separate call,
+				// and Math.random would case a payload differently on each, changing how
+				// many variations survive deduplication and shifting page boundaries.
+				const payload = caseSensitiveTest ? randomUppercase(original, seededRandom(original)) : original;
 				return { payload, payloadVariations: planParamVariations(payload, category) };
 			});
 			plannedParamChecks.set(category, planned);
