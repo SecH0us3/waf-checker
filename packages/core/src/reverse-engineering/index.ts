@@ -9,6 +9,7 @@ import { detectAnomalyScoringMode } from './anomaly-score-detector';
 import { probeRateLimit } from './rate-limit-probe';
 import { isValidTargetUrl } from '../utils/security';
 import { sendRequest } from '../check';
+import { classifyProbe } from './probe-outcome';
 
 export * from './types';
 export * from './crs-rules';
@@ -70,15 +71,15 @@ export async function runReverseEngineeringAudit(
 			const responseTime = Date.now() - startTime;
 			const statusCode = res ? res.status : 'ERR';
 
+			// 'disabled' claims the rule is off, so it needs a real pass: a 2xx that
+			// is not a block page. A 2xx block page counts as active, and anything
+			// rate limited, failed or otherwise unclear stays 'unknown'.
+			const outcome = classifyProbe(res);
 			let status: 'active' | 'disabled' | 'bypassed' | 'unknown' = 'unknown';
-			if (statusCode === 403 || statusCode === 'BLOCKED') {
+			if (outcome === 'blocked') {
 				status = 'active';
-			} else if (typeof statusCode === 'number' && statusCode >= 200 && statusCode < 300) {
+			} else if (outcome === 'passed' && typeof statusCode === 'number' && statusCode >= 200 && statusCode < 300) {
 				status = 'disabled';
-			} else if (statusCode === 'ERR') {
-				status = 'unknown';
-			} else {
-				status = 'unknown';
 			}
 
 			const item: CRSAuditItem = {
@@ -101,18 +102,20 @@ export async function runReverseEngineeringAudit(
 	const workers = Array.from({ length: Math.min(concurrencyLimit, OWASP_CRS_RULES.length) }, () => worker());
 	await Promise.all(workers);
 
-	// 2. Parallel probing for Body Limits, Anomaly Scoring, and Rate Limits
-	const [bodyLimit, anomalyScore, rateLimit] = await Promise.all([
+	// 2. Body limit and anomaly scoring in parallel, then the rate-limit probe on
+	// its own. The rate-limit probe pushes the target until it answers 429, and
+	// run alongside the others it rate-limited their probes too.
+	const [bodyLimit, anomalyScore] = await Promise.all([
 		options?.skipBodyLimit
 			? Promise.resolve({ detected: false, limitBytes: null, limitFormatted: 'Skipped', confidence: 0 })
 			: detectBodyInspectionLimit(url, options),
 		options?.skipAnomalyScore
 			? Promise.resolve({ mode: 'unknown' as const, detectedThreshold: null, confidence: 0 })
 			: detectAnomalyScoringMode(url, options),
-		options?.skipRateLimit
-			? Promise.resolve({ detected: false, thresholdRps: null, retryAfterSeconds: null, safeTestedMaxRps: 0 })
-			: probeRateLimit(url, options),
 	]);
+	const rateLimit = options?.skipRateLimit
+		? { detected: false, thresholdRps: null, retryAfterSeconds: null, safeTestedMaxRps: 0 }
+		: await probeRateLimit(url, options);
 
 	const activeCount = crsItems.filter((r) => r.status === 'active').length;
 	const disabledCount = crsItems.filter((r) => r.status === 'disabled').length;
