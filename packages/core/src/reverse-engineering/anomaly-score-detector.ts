@@ -1,5 +1,6 @@
 import { AnomalyScoreResult, ReverseEngineeringOptions } from './types';
 import { sendRequest } from '../check';
+import { classifyProbe } from './probe-outcome';
 
 /**
  * Detects whether the WAF operates in Collaborative Anomaly Scoring Mode (cumulative threshold)
@@ -34,8 +35,20 @@ export async function detectAnomalyScoringMode(
 		}),
 	]);
 
-	const s1Blocked = res1 && res1.status === 403;
-	const s2Blocked = res2 && res2.status === 403;
+	// Each conclusion below rests on the earlier probes having genuinely passed.
+	// A rate-limited or failed probe is not a pass, so it ends the analysis
+	// instead of being read as one.
+	const inconclusive: AnomalyScoreResult = {
+		mode: 'unknown',
+		detectedThreshold: null,
+		confidence: 0,
+		details: 'Inconclusive: probe responses were rate limited or failed.',
+	};
+
+	const s1 = classifyProbe(res1);
+	const s2 = classifyProbe(res2);
+	const s1Blocked = s1 === 'blocked';
+	const s2Blocked = s2 === 'blocked';
 
 	// If minor individual signals (Score 2 or 3) are individually blocked with 403,
 	// the WAF is operating in Traditional Strict Single-Rule Blocking Mode.
@@ -44,8 +57,11 @@ export async function detectAnomalyScoringMode(
 			mode: 'traditional_regex',
 			detectedThreshold: null,
 			confidence: 90,
-			details: 'WAF triggers immediate 403 on isolated low-score notice/warning rules without score accumulation.',
+			details: 'WAF blocks isolated low-score notice/warning rules immediately, without score accumulation.',
 		};
+	}
+	if (s1 === 'inconclusive' || s2 === 'inconclusive') {
+		return inconclusive;
 	}
 
 	// 2. Probe combined composite signal (Signal 1 + Signal 2 -> Cumulative Score = 5)
@@ -63,12 +79,16 @@ export async function detectAnomalyScoringMode(
 		{ fetch: options?.fetch, quiet: true, rawPayload: true, allowLocal: options?.allowLocal },
 	);
 
-	if (resScore5 && resScore5.status === 403) {
+	const score5 = classifyProbe(resScore5);
+	if (score5 === 'inconclusive') {
+		return inconclusive;
+	}
+	if (score5 === 'blocked') {
 		return {
 			mode: 'anomaly_scoring',
 			detectedThreshold: 5,
 			confidence: 95,
-			details: 'Collaborative Anomaly Scoring Mode detected: isolated low-severity rules pass, but cumulative score >= 5 triggers 403 block.',
+			details: 'Collaborative Anomaly Scoring Mode detected: isolated low-severity rules pass, but cumulative score >= 5 triggers a block.',
 		};
 	}
 
@@ -86,7 +106,11 @@ export async function detectAnomalyScoringMode(
 		{ fetch: options?.fetch, quiet: true, rawPayload: true, allowLocal: options?.allowLocal },
 	);
 
-	if (resCritical && resCritical.status === 403) {
+	const critical = classifyProbe(resCritical);
+	if (critical === 'inconclusive') {
+		return inconclusive;
+	}
+	if (critical === 'blocked') {
 		// Individual critical rule blocks at score 5
 		return {
 			mode: 'anomaly_scoring',
@@ -111,7 +135,11 @@ export async function detectAnomalyScoringMode(
 		{ fetch: options?.fetch, quiet: true, rawPayload: true, allowLocal: options?.allowLocal },
 	);
 
-	if (resScore10 && resScore10.status === 403) {
+	const score10 = classifyProbe(resScore10);
+	if (score10 === 'inconclusive') {
+		return inconclusive;
+	}
+	if (score10 === 'blocked') {
 		return {
 			mode: 'anomaly_scoring',
 			detectedThreshold: 10,

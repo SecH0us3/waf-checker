@@ -1,5 +1,6 @@
 import { BodyLimitResult, ReverseEngineeringOptions } from './types';
 import { sendRequest } from '../check';
+import { classifyProbe } from './probe-outcome';
 
 function formatBytes(bytes: number): string {
 	if (bytes >= 1024 * 1024) {
@@ -11,6 +12,16 @@ function formatBytes(bytes: number): string {
 	return `${bytes} B`;
 }
 
+// A rate-limited or failed probe tells us nothing about inspection depth. Stop
+// rather than guess: counting it as a bypass invented a limit, and counting it
+// as blocked hid a real one.
+const INCONCLUSIVE: BodyLimitResult = {
+	detected: false,
+	limitBytes: null,
+	limitFormatted: 'Inconclusive (probes were rate limited or failed)',
+	confidence: 0,
+};
+
 /**
  * Detects the WAF request body inspection size boundary using binary search probing.
  * Probes between 8KB and 128KB to find where the WAF stops scanning incoming payload bodies.
@@ -21,7 +32,10 @@ export async function detectBodyInspectionLimit(
 ): Promise<BodyLimitResult> {
 	const attackPayload = "' OR '1'='1";
 
-	// 1. Baseline check without padding: verify WAF blocks this attack payload
+	// 1. Baseline check without padding: verify WAF blocks this attack payload.
+	// Sent raw like the padded probes below, so all of them carry the attack in
+	// the same encoding (without rawPayload it went out wrapped in `test=` and
+	// encoded a second time).
 	const baselineRes = await sendRequest(
 		url,
 		'POST',
@@ -32,10 +46,14 @@ export async function detectBodyInspectionLimit(
 		false,
 		undefined,
 		undefined,
-		{ fetch: options?.fetch, quiet: true, allowLocal: options?.allowLocal },
+		{ fetch: options?.fetch, quiet: true, rawPayload: true, allowLocal: options?.allowLocal },
 	);
 
-	if (!baselineRes || baselineRes.status !== 403) {
+	const baseline = classifyProbe(baselineRes);
+	if (baseline === 'inconclusive') {
+		return INCONCLUSIVE;
+	}
+	if (baseline === 'passed') {
 		return {
 			detected: false,
 			limitBytes: null,
@@ -64,12 +82,15 @@ export async function detectBodyInspectionLimit(
 			{ fetch: options?.fetch, quiet: true, allowLocal: options?.allowLocal },
 		);
 
-		if (res && res.status !== 403 && res.status !== 'ERR' && res.status !== 'BLOCKED') {
+		const outcome = classifyProbe(res);
+		if (outcome === 'inconclusive') {
+			return INCONCLUSIVE;
+		}
+		if (outcome === 'passed') {
 			upperBypassed = size;
 			break;
-		} else {
-			lowerBlocked = size;
 		}
+		lowerBlocked = size;
 	}
 
 	// If even 128KB is blocked, WAF inspects beyond our maximum probe limit
@@ -103,7 +124,11 @@ export async function detectBodyInspectionLimit(
 			{ fetch: options?.fetch, quiet: true, allowLocal: options?.allowLocal },
 		);
 
-		if (res && res.status !== 403 && res.status !== 'ERR' && res.status !== 'BLOCKED') {
+		const outcome = classifyProbe(res);
+		if (outcome === 'inconclusive') {
+			return INCONCLUSIVE;
+		}
+		if (outcome === 'passed') {
 			high = mid; // Bypassed, limit is at or below mid
 		} else {
 			low = mid; // Still blocked, limit is above mid
