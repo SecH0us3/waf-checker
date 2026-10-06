@@ -279,6 +279,25 @@ describe('Reverse engineering block detection (rate limiting, non-403 blocks)', 
 			expect(result.limitFormatted).toMatch(/inconclusive/i);
 		});
 
+		it('does not report a limit when the binary search gets rate limited', async () => {
+			// The coarse grid finds a bypass between 8 KB and 16 KB; every probe after
+			// that (the binary search) is rate limited.
+			let rateLimited = false;
+			const mockFetch = vi.fn().mockImplementation(async (_url: string, init?: any) => {
+				if (rateLimited) return reply(429);
+				if (String(init?.body ?? '').length > 12000) {
+					rateLimited = true;
+					return reply(200);
+				}
+				return reply(403, 'Forbidden');
+			});
+
+			const result = await detectBodyInspectionLimit('https://example.com/api', { fetch: mockFetch as any });
+
+			expect(result.detected).toBe(false);
+			expect(result.limitFormatted).toMatch(/inconclusive/i);
+		});
+
 		it('finds the limit on a WAF that blocks with 406', async () => {
 			const mockLimit = 16384;
 			const mockFetch = vi.fn().mockImplementation(async (_url: string, init?: any) =>
@@ -314,6 +333,18 @@ describe('Reverse engineering block detection (rate limiting, non-403 blocks)', 
 
 			expect(result.mode).toBe('unknown');
 			expect(result.detectedThreshold).toBeNull();
+		});
+
+		it('does not infer a threshold when a later probe is rate limited', async () => {
+			// Single-signal probes pass; the composite score-5 probe is rate limited.
+			let calls = 0;
+			const mockFetch = vi.fn().mockImplementation(async () => (calls++ < 2 ? reply(200) : reply(429)));
+
+			const result = await detectAnomalyScoringMode('https://example.com/api', { fetch: mockFetch as any });
+
+			expect(result.mode).toBe('unknown');
+			expect(result.detectedThreshold).toBeNull();
+			expect(result.details).toMatch(/inconclusive/i);
 		});
 
 		it('recognises blocks served as 406', async () => {
