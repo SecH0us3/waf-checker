@@ -59,7 +59,7 @@ const program = new Command();
 program
 	.name('waf-checker')
 	.description('Automated WAF (Web Application Firewall) Security Auditing & Fingerprinting Tool')
-	.version('1.3.0')
+	.version('1.4.0')
 	.showHelpAfterError()
 	.option('--no-color', 'Disable colored output')
 	.addHelpText('after', detailedHelp);
