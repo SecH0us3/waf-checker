@@ -206,11 +206,12 @@ describe('WAF Checker API', () => {
 	});
 
 	it('does NOT refuse URLs merely containing secmy in path or unrelated domain', async () => {
-		const res = await SELF.fetch('https://example.com/api/check?url=https://example.com/secmy-test');
+		// pageSize=1: only the self-scan decision is under test, not a full scan page.
+		const res = await SELF.fetch('https://example.com/api/check?url=https://example.com/secmy-test&pageSize=1');
 		// Should not be 422
 		expect(res.status).not.toBe(422);
 
-		const resIo = await SELF.fetch('https://example.com/api/check?url=https://secmyapp.io/');
+		const resIo = await SELF.fetch('https://example.com/api/check?url=https://secmyapp.io/&pageSize=1');
 		expect(resIo.status).not.toBe(422);
 	});
 
