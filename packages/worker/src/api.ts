@@ -1,7 +1,14 @@
 import { handleApiCheckFiltered, handleApiCheckWithEnvelope } from './handlers/check';
 import { handleWAFDetection } from './handlers/waf-detect';
 import { handleHTTPManipulation } from './handlers/http-manip';
-import { isValidTargetUrl, runReverseEngineeringAudit, generateVirtualPatches, WAFDetector } from '@waf-checker/core';
+import {
+	isValidTargetUrl,
+	runReverseEngineeringAudit,
+	generateVirtualPatches,
+	WAFDetector,
+	resolveWorkerPageSize,
+	LEGIT_USER_AGENTS,
+} from '@waf-checker/core';
 import {
 	handleScheduleSubscribe,
 	handleScheduleVerify,
@@ -159,12 +166,13 @@ export default {
 				urlObj.searchParams.get('envelope') === '1' ||
 				urlObj.searchParams.get('envelope') === 'true' ||
 				request.headers.get('accept')?.includes('application/vnd.waf-checker.v2+json');
-			// Payloads per page. Each page is a separate Worker invocation with its own
-			// 1000-subrequest budget (paid plan), so this is sized to stay well under
-			// that worst case (~856 at 50 with the full trusted-UA probe list), not to
-			// cap the scan — see handleApiCheckWithEnvelope for the budget math.
+			// Clamped to what one invocation's subrequest budget allows for this scan's
+			// options (see resolveWorkerPageSize); the frontend keeps paging until empty.
 			const pageSizeParam = urlObj.searchParams.get('pageSize') || urlObj.searchParams.get('limit');
-			const pageSize = pageSizeParam ? parseInt(pageSizeParam, 10) : 50;
+			const pageSize = resolveWorkerPageSize(pageSizeParam ? parseInt(pageSizeParam, 10) : undefined, {
+				legitUserAgentCount: spoofUserAgents ? LEGIT_USER_AGENTS.length : 0,
+				followRedirect,
+			});
 
 			const envelope = await handleApiCheckWithEnvelope(
 				url,

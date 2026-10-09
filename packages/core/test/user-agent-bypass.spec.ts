@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { handleApiCheckFiltered } from '../src/check';
+import { handleApiCheckFiltered, resolveWorkerPageSize, UA_PROBE_CONCURRENCY, MAX_REDIRECTS, WORKER_SUBREQUEST_LIMIT } from '../src/check';
 import { LEGIT_USER_AGENTS, resolveLegitUserAgents } from '../src/payloads-data/legit-user-agents';
 
 // Trusted identities we treat as "legitimate" in these tests.
@@ -62,8 +62,9 @@ describe('legitimate User-Agent bypass test', () => {
 			expect(r.status).toBe(403);
 			expect(r.userAgentBypass).toBeDefined();
 			expect(r.userAgentBypass!.bypassed).toBe(true);
-			expect(r.userAgentBypass!.tested).toBe(1);
-			expect(r.userAgentBypass!.hits.length).toBeGreaterThan(0);
+			// The first concurrent batch all passes, so probing stops after it.
+			expect(r.userAgentBypass!.tested).toBe(UA_PROBE_CONCURRENCY);
+			expect(r.userAgentBypass!.hits[0].name).toBe('Googlebot');
 			expect(r.userAgentBypass!.hits[0]).toHaveProperty('name');
 			expect(r.userAgentBypass!.hits[0]).toHaveProperty('userAgent');
 		}
@@ -229,6 +230,111 @@ describe('legitimate User-Agent bypass test', () => {
 		expect(mockFetch.mock.calls.length).toBe(results.length);
 		for (const r of results) {
 			expect(r.userAgentBypass).toBeUndefined();
+		}
+	});
+});
+
+function scanSqli(mockFetch: any, extra: Record<string, unknown> = {}) {
+	return handleApiCheckFiltered(
+		'http://example.com/api',
+		0,
+		['GET'],
+		['SQL Injection'],
+		undefined,
+		false,
+		undefined,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false,
+		undefined,
+		undefined,
+		{ fetch: mockFetch as any, quiet: true, spoofUserAgents: true, ...extra },
+	);
+}
+
+describe('User-Agent bypass probe verdicts', () => {
+	// A trusted UA that does not get a 2xx has not reached the origin, so it is
+	// not a bypass — regardless of whether the response is a WAF block.
+	it.each([
+		['a network error', () => Promise.reject(new Error('connection reset'))],
+		['a 503 from an overloaded origin', () => Promise.resolve({ status: 503, headers: new Headers() })],
+		['a 404', () => Promise.resolve({ status: 404, headers: new Headers() })],
+		['an unfollowed redirect', () => Promise.resolve({ status: 302, headers: new Headers({ Location: '/login' }) })],
+	])('does NOT report a bypass for %s under a trusted UA', async (_label, probeResponse) => {
+		const mockFetch = vi.fn().mockImplementation((_url: string, options: any) => {
+			const ua = readUserAgent(options);
+			return ua && TRUSTED.test(ua) ? probeResponse() : Promise.resolve({ status: 403, headers: new Headers() });
+		});
+
+		const results = await scanSqli(mockFetch);
+
+		expect(results.length).toBeGreaterThan(0);
+		for (const r of results) {
+			expect(r.userAgentBypass!.bypassed).toBe(false);
+			expect(r.userAgentBypass!.hits).toEqual([]);
+			expect(r.userAgentBypass!.tested).toBe(LEGIT_USER_AGENTS.length);
+		}
+	});
+
+	it('probes identities concurrently, but never more than UA_PROBE_CONCURRENCY at once', async () => {
+		let inFlight = 0;
+		let peak = 0;
+		const mockFetch = vi.fn().mockImplementation(async (_url: string, options: any) => {
+			const ua = readUserAgent(options);
+			if (!ua || !TRUSTED.test(ua)) return { status: 403, headers: new Headers() };
+			inFlight++;
+			peak = Math.max(peak, inFlight);
+			await new Promise((resolve) => setTimeout(resolve, 1));
+			inFlight--;
+			return { status: 403, headers: new Headers() };
+		});
+
+		await scanSqli(mockFetch);
+
+		expect(peak).toBe(UA_PROBE_CONCURRENCY);
+	});
+});
+
+describe('resolveWorkerPageSize', () => {
+	const worstCase = (pageSize: number, legitUserAgentCount: number, followRedirect: boolean) =>
+		pageSize * (1 + legitUserAgentCount) * (followRedirect ? MAX_REDIRECTS + 1 : 1);
+
+	it('keeps the default page of 50 when the full trusted-UA list fits the budget', () => {
+		expect(resolveWorkerPageSize(undefined, { legitUserAgentCount: LEGIT_USER_AGENTS.length, followRedirect: false })).toBe(50);
+	});
+
+	it('shrinks the page when redirects multiply every request', () => {
+		const size = resolveWorkerPageSize(50, { legitUserAgentCount: LEGIT_USER_AGENTS.length, followRedirect: true });
+		expect(size).toBeLessThan(50);
+		expect(worstCase(size, LEGIT_USER_AGENTS.length, true)).toBeLessThanOrEqual(WORKER_SUBREQUEST_LIMIT);
+	});
+
+	it('clamps an oversized pageSize from the query string', () => {
+		const size = resolveWorkerPageSize(1000, { legitUserAgentCount: LEGIT_USER_AGENTS.length, followRedirect: false });
+		expect(worstCase(size, LEGIT_USER_AGENTS.length, false)).toBeLessThanOrEqual(WORKER_SUBREQUEST_LIMIT);
+	});
+
+	it('falls back to the default for a missing, invalid or non-positive pageSize', () => {
+		const opts = { legitUserAgentCount: 0, followRedirect: false };
+		expect(resolveWorkerPageSize(undefined, opts)).toBe(50);
+		expect(resolveWorkerPageSize(NaN, opts)).toBe(50);
+		expect(resolveWorkerPageSize(0, opts)).toBe(50);
+		expect(resolveWorkerPageSize(-5, opts)).toBe(50);
+		expect(resolveWorkerPageSize(5, opts)).toBe(5);
+	});
+
+	it('stays within budget for any page size and identity count, including a grown list', () => {
+		for (const legitUserAgentCount of [0, LEGIT_USER_AGENTS.length, 40]) {
+			for (const followRedirect of [false, true]) {
+				for (const requested of [1, 15, 50, 500, 100000]) {
+					const size = resolveWorkerPageSize(requested, { legitUserAgentCount, followRedirect });
+					expect(size).toBeGreaterThanOrEqual(1);
+					expect(worstCase(size, legitUserAgentCount, followRedirect)).toBeLessThanOrEqual(WORKER_SUBREQUEST_LIMIT);
+				}
+			}
 		}
 	});
 });

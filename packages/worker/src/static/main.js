@@ -263,9 +263,9 @@ function renderReport(results, falsePositiveMode = false) {
 			const extra = names.length > 3 ? ` (+${names.length - 3})` : '';
 			const originStatus = hits.length ? hits[0].status : '';
 			const tested = r.userAgentBypass.tested;
-			// Probing stops at the first identity that gets through (subrequest
-			// budget), so `hits` is the first one found, not the full set — the badge
-			// says "via" rather than counting bots, which would always read "1".
+			// Identities are probed in small concurrent batches and probing stops after
+			// the first batch that gets through, so `hits` is that batch's bypasses,
+			// not every identity that would pass — the badge says "via", not a count.
 			const title =
 				`Blocked with a normal User-Agent (403), but reached the origin (status ${originStatus}) ` +
 				`when the request claimed to be a trusted bot: ${escapeHtml(names.join(', '))}. ` +
@@ -612,10 +612,8 @@ async function fetchResults() {
 				methods: selectedMethods.join(','),
 				categories: selectedCategories.join(','),
 				page: String(page),
-				// 50 payloads per page. Each page is a separate Worker request with its
-				// own 1000-subrequest budget (paid plan), so a larger page means fewer
-				// round-trips without risking the per-invocation limit (~856 worst case
-				// at 50 with the full trusted-UA bypass probe list).
+				// Upper bound only: the server clamps it to the Worker's per-request
+				// subrequest budget for these options, and we page until a page is empty.
 				pageSize: '50',
 				followRedirect: followRedirect ? '1' : '0',
 				falsePositiveTest: falsePositiveTest ? '1' : '0',

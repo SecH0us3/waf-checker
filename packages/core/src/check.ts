@@ -22,6 +22,12 @@ import { LegitUserAgent, resolveLegitUserAgents } from './payloads-data/legit-us
  * `reissue` re-issues the exact same request but with the given User-Agent
  * header injected/overridden; the caller owns the request shape so this works
  * uniformly for param, file and header checks.
+ *
+ * Every identity in the list is eligible (the worker and the CLI probe the
+ * same list; the Worker's page size is sized for it, see resolveWorkerPageSize).
+ * Identities go out in concurrent batches of UA_PROBE_CONCURRENCY, and probing
+ * stops after the first batch that gets through, so `hits` holds every identity
+ * of that batch that bypassed and `tested` counts the requests actually sent.
  */
 async function probeUserAgentBypass(
 	reissue: (userAgent: string) => Promise<any>,
@@ -29,29 +35,68 @@ async function probeUserAgentBypass(
 	detection: WAFDetectionResult | undefined,
 	probedPayload: string | undefined,
 ): Promise<UserAgentBypassInfo> {
-	// Replay the blocked request under every trusted identity. The Cloudflare
-	// Workers subrequest budget (1000/request on the paid plan) comfortably covers
-	// the whole list even at the worst case of a fully-blocked page, so the worker
-	// and the CLI probe identically — a previous positional slice only ever reached
-	// the leading search crawlers and silently missed social/unfurler bypasses.
 	const info: UserAgentBypassInfo = { bypassed: false, tested: 0, hits: [] };
-	for (const ua of legitUserAgents) {
-		info.tested++;
-		let res: any;
-		try {
-			res = await reissue(ua.userAgent);
-		} catch {
-			continue;
-		}
-		const status = res ? res.status : 'ERR';
-		const { blocked, verdict } = evaluateWAFVerdict(status, res?.bodyText || '', detection, res?.response?.headers, probedPayload);
-		if (!blocked) {
+	for (let i = 0; i < legitUserAgents.length && !info.bypassed; i += UA_PROBE_CONCURRENCY) {
+		const batch = legitUserAgents.slice(i, i + UA_PROBE_CONCURRENCY);
+		info.tested += batch.length;
+		const responses = await Promise.all(batch.map((ua) => reissue(ua.userAgent).catch(() => undefined)));
+		batch.forEach((ua, idx) => {
+			const res = responses[idx];
+			const status = res ? res.status : 'ERR';
+			// Only a 2xx means the request reached the origin. A network error or
+			// timeout ('ERR'), an overloaded origin (5xx), a 404 or an unfollowed
+			// redirect says nothing about the WAF trusting this User-Agent.
+			const numStatus = typeof status === 'number' ? status : parseInt(status, 10);
+			if (!(numStatus >= 200 && numStatus < 300)) return;
+			const { blocked, verdict } = evaluateWAFVerdict(status, res?.bodyText || '', detection, res?.response?.headers, probedPayload);
+			if (blocked) return;
 			info.bypassed = true;
 			info.hits.push({ name: ua.name, userAgent: ua.userAgent, status, verdict: verdict as 'passed' | 'exposed' });
-			break; // Found bypass, stop probing further to save subrequests
-		}
+		});
 	}
 	return info;
+}
+
+/**
+ * Trusted-UA probes sent concurrently per blocked request. Kept below the
+ * Workers limit of 6 simultaneously open connections, so a fully-blocked page
+ * costs ~4x fewer sequential round-trips than probing one identity at a time.
+ */
+export const UA_PROBE_CONCURRENCY = 4;
+
+/** Redirect hops sendRequest follows when followRedirect is on. */
+export const MAX_REDIRECTS = 5;
+
+/** Cloudflare Workers subrequest limit per invocation (paid plan). */
+export const WORKER_SUBREQUEST_LIMIT = 1000;
+
+/**
+ * Subrequests held back from the page budget: inline WAF detection
+ * (WAFDetector.activeDetection on the Worker is a baseline plus 4 payload
+ * probes, each following up to 3 redirects = 20 fetches; the /cdn-cgi probe is
+ * skipped on the Worker) plus a small safety margin.
+ */
+const WORKER_RESERVED_SUBREQUESTS = 50;
+
+/**
+ * Payloads per /api/check page on the Worker. Each page is a separate Worker
+ * invocation with its own WORKER_SUBREQUEST_LIMIT, so paging is what lets a
+ * scan of any size run; this only has to keep a single page within budget.
+ * Worst case per item is one baseline plus one probe per trusted identity, each
+ * following up to MAX_REDIRECTS hops when followRedirect is on. The requested
+ * size (a raw query parameter) is clamped to that bound, so neither a caller
+ * nor a longer identity list can push one invocation past the limit.
+ */
+export function resolveWorkerPageSize(
+	requested: number | undefined,
+	opts: { legitUserAgentCount: number; followRedirect: boolean },
+	fallback: number = 50,
+): number {
+	const fetchesPerRequest = opts.followRedirect ? MAX_REDIRECTS + 1 : 1;
+	const perItem = (1 + opts.legitUserAgentCount) * fetchesPerRequest;
+	const max = Math.max(1, Math.floor((WORKER_SUBREQUEST_LIMIT - WORKER_RESERVED_SUBREQUESTS) / perItem));
+	const size = requested !== undefined && Number.isFinite(requested) && requested > 0 ? Math.floor(requested) : fallback;
+	return Math.min(size, max);
 }
 
 // Helper function to send request with specified method and payload
@@ -140,7 +185,7 @@ export async function sendRequest(
 			}
 
 			let redirectCount = 0;
-			const maxRedirects = 5;
+			const maxRedirects = MAX_REDIRECTS;
 
 			while (true) {
 				const fetchOptions: RequestInit = {
@@ -527,15 +572,8 @@ export async function handleApiCheckWithEnvelope(
 	// Legitimate-User-Agent bypass test: identities to replay blocked requests with.
 	const legitUserAgents = resolveLegitUserAgents(options?.spoofUserAgents);
 	let baseUrl: string;
-	// Page size = payloads processed per invocation. On Cloudflare Workers the
-	// subrequest budget (1000/invocation on the paid plan) is what bounds this, and
-	// it is per invocation: every page is a separate /api/check request with a fresh
-	// 1000, so paging is the natural "continue with the next batch" mechanism — there
-	// is no single request that has to fit the whole scan. Worst case for one page is
-	// `pageSize × (1 baseline + N trusted-UA probes)` plus up to ~6 for inline WAF
-	// detection; at pageSize 50 with the full 16-identity list that is ~856 < 1000,
-	// leaving headroom. If you raise this, keep pageSize × (1 + legit-UA count) under
-	// ~950. The CLI has no subrequest limit, so it defaults to one big page.
+	// Payloads per page. Worker callers size this with resolveWorkerPageSize, which
+	// keeps one invocation within the subrequest limit; the CLI has no such limit.
 	const limit = options?.pageSize && options.pageSize > 0 ? options.pageSize : 50;
 	const start = page * limit;
 	const end = start + limit;
