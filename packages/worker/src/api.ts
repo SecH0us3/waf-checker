@@ -211,6 +211,12 @@ export default {
 			let bodyPayloadTemplate: string | undefined = undefined;
 			let bodyCustomHeaders: string | undefined = undefined;
 			let bodyCategories: string[] | undefined = undefined;
+			// WAF type found on an earlier page ('' = none found). Passing it back
+			// skips re-detection and keeps the payload plan, and so the page
+			// boundaries, identical across pages.
+			let knownWAF: string | undefined = urlObj.searchParams.has('detectedWAF')
+				? urlObj.searchParams.get('detectedWAF') || ''
+				: undefined;
 
 			if (request.method === 'POST') {
 				try {
@@ -219,6 +225,7 @@ export default {
 					if (body && Array.isArray(body.categories)) bodyCategories = body.categories;
 					if (body && typeof body.payloadTemplate === 'string') bodyPayloadTemplate = body.payloadTemplate;
 					if (body && typeof body.customHeaders === 'string') bodyCustomHeaders = body.customHeaders;
+					if (body && typeof body.detectedWAF === 'string' && knownWAF === undefined) knownWAF = body.detectedWAF;
 				} catch {}
 			}
 
@@ -251,10 +258,24 @@ export default {
 					.filter(Boolean);
 			}
 
-			const detection = await WAFDetector.activeDetection(url.replace(/\{PAYLOAD\}/g, ''), { isWorker: true });
+			// Paged: the full plan is 500-1200 requests (more with a detected WAF's
+			// variations), each following up to 5 redirects, so it cannot fit one
+			// invocation's subrequest budget. Clients follow `hasMore`, passing back
+			// `page + 1` and `detectedWAF`.
+			const pageParam = parseInt(urlObj.searchParams.get('page') || '0', 10);
+			const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 0;
+			const pageSizeParam = urlObj.searchParams.get('pageSize');
+			const pageSize = resolveWorkerPageSize(pageSizeParam ? parseInt(pageSizeParam, 10) : undefined, {
+				legitUserAgentCount: 0,
+				followRedirect: true,
+			}, Number.MAX_SAFE_INTEGER);
+
+			const detection =
+				knownWAF === undefined ? await WAFDetector.activeDetection(url.replace(/\{PAYLOAD\}/g, ''), { isWorker: true }) : null;
+			const detectedWAF = knownWAF ?? (detection?.detected && detection.wafType ? detection.wafType : '');
 			const envelope = await handleApiCheckWithEnvelope(
 				url,
-				0,
+				page,
 				['GET'],
 				categories,
 				bodyPayloadTemplate,
@@ -269,18 +290,25 @@ export default {
 				false,
 				false,
 				false,
-				detection?.detected ? detection.wafType : undefined,
+				detectedWAF || undefined,
 				undefined,
-				{ isWorker: true, pageSize: 500 },
+				{ isWorker: true, pageSize },
 			);
 
+			// Patches for this page's results; for one bundle over a multi-page audit,
+			// POST the combined results to /api/virtual-patch.
 			const patches = generateVirtualPatches(envelope.results, { targetUrl: url });
 
 			return new Response(
 				JSON.stringify({
 					detection,
+					detectedWAF,
 					results: envelope.results,
 					patches,
+					page: envelope.page,
+					pageSize: envelope.pageSize,
+					total: envelope.total,
+					hasMore: envelope.hasMore,
 				}),
 				{ headers: { 'content-type': 'application/json; charset=UTF-8' } },
 			);

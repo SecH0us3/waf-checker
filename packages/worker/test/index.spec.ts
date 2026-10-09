@@ -254,4 +254,25 @@ describe('WAF Checker API', () => {
 		expect(Array.isArray(data.results)).toBe(true);
 		expect(data.patches).toHaveProperty('bundles');
 	});
+
+	it('pages /api/audit and continues with the detected WAF instead of re-detecting', async () => {
+		const base = 'https://example.com/api/audit?url=https://example.com&categories=SQL Injection&pageSize=5';
+		const first: any = await (await SELF.fetch(base)).json();
+		expect(first.page).toBe(0);
+		expect(first.pageSize).toBe(5);
+		expect(first.results).toHaveLength(5);
+		expect(first.total).toBeGreaterThan(5);
+		expect(first.hasMore).toBe(true);
+		expect(first.detection).not.toBeNull();
+		expect(typeof first.detectedWAF).toBe('string');
+
+		const next: any = await (
+			await SELF.fetch(`${base}&page=1&detectedWAF=${encodeURIComponent(first.detectedWAF)}`)
+		).json();
+		expect(next.page).toBe(1);
+		expect(next.detection).toBeNull();
+		expect(next.detectedWAF).toBe(first.detectedWAF);
+		expect(next.total).toBe(first.total);
+		expect(next.results.length).toBeGreaterThan(0);
+	});
 });
