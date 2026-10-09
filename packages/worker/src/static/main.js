@@ -612,7 +612,11 @@ async function fetchResults() {
 				methods: selectedMethods.join(','),
 				categories: selectedCategories.join(','),
 				page: String(page),
-				pageSize: '15',
+				// 50 payloads per page. Each page is a separate Worker request with its
+				// own 1000-subrequest budget (paid plan), so a larger page means fewer
+				// round-trips without risking the per-invocation limit (~856 worst case
+				// at 50 with the full trusted-UA bypass probe list).
+				pageSize: '50',
 				followRedirect: followRedirect ? '1' : '0',
 				falsePositiveTest: falsePositiveTest ? '1' : '0',
 				caseSensitiveTest: caseSensitiveTest ? '1' : '0',

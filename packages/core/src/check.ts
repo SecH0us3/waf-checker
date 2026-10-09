@@ -527,7 +527,16 @@ export async function handleApiCheckWithEnvelope(
 	// Legitimate-User-Agent bypass test: identities to replay blocked requests with.
 	const legitUserAgents = resolveLegitUserAgents(options?.spoofUserAgents);
 	let baseUrl: string;
-	const limit = options?.pageSize && options.pageSize > 0 ? options.pageSize : (options?.isWorker ? 15 : 50);
+	// Page size = payloads processed per invocation. On Cloudflare Workers the
+	// subrequest budget (1000/invocation on the paid plan) is what bounds this, and
+	// it is per invocation: every page is a separate /api/check request with a fresh
+	// 1000, so paging is the natural "continue with the next batch" mechanism — there
+	// is no single request that has to fit the whole scan. Worst case for one page is
+	// `pageSize × (1 baseline + N trusted-UA probes)` plus up to ~6 for inline WAF
+	// detection; at pageSize 50 with the full 16-identity list that is ~856 < 1000,
+	// leaving headroom. If you raise this, keep pageSize × (1 + legit-UA count) under
+	// ~950. The CLI has no subrequest limit, so it defaults to one big page.
+	const limit = options?.pageSize && options.pageSize > 0 ? options.pageSize : 50;
 	const start = page * limit;
 	const end = start + limit;
 	let offset = 0;

@@ -159,8 +159,12 @@ export default {
 				urlObj.searchParams.get('envelope') === '1' ||
 				urlObj.searchParams.get('envelope') === 'true' ||
 				request.headers.get('accept')?.includes('application/vnd.waf-checker.v2+json');
+			// Payloads per page. Each page is a separate Worker invocation with its own
+			// 1000-subrequest budget (paid plan), so this is sized to stay well under
+			// that worst case (~856 at 50 with the full trusted-UA probe list), not to
+			// cap the scan — see handleApiCheckWithEnvelope for the budget math.
 			const pageSizeParam = urlObj.searchParams.get('pageSize') || urlObj.searchParams.get('limit');
-			const pageSize = pageSizeParam ? parseInt(pageSizeParam, 10) : 15;
+			const pageSize = pageSizeParam ? parseInt(pageSizeParam, 10) : 50;
 
 			const envelope = await handleApiCheckWithEnvelope(
 				url,
