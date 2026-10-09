@@ -1,0 +1,54 @@
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The worker and the CLI import @waf-checker/core from its built dist/.
+      - name: Build
+        run: npm run build
+
+      - name: Core tests
+        run: npm test --workspace=@waf-checker/core
+
+      # Each suite runs even if an earlier one failed, so one failure does not
+      # hide another.
+      - name: CLI tests
+        if: ${{ !cancelled() }}
+        run: npm test --workspace=@waf-checker/cli
+
+      - name: Worker tests
+        if: ${{ !cancelled() }}
+        working-directory: packages/worker
+        run: npx vitest run
+
+      - name: Worker typecheck
+        if: ${{ !cancelled() }}
+        run: npx tsc --noEmit -p packages/worker
