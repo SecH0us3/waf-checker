@@ -11,7 +11,7 @@ import { HTTPManipulationOptions, HTTPManipulator } from './http-manipulation';
 import { isValidTargetUrl, isInScopeRedirect } from './utils/security';
 import { substitutePayload, processCustomHeaders, randomUppercase, seededRandom, redactHeaders, redactUrl } from './utils/payload-utils';
 import { AuditResultItem, CheckResultEnvelope, UserAgentBypassInfo } from './reports/types';
-import { LegitUserAgent, resolveLegitUserAgents, selectWorkerProbeAgents } from './payloads-data/legit-user-agents';
+import { LegitUserAgent, resolveLegitUserAgents } from './payloads-data/legit-user-agents';
 
 /**
  * Replays a request that the WAF blocked (403) under a set of legitimate,
@@ -28,16 +28,14 @@ async function probeUserAgentBypass(
 	legitUserAgents: LegitUserAgent[],
 	detection: WAFDetectionResult | undefined,
 	probedPayload: string | undefined,
-	isWorker?: boolean,
 ): Promise<UserAgentBypassInfo> {
-	// On Cloudflare Workers (50 subrequest limit) probe a small, category-spanning
-	// subset (search crawler + social link-unfurlers) rather than a positional
-	// slice, which would only ever reach the leading search crawlers and miss
-	// social/unfurler allow-list bypasses. The CLI has no such budget and probes
-	// the full list.
-	const candidateAgents = isWorker ? selectWorkerProbeAgents(legitUserAgents) : legitUserAgents;
+	// Replay the blocked request under every trusted identity. The Cloudflare
+	// Workers subrequest budget (1000/request on the paid plan) comfortably covers
+	// the whole list even at the worst case of a fully-blocked page, so the worker
+	// and the CLI probe identically — a previous positional slice only ever reached
+	// the leading search crawlers and silently missed social/unfurler bypasses.
 	const info: UserAgentBypassInfo = { bypassed: false, tested: 0, hits: [] };
-	for (const ua of candidateAgents) {
+	for (const ua of legitUserAgents) {
 		info.tested++;
 		let res: any;
 		try {
@@ -723,7 +721,6 @@ export async function handleApiCheckWithEnvelope(
 									legitUserAgents,
 									wafDetectionResult,
 									currentPayload,
-									options?.isWorker,
 								);
 							}
 
@@ -799,7 +796,6 @@ export async function handleApiCheckWithEnvelope(
 							legitUserAgents,
 							wafDetectionResult,
 							payload,
-							options?.isWorker,
 						);
 					}
 
@@ -889,7 +885,6 @@ export async function handleApiCheckWithEnvelope(
 							legitUserAgents,
 							wafDetectionResult,
 							payload,
-							options?.isWorker,
 						);
 						}
 

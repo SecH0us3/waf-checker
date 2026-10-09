@@ -51,34 +51,3 @@ export function resolveLegitUserAgents(spoof?: boolean | LegitUserAgent[]): Legi
 	if (Array.isArray(spoof)) return spoof;
 	return LEGIT_USER_AGENTS;
 }
-
-/**
- * Identities probed first on Cloudflare Workers, where the 50-subrequest budget
- * per invocation makes replaying every blocked payload against all identities
- * too expensive. Chosen to span categories on purpose: origins allow-list very
- * different bots, and a publishing/content site typically trusts social
- * link-unfurlers (Slackbot, facebookexternalhit) far more than search crawlers.
- *
- * A naive positional `slice()` of {@link LEGIT_USER_AGENTS} only ever reached
- * the first few search-engine crawlers (Googlebot, Google-InspectionTool,
- * Bingbot) and silently missed every social/unfurler allow-list bypass, so the
- * worker stopped reporting bypasses it used to find.
- */
-export const WORKER_PROBE_PRIORITY: readonly string[] = ['Googlebot', 'Slackbot', 'facebookexternalhit'];
-
-/**
- * Pick the subset of identities to probe on Cloudflare Workers, keeping the
- * subrequest budget bounded while preserving cross-category coverage.
- *
- * Entries named in {@link WORKER_PROBE_PRIORITY} come first (in that order);
- * any remaining slots are filled from the rest of the list in its own order, so
- * a custom list without the named identities still degrades gracefully to its
- * leading entries.
- */
-export function selectWorkerProbeAgents(agents: LegitUserAgent[], limit: number = 3): LegitUserAgent[] {
-	const prioritized = WORKER_PROBE_PRIORITY.map((name) => agents.find((a) => a.name === name)).filter(
-		(a): a is LegitUserAgent => a !== undefined,
-	);
-	const rest = agents.filter((a) => !WORKER_PROBE_PRIORITY.includes(a.name));
-	return [...prioritized, ...rest].slice(0, limit);
-}
