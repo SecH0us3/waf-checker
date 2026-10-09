@@ -18,6 +18,12 @@ binding = "ASSETS"
 # It is never inferred from the request, because the request host is
 # client-supplied. Never set it on a public deployment.
 
+# Subrequests per invocation. 10000 is the Workers Paid default; pinned so the
+# deployment matches WORKER_SUBREQUEST_LIMIT in packages/core/src/check.ts, which
+# sizes scan and audit pages from it. Change both together.
+[limits]
+subrequests = 10000
+
 [[send_email]]
 name = "SEND_EMAIL"
 allowed_sender_addresses = ["waf@secmy.app"]

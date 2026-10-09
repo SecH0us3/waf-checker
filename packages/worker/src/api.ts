@@ -258,10 +258,12 @@ export default {
 					.filter(Boolean);
 			}
 
-			// Paged: the full plan is 500-1200 requests (more with a detected WAF's
-			// variations), each following up to 5 redirects, so it cannot fit one
-			// invocation's subrequest budget. Clients follow `hasMore`, passing back
-			// `page + 1` and `detectedWAF`.
+			// One request by default: the full plan (~500 items, ~1200 with a detected
+			// WAF's variations, each following up to 5 redirects) fits one invocation's
+			// subrequest budget, so the default page covers it and hasMore is false.
+			// Paging stays as a guard: if a plan ever outgrows the budget, the page is
+			// clamped and hasMore says so instead of results being dropped silently.
+			// Clients continue with `page + 1` and `detectedWAF`.
 			const pageParam = parseInt(urlObj.searchParams.get('page') || '0', 10);
 			const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 0;
 			const pageSizeParam = urlObj.searchParams.get('pageSize');

@@ -342,7 +342,7 @@ The Cloudflare Worker exposes a public REST API consumed by scanners and fuzzers
 | `/api/check` | `GET`, `POST` | Probes target with attack payloads. Supports pagination & category filtering. |
 | `/api/virtual-patch` | `POST` | Generates remediation rules for Cloudflare, AWS, ModSec, NGINX, Caddy, HAProxy, Coraza. |
 | `/api/reverse-engineer` | `GET`, `POST` | Reverse engineers OWASP CRS rules, anomaly thresholds, and body limits. |
-| `/api/audit` | `GET`, `POST` | **Unified audit**: executes detection, security checks, and virtual patches, paged (see below). |
+| `/api/audit` | `GET`, `POST` | **Unified 1-request audit**: executes detection, security checks, and virtual patches. |
 
 ### Key Integration Features
 
@@ -359,8 +359,8 @@ The Cloudflare Worker exposes a public REST API consumed by scanners and fuzzers
   ```
   *(Omit `?envelope=1` to receive the default bare JSON array for backwards compatibility).*
 
-- **Paged Audit (`/api/audit`)**:
-  A full audit is 500-1200+ requests, more than one Cloudflare Worker invocation may send, so it is returned a page at a time. Each response carries `page`, `pageSize`, `total`, `hasMore` and `detectedWAF` (`""` if none was found). While `hasMore` is true, request `page=<page + 1>&detectedWAF=<detectedWAF>`: passing `detectedWAF` back skips re-detection (`detection` is then `null`) and keeps page boundaries stable. `patches` covers that page's results; for one bundle over the whole audit, `POST` the combined `results` to `/api/virtual-patch`. `pageSize` is optional and capped at what fits one invocation.
+- **Audit Pagination Guard (`/api/audit`)**:
+  An audit normally returns everything in one response (`hasMore: false`). Responses also carry `page`, `pageSize`, `total`, `hasMore` and `detectedWAF` (`""` if none was found): if a plan ever outgrows one Cloudflare Worker invocation's subrequest budget, or you pass a smaller `pageSize`, results are paged rather than dropped. While `hasMore` is true, request `page=<page + 1>&detectedWAF=<detectedWAF>`; passing `detectedWAF` back skips re-detection (`detection` is then `null`) and keeps page boundaries stable. `patches` covers that response's results; for one bundle over several pages, `POST` the combined `results` to `/api/virtual-patch`.
 
 - **Normalized Confidence (`/api/waf-detect`)**:
   Provides `confidencePercent` (0–100) alongside raw `confidence` and `confidenceThreshold` (`40`).

@@ -67,8 +67,13 @@ export const UA_PROBE_CONCURRENCY = 4;
 /** Redirect hops sendRequest follows when followRedirect is on. */
 export const MAX_REDIRECTS = 5;
 
-/** Cloudflare Workers subrequest limit per invocation (paid plan). */
-export const WORKER_SUBREQUEST_LIMIT = 1000;
+/**
+ * Cloudflare Workers subrequest limit per invocation: the Workers Paid default
+ * since 2026-02 (it was 1000 before). Pinned with `[limits] subrequests` in
+ * wrangler.toml so the deployment cannot silently fall below what this assumes;
+ * change both together.
+ */
+export const WORKER_SUBREQUEST_LIMIT = 10_000;
 
 /**
  * Subrequests held back from the page budget: inline WAF detection

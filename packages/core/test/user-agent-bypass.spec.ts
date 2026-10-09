@@ -306,9 +306,15 @@ describe('resolveWorkerPageSize', () => {
 		expect(resolveWorkerPageSize(undefined, { legitUserAgentCount: LEGIT_USER_AGENTS.length, followRedirect: false })).toBe(50);
 	});
 
-	it('shrinks the page when redirects multiply every request', () => {
-		const size = resolveWorkerPageSize(50, { legitUserAgentCount: LEGIT_USER_AGENTS.length, followRedirect: true });
-		expect(size).toBeLessThan(50);
+	it('keeps the default page of 50 even when redirects multiply every request', () => {
+		const size = resolveWorkerPageSize(undefined, { legitUserAgentCount: LEGIT_USER_AGENTS.length, followRedirect: true });
+		expect(size).toBe(50);
+		expect(worstCase(size, LEGIT_USER_AGENTS.length, true)).toBeLessThanOrEqual(WORKER_SUBREQUEST_LIMIT);
+	});
+
+	it('shrinks a page that would not fit once redirects multiply every request', () => {
+		const size = resolveWorkerPageSize(500, { legitUserAgentCount: LEGIT_USER_AGENTS.length, followRedirect: true });
+		expect(size).toBeLessThan(500);
 		expect(worstCase(size, LEGIT_USER_AGENTS.length, true)).toBeLessThanOrEqual(WORKER_SUBREQUEST_LIMIT);
 	});
 
