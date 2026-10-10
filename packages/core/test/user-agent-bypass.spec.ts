@@ -240,7 +240,11 @@ describe('legitimate User-Agent bypass test', () => {
 		}
 	});
 
-	it('probes User-Agent bypass for FileCheck (Sensitive Files)', async () => {
+	it.each([
+		{ description: 'FileCheck (Sensitive Files)', category: 'Sensitive Files', shouldProbe: true },
+		{ description: 'Header checks (IP Bypass)', category: 'IP Bypass', shouldProbe: true },
+		{ description: 'User-Agent category exclusion', category: 'User-Agent', shouldProbe: false },
+	])('probes User-Agent bypass appropriately for $description', async ({ category, shouldProbe }) => {
 		const mockFetch = vi.fn().mockImplementation((_url: string, options: any) => {
 			const ua = readUserAgent(options);
 			const status = ua === 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)' ? 200 : 403;
@@ -251,7 +255,7 @@ describe('legitimate User-Agent bypass test', () => {
 			'http://example.com/api',
 			0,
 			['GET'],
-			['Sensitive Files'],
+			[category],
 			undefined,
 			false,
 			undefined,
@@ -268,72 +272,14 @@ describe('legitimate User-Agent bypass test', () => {
 
 		expect(results.length).toBeGreaterThan(0);
 		for (const r of results) {
-			expect(r.userAgentBypass).toBeDefined();
-			expect(r.userAgentBypass!.bypassed).toBe(true);
-			expect(r.userAgentBypass!.hits.map((h) => h.name)).toContain('Slackbot');
-		}
-	});
-
-	it('probes User-Agent bypass for Header checks (IP Bypass)', async () => {
-		const mockFetch = vi.fn().mockImplementation((_url: string, options: any) => {
-			const ua = readUserAgent(options);
-			const status = ua === 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)' ? 200 : 403;
-			return Promise.resolve({ status, headers: new Headers() });
-		});
-
-		const results = await handleApiCheckFiltered(
-			'http://example.com/api',
-			0,
-			['GET'],
-			['IP Bypass'],
-			undefined,
-			false,
-			undefined,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			undefined,
-			undefined,
-			{ fetch: mockFetch as any, quiet: true, spoofUserAgents: true, isWorker: true, pageSize: 5 },
-		);
-
-		expect(results.length).toBeGreaterThan(0);
-		for (const r of results) {
-			expect(r.userAgentBypass).toBeDefined();
-			expect(r.userAgentBypass!.bypassed).toBe(true);
-			expect(r.userAgentBypass!.hits.map((h) => h.name)).toContain('Slackbot');
-		}
-	});
-
-	it('does NOT probe User-Agent bypass when category is User-Agent itself', async () => {
-		const mockFetch = vi.fn().mockResolvedValue({ status: 403, headers: new Headers() });
-
-		const results = await handleApiCheckFiltered(
-			'http://example.com/api',
-			0,
-			['GET'],
-			['User-Agent'],
-			undefined,
-			false,
-			undefined,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			undefined,
-			undefined,
-			{ fetch: mockFetch as any, quiet: true, spoofUserAgents: true, isWorker: true, pageSize: 5 },
-		);
-
-		expect(results.length).toBeGreaterThan(0);
-		for (const r of results) {
-			// Must not overwrite the User-Agent payload header with legit UA probes
-			expect(r.userAgentBypass).toBeUndefined();
+			if (shouldProbe) {
+				expect(r.userAgentBypass).toBeDefined();
+				expect(r.userAgentBypass!.bypassed).toBe(true);
+				expect(r.userAgentBypass!.hits.map((h) => h.name)).toContain('Slackbot');
+			} else {
+				// Category is User-Agent itself: must not overwrite attack header with legit bot probes
+				expect(r.userAgentBypass).toBeUndefined();
+			}
 		}
 	});
 });
