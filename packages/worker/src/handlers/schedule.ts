@@ -45,7 +45,9 @@ const CRON_WALL_CLOCK_MS = 15 * 60 * 1000;
 const CRON_SAFETY_MARGIN_MS = 60 * 1000;
 /**
  * Longest one subscription can take when every request to its target runs to
- * its timeout: the ownership re-check (7s across all hops), WAF detection (a
+ * its timeout (the scan and detection timeouts cover reading the response body
+ * too, so a slowly trickling body cannot outlast them): the ownership re-check
+ * (7s across all hops), WAF detection (a
  * baseline, then 4 parallel probes, each up to 4 hops x 10s = 80s), the
  * 15-item scan (10s per item including redirects = 150s), plus KV writes and
  * the alert email. Update it if those timeouts or the scan size change.

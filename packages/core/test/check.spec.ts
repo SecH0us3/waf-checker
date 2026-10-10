@@ -501,3 +501,45 @@ describe('check.ts', () => {
 		expect(results.some(r => r.wafDetected)).toBe(true);
 	});
 });
+
+describe('sendRequest time and connection bounds', () => {
+	it('ends a response body that never finishes at the request timeout', async () => {
+		vi.useFakeTimers();
+		try {
+			// Headers arrive at once, the body never completes until the request is aborted.
+			const mockFetch = vi.fn().mockImplementation(async (_url: string, options: any) => {
+				const signal: AbortSignal = options.signal;
+				const never = () => new Promise<string>((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))));
+				return { status: 200, headers: new Headers(), clone: () => ({ text: never }) };
+			});
+
+			const pending = sendRequest('http://example.com/api', 'GET', undefined, undefined, undefined, false, false, undefined, undefined, {
+				fetch: mockFetch as any,
+				quiet: true,
+			});
+			await vi.advanceTimersByTimeAsync(10_000);
+			const result = await pending;
+
+			expect(result.status).toBe(200);
+			expect(result.bodyText).toBe('');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it('releases each redirect hop before following it', async () => {
+		const cancel = vi.fn().mockResolvedValue(undefined);
+		const mockFetch = vi
+			.fn()
+			.mockResolvedValueOnce({ status: 302, headers: new Headers({ Location: '/next' }), body: { cancel } })
+			.mockResolvedValueOnce({ status: 200, headers: new Headers() });
+
+		const result = await sendRequest('http://example.com/api', 'GET', undefined, undefined, undefined, true, false, undefined, undefined, {
+			fetch: mockFetch as any,
+			quiet: true,
+		});
+
+		expect(result.status).toBe(200);
+		expect(cancel).toHaveBeenCalledTimes(1);
+	});
+});

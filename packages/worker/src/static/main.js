@@ -612,9 +612,10 @@ async function fetchResults() {
 				methods: selectedMethods.join(','),
 				categories: selectedCategories.join(','),
 				page: String(page),
-				// Upper bound only: the server clamps it to the Worker's per-request
-				// subrequest budget for these options, and we page until a page is empty.
-				pageSize: '50',
+				// Small pages so results stream in: with UA probing a blocked item costs
+				// up to 17 requests, and nothing renders until a page returns. The server
+				// also clamps it to the Worker's per-request subrequest budget.
+				pageSize: '15',
 				followRedirect: followRedirect ? '1' : '0',
 				falsePositiveTest: falsePositiveTest ? '1' : '0',
 				caseSensitiveTest: caseSensitiveTest ? '1' : '0',

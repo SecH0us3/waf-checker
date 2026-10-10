@@ -119,6 +119,8 @@ To deploy the Worker to Cloudflare:
 npx wrangler deploy --workspace=packages/worker
 ```
 
+The Worker needs the **Workers Paid** plan: scan and audit pages are sized for its 10,000 subrequests per request (`[limits] subrequests` in `wrangler.toml`, `WORKER_SUBREQUEST_LIMIT` in `packages/core/src/check.ts`). The Free plan allows only 50 external subrequests, which a single scan page exceeds.
+
 ### 2. CLI Version (Node.js)
 
 To run security testing audits directly from your command line:
@@ -342,7 +344,7 @@ The Cloudflare Worker exposes a public REST API consumed by scanners and fuzzers
 | `/api/check` | `GET`, `POST` | Probes target with attack payloads. Supports pagination & category filtering. |
 | `/api/virtual-patch` | `POST` | Generates remediation rules for Cloudflare, AWS, ModSec, NGINX, Caddy, HAProxy, Coraza. |
 | `/api/reverse-engineer` | `GET`, `POST` | Reverse engineers OWASP CRS rules, anomaly thresholds, and body limits. |
-| `/api/audit` | `GET`, `POST` | **Unified 1-request audit**: executes detection, security checks, and virtual patches. |
+| `/api/audit` | `GET`, `POST` | **Unified audit**: executes detection, security checks, and virtual patches, usually in one request (see Audit Paging). |
 
 ### Key Integration Features
 
@@ -359,8 +361,8 @@ The Cloudflare Worker exposes a public REST API consumed by scanners and fuzzers
   ```
   *(Omit `?envelope=1` to receive the default bare JSON array for backwards compatibility).*
 
-- **Audit Pagination Guard (`/api/audit`)**:
-  An audit normally returns everything in one response (`hasMore: false`). Responses also carry `page`, `pageSize`, `total`, `hasMore` and `detectedWAF` (`""` if none was found): if a plan ever outgrows one Cloudflare Worker invocation's subrequest budget, or you pass a smaller `pageSize`, results are paged rather than dropped. While `hasMore` is true, request `page=<page + 1>&detectedWAF=<detectedWAF>`; passing `detectedWAF` back skips re-detection (`detection` is then `null`) and keeps page boundaries stable. `patches` covers that response's results; for one bundle over several pages, `POST` the combined `results` to `/api/virtual-patch`.
+- **Audit Paging (`/api/audit`)**:
+  An audit returns everything in one response (`hasMore: false`) unless its plan exceeds what one Cloudflare Worker request's subrequest budget allows (1658 items). That covers no detected WAF (513 items) and every WAF's bypass variations up to Sophos (1321); a Qrator-protected target (2441 items) comes back over two pages, as does any audit where you pass a smaller `pageSize`. Responses carry `page`, `pageSize`, `total`, `hasMore` and `detectedWAF` (`""` if none was found). While `hasMore` is true, request `page=<page + 1>&detectedWAF=<detectedWAF>`; passing `detectedWAF` back skips re-detection (`detection` is then `null`) and keeps page boundaries stable. `patches` covers that response's results; for one bundle over several pages, `POST` the combined `results` to `/api/virtual-patch`.
 
 - **Normalized Confidence (`/api/waf-detect`)**:
   Provides `confidencePercent` (0–100) alongside raw `confidence` and `confidenceThreshold` (`40`).

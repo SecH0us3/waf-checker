@@ -6,8 +6,7 @@ import {
 	runReverseEngineeringAudit,
 	generateVirtualPatches,
 	WAFDetector,
-	resolveWorkerPageSize,
-	LEGIT_USER_AGENTS,
+	maxWorkerPageSize,
 } from '@waf-checker/core';
 import {
 	handleScheduleSubscribe,
@@ -114,7 +113,10 @@ export default {
 				});
 			}
 
-			const page = parseInt(urlObj.searchParams.get('page') || '0', 10);
+			// A negative or non-numeric page would give an empty page that still reports
+			// hasMore, so a client following hasMore would loop forever.
+			const pageParam = parseInt(urlObj.searchParams.get('page') || '0', 10);
+			const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 0;
 			const methods = (urlObj.searchParams.get('methods') || 'GET')
 				.split(',')
 				.map((m) => m.trim())
@@ -166,13 +168,10 @@ export default {
 				urlObj.searchParams.get('envelope') === '1' ||
 				urlObj.searchParams.get('envelope') === 'true' ||
 				request.headers.get('accept')?.includes('application/vnd.waf-checker.v2+json');
-			// Clamped to what one invocation's subrequest budget allows for this scan's
-			// options (see resolveWorkerPageSize); the frontend keeps paging until empty.
+			// Core clamps it to what one invocation's subrequest budget allows for this
+			// scan's options; the frontend keeps paging until a page is empty.
 			const pageSizeParam = urlObj.searchParams.get('pageSize') || urlObj.searchParams.get('limit');
-			const pageSize = resolveWorkerPageSize(pageSizeParam ? parseInt(pageSizeParam, 10) : undefined, {
-				legitUserAgentCount: spoofUserAgents ? LEGIT_USER_AGENTS.length : 0,
-				followRedirect,
-			});
+			const pageSize = pageSizeParam ? parseInt(pageSizeParam, 10) : undefined;
 
 			const envelope = await handleApiCheckWithEnvelope(
 				url,
@@ -258,19 +257,18 @@ export default {
 					.filter(Boolean);
 			}
 
-			// One request by default: the full plan (~500 items, ~1200 with a detected
-			// WAF's variations, each following up to 5 redirects) fits one invocation's
-			// subrequest budget, so the default page covers it and hasMore is false.
-			// Paging stays as a guard: if a plan ever outgrows the budget, the page is
-			// clamped and hasMore says so instead of results being dropped silently.
-			// Clients continue with `page + 1` and `detectedWAF`.
+			// By default a page is as large as one invocation's subrequest budget allows
+			// (core clamps any requested size to the same bound). That covers the whole
+			// plan for no detected WAF (513 items) and for every WAF's variations up to
+			// 1321 items (Sophos), so the audit is one request with hasMore false. Only
+			// Qrator's variations (2441 items) exceed it and come back over two pages.
+			// Clients continue with `page + 1` and `detectedWAF` while hasMore is true.
 			const pageParam = parseInt(urlObj.searchParams.get('page') || '0', 10);
 			const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 0;
 			const pageSizeParam = urlObj.searchParams.get('pageSize');
-			const pageSize = resolveWorkerPageSize(pageSizeParam ? parseInt(pageSizeParam, 10) : undefined, {
-				legitUserAgentCount: 0,
-				followRedirect: true,
-			}, Number.MAX_SAFE_INTEGER);
+			const pageSize = pageSizeParam
+				? parseInt(pageSizeParam, 10)
+				: maxWorkerPageSize({ legitUserAgentCount: 0, followRedirect: true });
 
 			const detection =
 				knownWAF === undefined ? await WAFDetector.activeDetection(url.replace(/\{PAYLOAD\}/g, ''), { isWorker: true }) : null;

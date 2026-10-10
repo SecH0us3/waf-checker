@@ -202,6 +202,10 @@ export class WAFDetector {
 				const timeoutId = setTimeout(() => controller.abort(), 10000);
 
 				let response: Response;
+				let responseTime: number;
+				let responseBody = '';
+				// The timeout stays armed through the body read: the abort signal also ends
+				// a body that trickles in, so each hop is bounded by 10s in total.
 				try {
 					response = await fetchFn(currentUrl, {
 						method: 'GET',
@@ -212,21 +216,20 @@ export class WAFDetector {
 						},
 						signal: controller.signal,
 					});
+					responseTime = Date.now() - startTime;
+
+					try {
+						const contentLength = response.headers?.get?.('content-length');
+						if (contentLength && parseInt(contentLength, 10) > 1048576) {
+							responseBody = '[Response Too Large]';
+						} else if (typeof response.text === 'function') {
+							responseBody = await response.text();
+						}
+					} catch {
+						responseBody = '';
+					}
 				} finally {
 					clearTimeout(timeoutId);
-				}
-				const responseTime = Date.now() - startTime;
-
-				let responseBody = '';
-				try {
-					const contentLength = response.headers?.get?.('content-length');
-					if (contentLength && parseInt(contentLength, 10) > 1048576) {
-						responseBody = '[Response Too Large]';
-					} else if (typeof response.text === 'function') {
-						responseBody = await response.text();
-					}
-				} catch {
-					responseBody = '';
 				}
 
 				const detection = await this.detectFromResponse(response, responseBody, responseTime, options?.isWorker);
