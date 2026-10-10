@@ -542,4 +542,58 @@ describe('sendRequest time and connection bounds', () => {
 		expect(result.status).toBe(200);
 		expect(cancel).toHaveBeenCalledTimes(1);
 	});
+
+	it('releases all hops across the maximum allowed redirect chain (MAX_REDIRECTS = 5)', async () => {
+		const cancel = vi.fn().mockResolvedValue(undefined);
+		const mockFetch = vi.fn();
+		for (let i = 1; i <= 5; i++) {
+			mockFetch.mockResolvedValueOnce({
+				status: 302,
+				headers: new Headers({ Location: `http://example.com/step-${i}` }),
+				body: { cancel },
+			});
+		}
+		mockFetch.mockResolvedValueOnce({
+			status: 200,
+			headers: new Headers(),
+			clone: () => ({ text: () => Promise.resolve('reached final target') }),
+		});
+
+		const result = await sendRequest('http://example.com/step-0', 'GET', undefined, undefined, undefined, true, false, undefined, undefined, {
+			fetch: mockFetch as any,
+			quiet: true,
+		});
+
+		expect(result.status).toBe(200);
+		expect(result.bodyText).toBe('reached final target');
+		expect(cancel).toHaveBeenCalledTimes(5);
+		expect(mockFetch).toHaveBeenCalledTimes(6);
+	});
+
+	it('stops following redirects when exceeding MAX_REDIRECTS without infinite looping', async () => {
+		const cancel = vi.fn().mockResolvedValue(undefined);
+		let hop = 0;
+		const mockFetch = vi.fn().mockImplementation(() => {
+			hop++;
+			return Promise.resolve({
+				status: 302,
+				headers: new Headers({ Location: `http://example.com/loop-${hop}` }),
+				body: { cancel },
+				clone: () => ({ text: () => Promise.resolve('looping redirect') }),
+			});
+		});
+
+		const result = await sendRequest('http://example.com/loop-0', 'GET', undefined, undefined, undefined, true, false, undefined, undefined, {
+			fetch: mockFetch as any,
+			quiet: true,
+		});
+
+		// 1 initial request + 5 followed hops = 6 requests made
+		expect(mockFetch).toHaveBeenCalledTimes(6);
+		// cancel() called on the 5 followed hops
+		expect(cancel).toHaveBeenCalledTimes(5);
+		// Final result is the un-followed 302
+		expect(result.status).toBe(302);
+		expect(result.is_redirect).toBe(true);
+	});
 });
