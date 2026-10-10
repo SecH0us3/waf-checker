@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { sendRequest, handleApiCheckFiltered } from '../src/check';
+import { sendRequest, handleApiCheckFiltered, MAX_REDIRECTS } from '../src/check';
 
 describe('check.ts', () => {
 	it('should send a basic request', async () => {
@@ -543,10 +543,10 @@ describe('sendRequest time and connection bounds', () => {
 		expect(cancel).toHaveBeenCalledTimes(1);
 	});
 
-	it('releases all hops across the maximum allowed redirect chain (MAX_REDIRECTS = 5)', async () => {
+	it(`releases all hops across the maximum allowed redirect chain (MAX_REDIRECTS = ${MAX_REDIRECTS})`, async () => {
 		const cancel = vi.fn().mockResolvedValue(undefined);
 		const mockFetch = vi.fn();
-		for (let i = 1; i <= 5; i++) {
+		for (let i = 1; i <= MAX_REDIRECTS; i++) {
 			mockFetch.mockResolvedValueOnce({
 				status: 302,
 				headers: new Headers({ Location: `http://example.com/step-${i}` }),
@@ -566,8 +566,9 @@ describe('sendRequest time and connection bounds', () => {
 
 		expect(result.status).toBe(200);
 		expect(result.bodyText).toBe('reached final target');
-		expect(cancel).toHaveBeenCalledTimes(5);
-		expect(mockFetch).toHaveBeenCalledTimes(6);
+		// Every followed hop is released, and the chain made one request per hop plus the final 200.
+		expect(cancel).toHaveBeenCalledTimes(MAX_REDIRECTS);
+		expect(mockFetch).toHaveBeenCalledTimes(MAX_REDIRECTS + 1);
 	});
 
 	it('stops following redirects when exceeding MAX_REDIRECTS without infinite looping', async () => {
@@ -588,11 +589,11 @@ describe('sendRequest time and connection bounds', () => {
 			quiet: true,
 		});
 
-		// 1 initial request + 5 followed hops = 6 requests made
-		expect(mockFetch).toHaveBeenCalledTimes(6);
-		// cancel() called on the 5 followed hops
-		expect(cancel).toHaveBeenCalledTimes(5);
-		// Final result is the un-followed 302
+		// The initial request plus MAX_REDIRECTS followed hops, then the loop stops.
+		expect(mockFetch).toHaveBeenCalledTimes(MAX_REDIRECTS + 1);
+		// cancel() runs on each followed hop; the final un-followed 302 is not released.
+		expect(cancel).toHaveBeenCalledTimes(MAX_REDIRECTS);
+		// Final result is the un-followed 302.
 		expect(result.status).toBe(302);
 		expect(result.is_redirect).toBe(true);
 	});
