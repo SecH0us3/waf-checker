@@ -527,26 +527,13 @@ describe('sendRequest time and connection bounds', () => {
 		}
 	});
 
-	it('releases each redirect hop before following it', async () => {
-		const cancel = vi.fn().mockResolvedValue(undefined);
-		const mockFetch = vi
-			.fn()
-			.mockResolvedValueOnce({ status: 302, headers: new Headers({ Location: '/next' }), body: { cancel } })
-			.mockResolvedValueOnce({ status: 200, headers: new Headers() });
-
-		const result = await sendRequest('http://example.com/api', 'GET', undefined, undefined, undefined, true, false, undefined, undefined, {
-			fetch: mockFetch as any,
-			quiet: true,
-		});
-
-		expect(result.status).toBe(200);
-		expect(cancel).toHaveBeenCalledTimes(1);
-	});
-
-	it(`releases all hops across the maximum allowed redirect chain (MAX_REDIRECTS = ${MAX_REDIRECTS})`, async () => {
+	it.each([
+		{ description: 'single redirect hop', hops: 1 },
+		{ description: `maximum allowed chain (MAX_REDIRECTS = ${MAX_REDIRECTS})`, hops: MAX_REDIRECTS },
+	])('releases all hops before following them across $description', async ({ hops }) => {
 		const cancel = vi.fn().mockResolvedValue(undefined);
 		const mockFetch = vi.fn();
-		for (let i = 1; i <= MAX_REDIRECTS; i++) {
+		for (let i = 1; i <= hops; i++) {
 			mockFetch.mockResolvedValueOnce({
 				status: 302,
 				headers: new Headers({ Location: `http://example.com/step-${i}` }),
@@ -566,9 +553,8 @@ describe('sendRequest time and connection bounds', () => {
 
 		expect(result.status).toBe(200);
 		expect(result.bodyText).toBe('reached final target');
-		// Every followed hop is released, and the chain made one request per hop plus the final 200.
-		expect(cancel).toHaveBeenCalledTimes(MAX_REDIRECTS);
-		expect(mockFetch).toHaveBeenCalledTimes(MAX_REDIRECTS + 1);
+		expect(cancel).toHaveBeenCalledTimes(hops);
+		expect(mockFetch).toHaveBeenCalledTimes(hops + 1);
 	});
 
 	it('stops following redirects when exceeding MAX_REDIRECTS without infinite looping', async () => {

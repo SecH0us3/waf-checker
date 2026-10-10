@@ -31,6 +31,11 @@ export function isSelfScan(targetUrlOrHost: string): boolean {
 	}
 }
 
+export function parsePositivePageParam(val: unknown): number {
+	const num = typeof val === 'number' ? val : parseInt(String(val ?? '0'), 10);
+	return Number.isFinite(num) && num > 0 ? Math.floor(num) : 0;
+}
+
 export default {
 	async fetch(request: Request, env: WorkerEnv): Promise<Response> {
 		const urlObj = new URL(request.url);
@@ -115,8 +120,7 @@ export default {
 
 			// A negative or non-numeric page would give an empty page that still reports
 			// hasMore, so a client following hasMore would loop forever.
-			const pageParam = parseInt(urlObj.searchParams.get('page') || '0', 10);
-			const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 0;
+			const page = parsePositivePageParam(urlObj.searchParams.get('page'));
 			const methods = (urlObj.searchParams.get('methods') || 'GET')
 				.split(',')
 				.map((m) => m.trim())
@@ -269,8 +273,7 @@ export default {
 			// Clients continue with `page + 1` and `detectedWAF` while hasMore is true.
 			// Query parameters win over the POST body, as for detectedWAF.
 			const pageQuery = urlObj.searchParams.get('page');
-			const pageParam = pageQuery !== null ? parseInt(pageQuery, 10) : (bodyPage ?? 0);
-			const page = Number.isFinite(pageParam) && pageParam > 0 ? Math.floor(pageParam) : 0;
+			const page = parsePositivePageParam(pageQuery !== null ? pageQuery : bodyPage);
 			const pageSizeQuery = urlObj.searchParams.get('pageSize');
 			const pageSize =
 				pageSizeQuery !== null

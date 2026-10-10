@@ -19,6 +19,27 @@ function readUserAgent(options: any): string | undefined {
 	return h['User-Agent'];
 }
 
+function scanSqli(mockFetch: any, extra: Record<string, unknown> = {}) {
+	return handleApiCheckFiltered(
+		'http://example.com/api',
+		0,
+		['GET'],
+		['SQL Injection'],
+		undefined,
+		false,
+		undefined,
+		false,
+		false,
+		false,
+		false,
+		false,
+		false,
+		undefined,
+		undefined,
+		{ fetch: mockFetch as any, quiet: true, spoofUserAgents: true, ...extra },
+	);
+}
+
 describe('resolveLegitUserAgents', () => {
 	it('returns empty list when disabled', () => {
 		expect(resolveLegitUserAgents(false)).toEqual([]);
@@ -44,24 +65,7 @@ describe('legitimate User-Agent bypass test', () => {
 			return Promise.resolve({ status, headers: new Headers() });
 		});
 
-		const results = await handleApiCheckFiltered(
-			'http://example.com/api',
-			0,
-			['GET'],
-			['SQL Injection'],
-			undefined,
-			false,
-			undefined,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			undefined,
-			undefined,
-			{ fetch: mockFetch as any, quiet: true, spoofUserAgents: true },
-		);
+		const results = await scanSqli(mockFetch);
 
 		expect(results.length).toBeGreaterThan(0);
 		// Every baseline was 403, so every item should have been probed and bypassed.
@@ -89,24 +93,7 @@ describe('legitimate User-Agent bypass test', () => {
 			return Promise.resolve({ status, headers: new Headers() });
 		});
 
-		const results = await handleApiCheckFiltered(
-			'http://example.com/api',
-			0,
-			['GET'],
-			['SQL Injection'],
-			undefined,
-			false,
-			undefined,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			undefined,
-			undefined,
-			{ fetch: mockFetch as any, quiet: true, spoofUserAgents: true, isWorker: true },
-		);
+		const results = await scanSqli(mockFetch, { isWorker: true });
 
 		expect(results.length).toBeGreaterThan(0);
 		for (const r of results) {
@@ -116,59 +103,15 @@ describe('legitimate User-Agent bypass test', () => {
 		}
 	});
 
-	it('does NOT cap the probed identities on the Worker when nothing bypasses', async () => {
+	it.each([
+		{ env: 'the Worker', isWorker: true },
+		{ env: 'the CLI', isWorker: false },
+	])('probes all identities and flags no bypass when WAF blocks trusted UAs on $env', async ({ isWorker }) => {
 		// Everything stays blocked, so the probe exhausts the list. isWorker must not
 		// shrink the set of identities tried — all of them are probed, as on the CLI.
 		const mockFetch = vi.fn().mockResolvedValue({ status: 403, headers: new Headers() });
 
-		const results = await handleApiCheckFiltered(
-			'http://example.com/api',
-			0,
-			['GET'],
-			['SQL Injection'],
-			undefined,
-			false,
-			undefined,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			undefined,
-			undefined,
-			{ fetch: mockFetch as any, quiet: true, spoofUserAgents: true, isWorker: true },
-		);
-
-		expect(results.length).toBeGreaterThan(0);
-		for (const r of results) {
-			expect(r.userAgentBypass!.bypassed).toBe(false);
-			expect(r.userAgentBypass!.tested).toBe(LEGIT_USER_AGENTS.length);
-		}
-	});
-
-	it('does NOT flag a bypass when the WAF blocks trusted UAs too', async () => {
-		// Everything is blocked regardless of User-Agent → no allow-list bypass.
-		const mockFetch = vi.fn().mockResolvedValue({ status: 403, headers: new Headers() });
-
-		const results = await handleApiCheckFiltered(
-			'http://example.com/api',
-			0,
-			['GET'],
-			['SQL Injection'],
-			undefined,
-			false,
-			undefined,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			undefined,
-			undefined,
-			{ fetch: mockFetch as any, quiet: true, spoofUserAgents: true },
-		);
+		const results = await scanSqli(mockFetch, { isWorker });
 
 		expect(results.length).toBeGreaterThan(0);
 		for (const r of results) {
@@ -182,24 +125,7 @@ describe('legitimate User-Agent bypass test', () => {
 	it('does NOT probe when the baseline was not blocked (200)', async () => {
 		const mockFetch = vi.fn().mockResolvedValue({ status: 200, headers: new Headers() });
 
-		const results = await handleApiCheckFiltered(
-			'http://example.com/api',
-			0,
-			['GET'],
-			['SQL Injection'],
-			undefined,
-			false,
-			undefined,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			undefined,
-			undefined,
-			{ fetch: mockFetch as any, quiet: true, spoofUserAgents: true },
-		);
+		const results = await scanSqli(mockFetch);
 
 		const baselineCalls = mockFetch.mock.calls.length;
 		expect(results.length).toBeGreaterThan(0);
@@ -213,24 +139,7 @@ describe('legitimate User-Agent bypass test', () => {
 	it('is disabled by default (no probing, no annotation)', async () => {
 		const mockFetch = vi.fn().mockResolvedValue({ status: 403, headers: new Headers() });
 
-		const results = await handleApiCheckFiltered(
-			'http://example.com/api',
-			0,
-			['GET'],
-			['SQL Injection'],
-			undefined,
-			false,
-			undefined,
-			false,
-			false,
-			false,
-			false,
-			false,
-			false,
-			undefined,
-			undefined,
-			{ fetch: mockFetch as any, quiet: true }, // spoofUserAgents omitted
-		);
+		const results = await scanSqli(mockFetch, { spoofUserAgents: undefined });
 
 		expect(results.length).toBeGreaterThan(0);
 		// One request per result, no extra probe requests.
@@ -283,27 +192,6 @@ describe('legitimate User-Agent bypass test', () => {
 		}
 	});
 });
-
-function scanSqli(mockFetch: any, extra: Record<string, unknown> = {}) {
-	return handleApiCheckFiltered(
-		'http://example.com/api',
-		0,
-		['GET'],
-		['SQL Injection'],
-		undefined,
-		false,
-		undefined,
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
-		undefined,
-		undefined,
-		{ fetch: mockFetch as any, quiet: true, spoofUserAgents: true, ...extra },
-	);
-}
 
 describe('User-Agent bypass probe verdicts', () => {
 	const blocked403 = () => Promise.resolve({ status: 403, headers: new Headers() });

@@ -233,25 +233,25 @@ describe('WAF Checker API', () => {
 		}
 	});
 
-	it('normalizes negative or non-numeric page parameter to 0 on /api/check', async () => {
-		const resNeg = await SELF.fetch('https://example.com/api/check?url=https://example.com&categories=User-Agent&envelope=1&pageSize=5&page=-1');
-		expect(resNeg.status).toBe(200);
-		const dataNeg: any = await resNeg.json();
-		expect(dataNeg.page).toBe(0);
-		expect(dataNeg.pageSize).toBe(5);
-		expect(dataNeg.results.length).toBeGreaterThan(0);
-		expect(dataNeg.hasMore).toBe(true);
-
-		const resNan = await SELF.fetch('https://example.com/api/check?url=https://example.com&categories=User-Agent&envelope=1&pageSize=5&page=invalid');
-		expect(resNan.status).toBe(200);
-		const dataNan: any = await resNan.json();
-		expect(dataNan.page).toBe(0);
-		expect(dataNan.pageSize).toBe(5);
-		expect(dataNan.results.length).toBeGreaterThan(0);
+	it.each([
+		{ endpoint: 'check', url: 'https://example.com/api/check?url=https://example.com&categories=User-Agent&envelope=1&pageSize=5' },
+		{ endpoint: 'audit', url: 'https://example.com/api/audit?url=https://example.com&categories=SQL Injection&pageSize=5&detectedWAF=' },
+	])('normalizes invalid page values to 0 on /api/$endpoint', async ({ url }) => {
+		for (const invalidPage of ['-1', 'invalid']) {
+			const res = await SELF.fetch(`${url}&page=${invalidPage}`);
+			expect(res.status).toBe(200);
+			const data: any = await res.json();
+			expect(data.page).toBe(0);
+			expect(data.pageSize).toBe(5);
+			expect(data.results.length).toBeGreaterThan(0);
+		}
 	});
 
-	it('returns hasMore false and empty results when page is beyond total items on /api/check', async () => {
-		const res = await SELF.fetch('https://example.com/api/check?url=https://example.com&categories=User-Agent&envelope=1&pageSize=5&page=9999');
+	it.each([
+		{ endpoint: 'check', url: 'https://example.com/api/check?url=https://example.com&categories=User-Agent&envelope=1&pageSize=5&page=9999' },
+		{ endpoint: 'audit', url: 'https://example.com/api/audit?url=https://example.com&categories=SQL Injection&pageSize=5&page=9999&detectedWAF=' },
+	])('returns hasMore false and empty results when page is beyond total items on /api/$endpoint', async ({ url }) => {
+		const res = await SELF.fetch(url);
 		expect(res.status).toBe(200);
 		const data: any = await res.json();
 		expect(data.page).toBe(9999);
@@ -315,22 +315,6 @@ describe('WAF Checker API', () => {
 		expect(data.pageSize).toBe(5);
 		expect(data.detection).toBeNull();
 		expect(data.results.length).toBeGreaterThan(0);
-	});
-
-	it('normalizes negative page and handles out-of-bounds page in /api/audit', async () => {
-		const resNeg = await SELF.fetch('https://example.com/api/audit?url=https://example.com&categories=SQL Injection&pageSize=5&page=-5&detectedWAF=');
-		expect(resNeg.status).toBe(200);
-		const dataNeg: any = await resNeg.json();
-		expect(dataNeg.page).toBe(0);
-		expect(dataNeg.pageSize).toBe(5);
-		expect(dataNeg.results.length).toBe(5);
-
-		const resOob = await SELF.fetch('https://example.com/api/audit?url=https://example.com&categories=SQL Injection&pageSize=5&page=9999&detectedWAF=');
-		expect(resOob.status).toBe(200);
-		const dataOob: any = await resOob.json();
-		expect(dataOob.page).toBe(9999);
-		expect(dataOob.results).toEqual([]);
-		expect(dataOob.hasMore).toBe(false);
 	});
 
 	it('gives query parameters precedence over POST body for page and pageSize in /api/audit', async () => {
