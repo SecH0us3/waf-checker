@@ -9,9 +9,12 @@ on:
 permissions:
   contents: read
 
+# A newer push to a PR supersedes its older run. Every other run (each commit
+# on main) gets its own group: a group holds one pending run and a newer one
+# replaces it, so sharing a group would still drop runs of rapid main commits.
 concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
+  group: tests-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
