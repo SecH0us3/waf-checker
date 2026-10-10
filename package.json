@@ -10,7 +10,7 @@
     "typescript": "^7.0.2",
     "vite-node": "^6.0.0",
     "vitest": "~4.1.11",
-    "wrangler": "^4.147.0"
+    "wrangler": "^4.148.0"
   },
   "overrides": {
     "sharp": "0.35.4",
