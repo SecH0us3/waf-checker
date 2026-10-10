@@ -276,4 +276,18 @@ describe('WAF Checker API', () => {
 		expect(next.total).toBe(first.total);
 		expect(next.results.length).toBeGreaterThan(0);
 	});
+
+	it('reads page, pageSize and detectedWAF from a POST /api/audit body', async () => {
+		const res = await SELF.fetch('https://example.com/api/audit', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ url: 'https://example.com', categories: ['SQL Injection'], page: 1, pageSize: 5, detectedWAF: '' }),
+		});
+		expect(res.status).toBe(200);
+		const data: any = await res.json();
+		expect(data.page).toBe(1);
+		expect(data.pageSize).toBe(5);
+		expect(data.detection).toBeNull();
+		expect(data.results.length).toBeGreaterThan(0);
+	});
 });

@@ -210,6 +210,8 @@ export default {
 			let bodyPayloadTemplate: string | undefined = undefined;
 			let bodyCustomHeaders: string | undefined = undefined;
 			let bodyCategories: string[] | undefined = undefined;
+			let bodyPage: number | undefined = undefined;
+			let bodyPageSize: number | undefined = undefined;
 			// WAF type found on an earlier page ('' = none found). Passing it back
 			// skips re-detection and keeps the payload plan, and so the page
 			// boundaries, identical across pages.
@@ -225,6 +227,8 @@ export default {
 					if (body && typeof body.payloadTemplate === 'string') bodyPayloadTemplate = body.payloadTemplate;
 					if (body && typeof body.customHeaders === 'string') bodyCustomHeaders = body.customHeaders;
 					if (body && typeof body.detectedWAF === 'string' && knownWAF === undefined) knownWAF = body.detectedWAF;
+					if (body && typeof body.page === 'number') bodyPage = body.page;
+					if (body && typeof body.pageSize === 'number') bodyPageSize = body.pageSize;
 				} catch {}
 			}
 
@@ -263,12 +267,15 @@ export default {
 			// 1321 items (Sophos), so the audit is one request with hasMore false. Only
 			// Qrator's variations (2441 items) exceed it and come back over two pages.
 			// Clients continue with `page + 1` and `detectedWAF` while hasMore is true.
-			const pageParam = parseInt(urlObj.searchParams.get('page') || '0', 10);
-			const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 0;
-			const pageSizeParam = urlObj.searchParams.get('pageSize');
-			const pageSize = pageSizeParam
-				? parseInt(pageSizeParam, 10)
-				: maxWorkerPageSize({ legitUserAgentCount: 0, followRedirect: true });
+			// Query parameters win over the POST body, as for detectedWAF.
+			const pageQuery = urlObj.searchParams.get('page');
+			const pageParam = pageQuery !== null ? parseInt(pageQuery, 10) : (bodyPage ?? 0);
+			const page = Number.isFinite(pageParam) && pageParam > 0 ? Math.floor(pageParam) : 0;
+			const pageSizeQuery = urlObj.searchParams.get('pageSize');
+			const pageSize =
+				pageSizeQuery !== null
+					? parseInt(pageSizeQuery, 10)
+					: (bodyPageSize ?? maxWorkerPageSize({ legitUserAgentCount: 0, followRedirect: true }));
 
 			const detection =
 				knownWAF === undefined ? await WAFDetector.activeDetection(url.replace(/\{PAYLOAD\}/g, ''), { isWorker: true }) : null;
