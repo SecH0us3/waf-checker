@@ -332,4 +332,16 @@ describe('WAF Checker API', () => {
 		expect(dataOob.results).toEqual([]);
 		expect(dataOob.hasMore).toBe(false);
 	});
+
+	it('gives query parameters precedence over POST body for page and pageSize in /api/audit', async () => {
+		const res = await SELF.fetch('https://example.com/api/audit?page=2&pageSize=3', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ url: 'https://example.com', categories: ['SQL Injection'], page: 1, pageSize: 5, detectedWAF: '' }),
+		});
+		expect(res.status).toBe(200);
+		const data: any = await res.json();
+		expect(data.page).toBe(2);
+		expect(data.pageSize).toBe(3);
+	});
 });
