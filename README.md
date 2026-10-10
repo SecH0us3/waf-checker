@@ -119,7 +119,7 @@ To deploy the Worker to Cloudflare:
 npx wrangler deploy --workspace=packages/worker
 ```
 
-The Worker needs the **Workers Paid** plan: scan and audit pages are sized for its 10,000 subrequests per request (`[limits] subrequests` in `wrangler.toml`, `WORKER_SUBREQUEST_LIMIT` in `packages/core/src/check.ts`). The Free plan allows only 50 external subrequests, which a single scan page exceeds.
+The Worker needs the **Workers Paid** plan: scan and audit pages are sized for its 10,000 subrequests per request (`[limits] subrequests` in `wrangler.toml`, `WORKER_SUBREQUEST_LIMIT` in `packages/core/src/check.ts`). The Free plan allows only 50 external subrequests per request: one scan page with the User-Agent bypass test (on by default in the UI) or with redirects followed goes past that.
 
 ### 2. CLI Version (Node.js)
 
