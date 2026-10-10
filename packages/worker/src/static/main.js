@@ -263,9 +263,9 @@ function renderReport(results, falsePositiveMode = false) {
 			const extra = names.length > 3 ? ` (+${names.length - 3})` : '';
 			const originStatus = hits.length ? hits[0].status : '';
 			const tested = r.userAgentBypass.tested;
-			// Probing stops at the first identity that gets through (subrequest
-			// budget), so `hits` is the first one found, not the full set — the badge
-			// says "via" rather than counting bots, which would always read "1".
+			// Identities are probed in small concurrent batches and probing stops after
+			// the first batch that gets through, so `hits` is that batch's bypasses,
+			// not every identity that would pass — the badge says "via", not a count.
 			const title =
 				`Blocked with a normal User-Agent (403), but reached the origin (status ${originStatus}) ` +
 				`when the request claimed to be a trusted bot: ${escapeHtml(names.join(', '))}. ` +
@@ -612,6 +612,9 @@ async function fetchResults() {
 				methods: selectedMethods.join(','),
 				categories: selectedCategories.join(','),
 				page: String(page),
+				// Small pages so results stream in: with UA probing a blocked item costs
+				// up to 17 requests, and nothing renders until a page returns. The server
+				// also clamps it to the Worker's per-request subrequest budget.
 				pageSize: '15',
 				followRedirect: followRedirect ? '1' : '0',
 				falsePositiveTest: falsePositiveTest ? '1' : '0',

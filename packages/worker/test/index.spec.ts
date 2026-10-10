@@ -206,11 +206,12 @@ describe('WAF Checker API', () => {
 	});
 
 	it('does NOT refuse URLs merely containing secmy in path or unrelated domain', async () => {
-		const res = await SELF.fetch('https://example.com/api/check?url=https://example.com/secmy-test');
+		// pageSize=1: only the self-scan decision is under test, not a full scan page.
+		const res = await SELF.fetch('https://example.com/api/check?url=https://example.com/secmy-test&pageSize=1');
 		// Should not be 422
 		expect(res.status).not.toBe(422);
 
-		const resIo = await SELF.fetch('https://example.com/api/check?url=https://secmyapp.io/');
+		const resIo = await SELF.fetch('https://example.com/api/check?url=https://secmyapp.io/&pageSize=1');
 		expect(resIo.status).not.toBe(422);
 	});
 
@@ -230,6 +231,32 @@ describe('WAF Checker API', () => {
 			expect(data.results[0]).toHaveProperty('blocked');
 			expect(data.results[0]).toHaveProperty('verdict');
 		}
+	});
+
+	it.each([
+		{ endpoint: 'check', url: 'https://example.com/api/check?url=https://example.com&categories=User-Agent&envelope=1&pageSize=5' },
+		{ endpoint: 'audit', url: 'https://example.com/api/audit?url=https://example.com&categories=SQL Injection&pageSize=5&detectedWAF=' },
+	])('normalizes invalid page values to 0 on /api/$endpoint', async ({ url }) => {
+		for (const invalidPage of ['-1', 'invalid']) {
+			const res = await SELF.fetch(`${url}&page=${invalidPage}`);
+			expect(res.status).toBe(200);
+			const data: any = await res.json();
+			expect(data.page).toBe(0);
+			expect(data.pageSize).toBe(5);
+			expect(data.results.length).toBeGreaterThan(0);
+		}
+	});
+
+	it.each([
+		{ endpoint: 'check', url: 'https://example.com/api/check?url=https://example.com&categories=User-Agent&envelope=1&pageSize=5&page=9999' },
+		{ endpoint: 'audit', url: 'https://example.com/api/audit?url=https://example.com&categories=SQL Injection&pageSize=5&page=9999&detectedWAF=' },
+	])('returns hasMore false and empty results when page is beyond total items on /api/$endpoint', async ({ url }) => {
+		const res = await SELF.fetch(url);
+		expect(res.status).toBe(200);
+		const data: any = await res.json();
+		expect(data.page).toBe(9999);
+		expect(data.results).toEqual([]);
+		expect(data.hasMore).toBe(false);
 	});
 
 	it('exposes confidencePercent and confidenceThreshold on /api/waf-detect', async () => {
@@ -253,5 +280,52 @@ describe('WAF Checker API', () => {
 		expect(data).toHaveProperty('patches');
 		expect(Array.isArray(data.results)).toBe(true);
 		expect(data.patches).toHaveProperty('bundles');
+	});
+
+	it('pages /api/audit and continues with the detected WAF instead of re-detecting', async () => {
+		const base = 'https://example.com/api/audit?url=https://example.com&categories=SQL Injection&pageSize=5';
+		const first: any = await (await SELF.fetch(base)).json();
+		expect(first.page).toBe(0);
+		expect(first.pageSize).toBe(5);
+		expect(first.results).toHaveLength(5);
+		expect(first.total).toBeGreaterThan(5);
+		expect(first.hasMore).toBe(true);
+		expect(first.detection).not.toBeNull();
+		expect(typeof first.detectedWAF).toBe('string');
+
+		const next: any = await (
+			await SELF.fetch(`${base}&page=1&detectedWAF=${encodeURIComponent(first.detectedWAF)}`)
+		).json();
+		expect(next.page).toBe(1);
+		expect(next.detection).toBeNull();
+		expect(next.detectedWAF).toBe(first.detectedWAF);
+		expect(next.total).toBe(first.total);
+		expect(next.results.length).toBeGreaterThan(0);
+	});
+
+	it('reads page, pageSize and detectedWAF from a POST /api/audit body', async () => {
+		const res = await SELF.fetch('https://example.com/api/audit', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ url: 'https://example.com', categories: ['SQL Injection'], page: 1, pageSize: 5, detectedWAF: '' }),
+		});
+		expect(res.status).toBe(200);
+		const data: any = await res.json();
+		expect(data.page).toBe(1);
+		expect(data.pageSize).toBe(5);
+		expect(data.detection).toBeNull();
+		expect(data.results.length).toBeGreaterThan(0);
+	});
+
+	it('gives query parameters precedence over POST body for page and pageSize in /api/audit', async () => {
+		const res = await SELF.fetch('https://example.com/api/audit?page=2&pageSize=3', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ url: 'https://example.com', categories: ['SQL Injection'], page: 1, pageSize: 5, detectedWAF: '' }),
+		});
+		expect(res.status).toBe(200);
+		const data: any = await res.json();
+		expect(data.page).toBe(2);
+		expect(data.pageSize).toBe(3);
 	});
 });

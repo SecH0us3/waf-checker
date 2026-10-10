@@ -638,6 +638,43 @@ describe('Cron scheduling fairness and unsubscribe safety', () => {
 		expect(scanned).not.toContain('https://example0.com');
 	});
 
+	// A Cron Trigger is killed at 15 minutes of wall-clock time. Slow targets must
+	// make the run stop early, stalest first, rather than be cut off mid-scan.
+	it('stops starting scans before a slow run can hit the cron wall-clock limit', async () => {
+		const { encryptPayload } = await import('../src/utils/crypto');
+		const dayMs = 24 * 3600 * 1000;
+		for (let i = 0; i < 25; i++) {
+			const record: SubscriptionRecord = {
+				email: `owner${i}@example.com`,
+				targetUrl: `https://slow${i}.com`,
+				status: 'ACTIVE',
+				manageToken: `slow-${String(i).padStart(2, '0')}`,
+				createdAt: Date.now(),
+				lastScannedAt: Date.now() - (i + 1) * dayMs,
+			};
+			mockKV.store.set(`active:slow-${String(i).padStart(2, '0')}`, await encryptPayload(record, secret));
+		}
+
+		const minute = 60 * 1000;
+		let clock = 0;
+		const scanned: string[] = [];
+		await handleScheduledCron(
+			env,
+			async (targetUrl) => {
+				scanned.push(targetUrl);
+				clock += 3 * minute; // every target is slow
+				return { wafDetected: 'Cloudflare', summary: { blocked: 5, passed: 0, total: 5 } };
+			},
+			{ now: () => clock }
+		);
+
+		expect(scanned.length).toBeGreaterThan(0);
+		expect(scanned.length).toBeLessThan(25);
+		expect(clock).toBeLessThanOrEqual(15 * minute);
+		// What did run was the stalest work; the rest leads the next run.
+		expect(scanned[0]).toBe('https://slow24.com');
+	});
+
 	it('does not delete a subscription on a bare GET', async () => {
 		const { encryptPayload } = await import('../src/utils/crypto');
 		const record: SubscriptionRecord = {

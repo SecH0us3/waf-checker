@@ -1,7 +1,13 @@
 import { handleApiCheckFiltered, handleApiCheckWithEnvelope } from './handlers/check';
 import { handleWAFDetection } from './handlers/waf-detect';
 import { handleHTTPManipulation } from './handlers/http-manip';
-import { isValidTargetUrl, runReverseEngineeringAudit, generateVirtualPatches, WAFDetector } from '@waf-checker/core';
+import {
+	isValidTargetUrl,
+	runReverseEngineeringAudit,
+	generateVirtualPatches,
+	WAFDetector,
+	maxWorkerPageSize,
+} from '@waf-checker/core';
 import {
 	handleScheduleSubscribe,
 	handleScheduleVerify,
@@ -23,6 +29,11 @@ export function isSelfScan(targetUrlOrHost: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+export function parsePositivePageParam(val: unknown): number {
+	const num = typeof val === 'number' ? val : parseInt(String(val ?? '0'), 10);
+	return Number.isFinite(num) && num > 0 ? Math.floor(num) : 0;
 }
 
 export default {
@@ -107,7 +118,9 @@ export default {
 				});
 			}
 
-			const page = parseInt(urlObj.searchParams.get('page') || '0', 10);
+			// A negative or non-numeric page would give an empty page that still reports
+			// hasMore, so a client following hasMore would loop forever.
+			const page = parsePositivePageParam(urlObj.searchParams.get('page'));
 			const methods = (urlObj.searchParams.get('methods') || 'GET')
 				.split(',')
 				.map((m) => m.trim())
@@ -159,8 +172,10 @@ export default {
 				urlObj.searchParams.get('envelope') === '1' ||
 				urlObj.searchParams.get('envelope') === 'true' ||
 				request.headers.get('accept')?.includes('application/vnd.waf-checker.v2+json');
+			// Core clamps it to what one invocation's subrequest budget allows for this
+			// scan's options; the frontend keeps paging until a page is empty.
 			const pageSizeParam = urlObj.searchParams.get('pageSize') || urlObj.searchParams.get('limit');
-			const pageSize = pageSizeParam ? parseInt(pageSizeParam, 10) : 15;
+			const pageSize = pageSizeParam ? parseInt(pageSizeParam, 10) : undefined;
 
 			const envelope = await handleApiCheckWithEnvelope(
 				url,
@@ -199,6 +214,14 @@ export default {
 			let bodyPayloadTemplate: string | undefined = undefined;
 			let bodyCustomHeaders: string | undefined = undefined;
 			let bodyCategories: string[] | undefined = undefined;
+			let bodyPage: number | undefined = undefined;
+			let bodyPageSize: number | undefined = undefined;
+			// WAF type found on an earlier page ('' = none found). Passing it back
+			// skips re-detection and keeps the payload plan, and so the page
+			// boundaries, identical across pages.
+			let knownWAF: string | undefined = urlObj.searchParams.has('detectedWAF')
+				? urlObj.searchParams.get('detectedWAF') || ''
+				: undefined;
 
 			if (request.method === 'POST') {
 				try {
@@ -207,6 +230,9 @@ export default {
 					if (body && Array.isArray(body.categories)) bodyCategories = body.categories;
 					if (body && typeof body.payloadTemplate === 'string') bodyPayloadTemplate = body.payloadTemplate;
 					if (body && typeof body.customHeaders === 'string') bodyCustomHeaders = body.customHeaders;
+					if (body && typeof body.detectedWAF === 'string' && knownWAF === undefined) knownWAF = body.detectedWAF;
+					if (body && typeof body.page === 'number') bodyPage = body.page;
+					if (body && typeof body.pageSize === 'number') bodyPageSize = body.pageSize;
 				} catch {}
 			}
 
@@ -239,10 +265,27 @@ export default {
 					.filter(Boolean);
 			}
 
-			const detection = await WAFDetector.activeDetection(url.replace(/\{PAYLOAD\}/g, ''), { isWorker: true });
+			// By default a page is as large as one invocation's subrequest budget allows
+			// (core clamps any requested size to the same bound). That covers the whole
+			// plan for no detected WAF (513 items) and for every WAF's variations up to
+			// 1321 items (Sophos), so the audit is one request with hasMore false. Only
+			// Qrator's variations (2441 items) exceed it and come back over two pages.
+			// Clients continue with `page + 1` and `detectedWAF` while hasMore is true.
+			// Query parameters win over the POST body, as for detectedWAF.
+			const pageQuery = urlObj.searchParams.get('page');
+			const page = parsePositivePageParam(pageQuery !== null ? pageQuery : bodyPage);
+			const pageSizeQuery = urlObj.searchParams.get('pageSize');
+			const pageSize =
+				pageSizeQuery !== null
+					? parseInt(pageSizeQuery, 10)
+					: (bodyPageSize ?? maxWorkerPageSize({ legitUserAgentCount: 0, followRedirect: true }));
+
+			const detection =
+				knownWAF === undefined ? await WAFDetector.activeDetection(url.replace(/\{PAYLOAD\}/g, ''), { isWorker: true }) : null;
+			const detectedWAF = knownWAF ?? (detection?.detected && detection.wafType ? detection.wafType : '');
 			const envelope = await handleApiCheckWithEnvelope(
 				url,
-				0,
+				page,
 				['GET'],
 				categories,
 				bodyPayloadTemplate,
@@ -257,18 +300,25 @@ export default {
 				false,
 				false,
 				false,
-				detection?.detected ? detection.wafType : undefined,
+				detectedWAF || undefined,
 				undefined,
-				{ isWorker: true, pageSize: 500 },
+				{ isWorker: true, pageSize },
 			);
 
+			// Patches for this page's results; for one bundle over a multi-page audit,
+			// POST the combined results to /api/virtual-patch.
 			const patches = generateVirtualPatches(envelope.results, { targetUrl: url });
 
 			return new Response(
 				JSON.stringify({
 					detection,
+					detectedWAF,
 					results: envelope.results,
 					patches,
+					page: envelope.page,
+					pageSize: envelope.pageSize,
+					total: envelope.total,
+					hasMore: envelope.hasMore,
 				}),
 				{ headers: { 'content-type': 'application/json; charset=UTF-8' } },
 			);

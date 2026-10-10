@@ -6,7 +6,7 @@
 		"deploy": "wrangler deploy",
 		"dev": "wrangler dev",
 		"start": "wrangler dev",
-		"test": "vitest",
+		"test": "vitest run",
 		"cf-typegen": "wrangler types",
 		"build": "echo 'No build step for worker'"
 	},
@@ -15,9 +15,9 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vitest-pool-workers": "^0.22.0",
-		"@vitest/coverage-v8": "~5.0.1",
+		"@vitest/coverage-v8": "~4.1.11",
 		"typescript": "^7.0.2",
-		"vitest": "~5.0.2",
+		"vitest": "~4.1.11",
 		"wrangler": "^4.147.0"
 	}
 }

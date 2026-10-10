@@ -411,6 +411,32 @@ describe('WAFDetector', () => {
 		expect(result.wafType).toBe('Unknown');
 	});
 
+	it('aborts reading a response body that never finishes at the 10s request timeout during activeDetection', async () => {
+		vi.useFakeTimers();
+		try {
+			const mockFetch = vi.fn().mockImplementation(async (_url: string, options: any) => {
+				const signal: AbortSignal = options.signal;
+				const never = () => new Promise<string>((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))));
+				return {
+					status: 403,
+					headers: {
+						get: (name: string) => (name.toLowerCase() === 'server' ? 'bunkerweb' : null),
+					},
+					text: never,
+				};
+			});
+
+			const pending = WAFDetector.activeDetection('http://example.com/api', { fetch: mockFetch as any });
+			await vi.advanceTimersByTimeAsync(10_000);
+			const result = await pending;
+
+			expect(result.detected).toBe(true);
+			expect(result.wafType).toBe('BunkerWeb');
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it('should throw an error during bypass detection for invalid URLs', async () => {
 		await expect(WAFDetector.detectBypassOpportunities('http://169.254.169.254')).rejects.toThrow('Invalid URL or restricted IP');
 	});

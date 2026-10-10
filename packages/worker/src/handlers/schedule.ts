@@ -39,6 +39,21 @@ const OWNERSHIP_REVERIFY_INTERVAL_MS = 30 * 24 * 3600 * 1000;
 /** Upper bound on subscriptions audited in a single cron invocation. */
 const MAX_SUBSCRIPTIONS_PER_RUN = 25;
 
+/** Wall-clock limit of one Cron Trigger invocation; past it the run is killed. */
+const CRON_WALL_CLOCK_MS = 15 * 60 * 1000;
+/** Kept free at the end of a run, for slack in the estimate below. */
+const CRON_SAFETY_MARGIN_MS = 60 * 1000;
+/**
+ * Longest one subscription can take when every request to its target runs to
+ * its timeout (the scan and detection timeouts cover reading the response body
+ * too, so a slowly trickling body cannot outlast them): the ownership re-check
+ * (7s across all hops), WAF detection (a
+ * baseline, then 4 parallel probes, each up to 4 hops x 10s = 80s), the
+ * 15-item scan (10s per item including redirects = 150s), plus KV writes and
+ * the alert email. Update it if those timeouts or the scan size change.
+ */
+const MAX_SUBSCRIPTION_RUN_MS = 250 * 1000;
+
 /**
  * Returns the record encryption key, or null when the deployment is not in a
  * state where the confidentiality promise holds.
@@ -527,8 +542,11 @@ export async function handleScheduleUnsubscribe(request: Request, env: WorkerEnv
 
 export async function handleScheduledCron(
 	env: WorkerEnv,
-	scanFn?: (targetUrl: string) => Promise<{ wafDetected?: string; summary?: { blocked: number; passed: number; total: number } }>
+	scanFn?: (targetUrl: string) => Promise<{ wafDetected?: string; summary?: { blocked: number; passed: number; total: number } }>,
+	options?: { now?: () => number }
 ): Promise<void> {
+	const now = options?.now ?? Date.now;
+	const runDeadline = now() + CRON_WALL_CLOCK_MS - CRON_SAFETY_MARGIN_MS;
 	if (!env.MONITOR_KV) return;
 	const secret = resolveSecret(env);
 	if (!secret) {
@@ -581,7 +599,18 @@ export async function handleScheduledCron(
 		);
 	}
 
-	for (const { keyName, record } of candidates.slice(0, MAX_SUBSCRIPTIONS_PER_RUN)) {
+	const due = candidates.slice(0, MAX_SUBSCRIPTIONS_PER_RUN);
+	for (const [index, { keyName, record }] of due.entries()) {
+		// Start a subscription only if it can finish even in the worst case. A run
+		// killed at the wall-clock limit would cut a scan off between its result and
+		// the KV write; stopping here instead leaves the rest stale, and so first in
+		// line for the next run.
+		if (now() + MAX_SUBSCRIPTION_RUN_MS > runDeadline) {
+			console.warn(
+				`Scheduled run stopping with ${due.length - index} due subscription(s) left: not enough time for another worst-case scan; they lead the next run`
+			);
+			break;
+		}
 		const key = { name: keyName };
 		try {
 

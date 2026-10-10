@@ -11,6 +11,12 @@ binding = "ASSETS"
 # TURNSTILE_SECRET_KEY is optional but strongly recommended (captcha gate).
 # See packages/worker/wrangler.toml for the full notes.
 
+# Subrequests per invocation. 10000 is the Workers Paid default; pinned so the
+# deployment matches WORKER_SUBREQUEST_LIMIT in packages/core/src/check.ts, which
+# sizes scan and audit pages from it. Change both together.
+[limits]
+subrequests = 10000
+
 [[send_email]]
 name = "SEND_EMAIL"
 allowed_sender_addresses = ["waf@secmy.app"]

@@ -22,34 +22,86 @@ import { LegitUserAgent, resolveLegitUserAgents } from './payloads-data/legit-us
  * `reissue` re-issues the exact same request but with the given User-Agent
  * header injected/overridden; the caller owns the request shape so this works
  * uniformly for param, file and header checks.
+ *
+ * Every identity in the list is eligible (the worker and the CLI probe the
+ * same list; the Worker's page size is sized for it, see maxWorkerPageSize).
+ * The first identity goes alone, so a site that trusts it costs one probe. The
+ * rest go through a pool of UA_PROBE_CONCURRENCY requests in flight, and no new
+ * probe starts once one has got through. `hits` holds every identity that got
+ * through (probes already in flight may add more than one); `tested` counts the
+ * requests actually sent.
  */
 async function probeUserAgentBypass(
 	reissue: (userAgent: string) => Promise<any>,
 	legitUserAgents: LegitUserAgent[],
 	detection: WAFDetectionResult | undefined,
 	probedPayload: string | undefined,
-	isWorker?: boolean,
 ): Promise<UserAgentBypassInfo> {
-	// On Cloudflare Workers (50 subrequest limit), probe top 3 bots (Googlebot, Bingbot, Slackbot)
-	const candidateAgents = isWorker ? legitUserAgents.slice(0, 3) : legitUserAgents;
 	const info: UserAgentBypassInfo = { bypassed: false, tested: 0, hits: [] };
-	for (const ua of candidateAgents) {
+	const probe = async (ua: LegitUserAgent) => {
 		info.tested++;
-		let res: any;
-		try {
-			res = await reissue(ua.userAgent);
-		} catch {
-			continue;
-		}
+		const res = await reissue(ua.userAgent).catch(() => undefined);
 		const status = res ? res.status : 'ERR';
+		// A network error or timeout says nothing about the WAF. Any other response
+		// the WAF did not block got past it, whatever the origin then answered: a
+		// 404, a 500 from a payload that broke a query, or a redirect.
+		if (status === 'ERR') return;
 		const { blocked, verdict } = evaluateWAFVerdict(status, res?.bodyText || '', detection, res?.response?.headers, probedPayload);
-		if (!blocked) {
-			info.bypassed = true;
-			info.hits.push({ name: ua.name, userAgent: ua.userAgent, status, verdict: verdict as 'passed' | 'exposed' });
-			break; // Found bypass, stop probing further to save subrequests
+		if (blocked) return;
+		info.bypassed = true;
+		info.hits.push({ name: ua.name, userAgent: ua.userAgent, status, verdict: verdict as 'passed' | 'exposed' });
+	};
+
+	if (legitUserAgents.length === 0) return info;
+	await probe(legitUserAgents[0]);
+	let next = 1;
+	const runProbes = async () => {
+		while (!info.bypassed && next < legitUserAgents.length) {
+			await probe(legitUserAgents[next++]);
 		}
-	}
+	};
+	const poolSize = Math.min(UA_PROBE_CONCURRENCY, legitUserAgents.length - 1);
+	await Promise.all(Array.from({ length: poolSize }, runProbes));
 	return info;
+}
+
+/**
+ * Trusted-UA probes in flight at once per blocked request. Kept below the
+ * Workers limit of 6 simultaneously open connections.
+ */
+export const UA_PROBE_CONCURRENCY = 4;
+
+/** Redirect hops sendRequest follows when followRedirect is on. */
+export const MAX_REDIRECTS = 5;
+
+/**
+ * Cloudflare Workers subrequest limit per invocation: the Workers Paid default
+ * since 2026-02 (it was 1000 before). Pinned with `[limits] subrequests` in
+ * wrangler.toml so the deployment cannot silently fall below what this assumes;
+ * change both together.
+ */
+export const WORKER_SUBREQUEST_LIMIT = 10_000;
+
+/**
+ * Subrequests held back from the page budget: inline WAF detection
+ * (WAFDetector.activeDetection on the Worker is a baseline plus 4 payload
+ * probes, each following up to 3 redirects = 20 fetches; the /cdn-cgi probe is
+ * skipped on the Worker) plus a small safety margin.
+ */
+const WORKER_RESERVED_SUBREQUESTS = 50;
+
+/**
+ * Largest page one Worker invocation can scan within WORKER_SUBREQUEST_LIMIT.
+ * Each page is a separate invocation with its own budget, so paging is what
+ * lets a scan of any size run; this only has to keep a single page within it.
+ * Worst case per item is one baseline plus one probe per trusted identity, each
+ * following up to MAX_REDIRECTS hops when followRedirect is on.
+ * handleApiCheckWithEnvelope clamps every Worker page to it.
+ */
+export function maxWorkerPageSize(opts: { legitUserAgentCount: number; followRedirect: boolean }): number {
+	const fetchesPerRequest = opts.followRedirect ? MAX_REDIRECTS + 1 : 1;
+	const perItem = (1 + opts.legitUserAgentCount) * fetchesPerRequest;
+	return Math.max(1, Math.floor((WORKER_SUBREQUEST_LIMIT - WORKER_RESERVED_SUBREQUESTS) / perItem));
 }
 
 // Helper function to send request with specified method and payload
@@ -104,6 +156,8 @@ export async function sendRequest(
 
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), 10000);
+		let responseTime = 0;
+		let bodyText = '';
 
 		try {
 			// Manual redirect handling to prevent SSRF bypass
@@ -138,7 +192,7 @@ export async function sendRequest(
 			}
 
 			let redirectCount = 0;
-			const maxRedirects = 5;
+			const maxRedirects = MAX_REDIRECTS;
 
 			while (true) {
 				const fetchOptions: RequestInit = {
@@ -180,17 +234,29 @@ export async function sendRequest(
 					}
 					// For 307 and 308, we keep the original method and body
 
+					// Release this hop's connection before opening the next one, so
+					// concurrent probes following redirects do not pile up open sockets.
+					try {
+						await resp.body?.cancel();
+					} catch {}
 					currentUrl = nextUrl;
 					redirectCount++;
 					continue;
 				}
 				break;
 			}
+
+			responseTime = Date.now() - startTime;
+			// Read the body while the timeout is still armed: the abort signal also
+			// ends a body that trickles in, so the whole request, body included, stays
+			// within the 10s budget callers rely on (e.g. the scheduled run's deadline).
+			try {
+				bodyText = await resp.clone().text();
+			} catch {}
 		} finally {
 			clearTimeout(timeoutId);
 		}
 
-		const responseTime = Date.now() - startTime;
 		let logMsg: string;
 		if (options?.color) {
 			const whitePart = `\x1b[97mRequest to ${redactUrl(url)}\x1b[0m`;
@@ -216,12 +282,6 @@ export async function sendRequest(
 		if (!options?.quiet) {
 			console.log(logMsg);
 		}
-
-		let bodyText = '';
-		try {
-			const clone = resp.clone();
-			bodyText = await clone.text();
-		} catch {}
 
 		return {
 			status: resp.status,
@@ -525,7 +585,14 @@ export async function handleApiCheckWithEnvelope(
 	// Legitimate-User-Agent bypass test: identities to replay blocked requests with.
 	const legitUserAgents = resolveLegitUserAgents(options?.spoofUserAgents);
 	let baseUrl: string;
-	const limit = options?.pageSize && options.pageSize > 0 ? options.pageSize : (options?.isWorker ? 15 : 50);
+	// Payloads per page. On the Worker, a page is clamped to what one invocation's
+	// subrequest budget allows for this scan's identity list and redirect setting;
+	// the CLI has no such limit.
+	const requestedPageSize =
+		options?.pageSize !== undefined && Number.isFinite(options.pageSize) && options.pageSize > 0 ? Math.floor(options.pageSize) : 50;
+	const limit = options?.isWorker
+		? Math.min(requestedPageSize, maxWorkerPageSize({ legitUserAgentCount: legitUserAgents.length, followRedirect }))
+		: requestedPageSize;
 	const start = page * limit;
 	const end = start + limit;
 	let offset = 0;
@@ -719,7 +786,6 @@ export async function handleApiCheckWithEnvelope(
 									legitUserAgents,
 									wafDetectionResult,
 									currentPayload,
-									options?.isWorker,
 								);
 							}
 
@@ -795,7 +861,6 @@ export async function handleApiCheckWithEnvelope(
 							legitUserAgents,
 							wafDetectionResult,
 							payload,
-							options?.isWorker,
 						);
 					}
 
@@ -885,7 +950,6 @@ export async function handleApiCheckWithEnvelope(
 							legitUserAgents,
 							wafDetectionResult,
 							payload,
-							options?.isWorker,
 						);
 						}
 
