@@ -9,3 +9,11 @@ updates:
     directory: "/" # Location of package manifests
     schedule:
       interval: "weekly"
+    ignore:
+      # @cloudflare/vitest-pool-workers (the worker test runner) supports only
+      # vitest ^4.1; vitest 5 stops the worker suite from starting (see #103,
+      # #109). Lift these once the pool supports the next vitest major.
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/*"
+        update-types: ["version-update:semver-major"]
