@@ -31,8 +31,11 @@ COPY package.json package-lock.json ./
 COPY packages/core/package.json ./packages/core/
 COPY packages/cli/package.json ./packages/cli/
 
-# Install only production dependencies
-RUN npm ci --omit=dev
+# Apply latest Alpine security patches, install production dependencies, and remove unneeded package manager tooling
+RUN apk upgrade --no-cache \
+    && npm ci --omit=dev \
+    && npm cache clean --force \
+    && rm -rf /root/.npm /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /opt/yarn* /usr/local/lib/node_modules/corepack
 
 # Copy compiled artifacts from the builder stage
 COPY --from=builder /app/packages/core/dist ./packages/core/dist

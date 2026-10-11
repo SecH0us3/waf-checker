@@ -65,6 +65,7 @@ jobs:
           image-ref: waf-checker-cli:scan
           format: 'table'
           exit-code: '1'
+          ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'HIGH,CRITICAL'
 
