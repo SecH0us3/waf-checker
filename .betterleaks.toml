@@ -1,0 +1,17 @@
+title = "WAF Checker Betterleaks Configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic and RFC example JWT attack vectors used for WAF rule testing"
+stopwords = [
+  "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0",
+  "eyJhbGciOiJOT05FIiwidHlwIjoiSldUIn0",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+  "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9",
+  "eyJhbGciOiJSUzI1NiJ9"
+]
+paths = [
+  '''packages/core/src/payloads-data/base\.ts'''
+]
