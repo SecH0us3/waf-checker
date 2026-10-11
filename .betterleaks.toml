@@ -3,15 +3,11 @@ title = "WAF Checker Betterleaks Configuration"
 [extend]
 useDefault = true
 
-[allowlist]
+# Scoped to the jwt rule in the payload corpus only: every other rule still
+# fires there, and a JWT anywhere else is still reported.
+[[allowlists]]
 description = "Synthetic and RFC example JWT attack vectors used for WAF rule testing"
-stopwords = [
-  "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0",
-  "eyJhbGciOiJOT05FIiwidHlwIjoiSldUIn0",
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-  "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9",
-  "eyJhbGciOiJSUzI1NiJ9"
-]
+targetRules = ["jwt"]
 paths = [
-  '''packages/core/src/payloads-data/base\.ts'''
+  '''^packages/core/src/payloads-data/base\.ts$'''
 ]

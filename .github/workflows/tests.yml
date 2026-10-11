@@ -19,6 +19,7 @@ concurrency:
 jobs:
   secrets:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -28,6 +29,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # --redact keeps a detected secret out of the public job log; the explicit
+      # --config fails the job if the allowlist file is missing or renamed.
       - name: Betterleaks secret scanning
         run: >
           docker run --rm
@@ -36,7 +39,7 @@ jobs:
           -e GIT_CONFIG_VALUE_0=/repo
           -v "$PWD:/repo:ro"
           ghcr.io/betterleaks/betterleaks:v1.9.0@sha256:e3b95b0db6c2735db17165c009b0ad6d9cef34fb4578659232b98f69d7346cac
-          git /repo
+          git /repo --redact --config /repo/.betterleaks.toml
 
   test:
     runs-on: ubuntu-latest
