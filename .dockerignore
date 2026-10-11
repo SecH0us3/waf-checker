@@ -1,0 +1,10 @@
+.git
+.github
+.env*
+node_modules
+packages/*/node_modules
+dist
+packages/*/dist
+coverage
+.betterleaks.toml
+*.md

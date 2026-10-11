@@ -38,5 +38,7 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/packages/core/dist ./packages/core/dist
 COPY --from=builder /app/packages/cli/dist ./packages/cli/dist
 
+USER 10001
+
 # Use entrypoint to run cli directly
 ENTRYPOINT ["node", "packages/cli/dist/index.js"]
