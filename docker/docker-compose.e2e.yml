@@ -1,6 +1,6 @@
 services:
   waf-test-backend:
-    image: nginx:alpine
+    image: nginx:alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
     container_name: waf-test-backend
     ports:
       - "8081:80"
@@ -8,7 +8,7 @@ services:
       - waf-e2e-net
 
   waf-test-modsec:
-    image: owasp/modsecurity-crs:nginx
+    image: owasp/modsecurity-crs:nginx@sha256:133267aa811e1a57a23b52ef04b3c30e802bcbe5454588f6d6af1f69f4b2b667
     container_name: waf-test-modsec
     environment:
       - BACKEND=http://waf-test-backend:80
@@ -22,7 +22,7 @@ services:
       - waf-e2e-net
 
   waf-test-caddy:
-    image: caddy:alpine
+    image: caddy:alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
     container_name: waf-test-caddy
     volumes:
       - ./caddy:/etc/caddy:ro
@@ -34,7 +34,7 @@ services:
       - waf-e2e-net
 
   waf-test-haproxy:
-    image: haproxy:alpine
+    image: haproxy:alpine@sha256:7af8255207ee9964ccb4eec8ce4b7a40b777769665e3ae83897fb01b24d8a43a
     container_name: waf-test-haproxy
     volumes:
       - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
@@ -46,7 +46,7 @@ services:
       - waf-e2e-net
 
   waf-test-nginx:
-    image: nginx:alpine
+    image: nginx:alpine@sha256:df221db836e1754089190208cee7eeda94f233197056426eda74a43ab1abeac2
     container_name: waf-test-nginx
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
@@ -58,7 +58,7 @@ services:
       - waf-e2e-net
 
   waf-test-apache:
-    image: httpd:2.4-alpine
+    image: httpd:2.4-alpine@sha256:3440c39d8d6f54fa9ad2549e5a60c19ddd435faadc29c1ad28aa795f71888889
     container_name: waf-test-apache
     volumes:
       - ./apache/httpd.conf:/usr/local/apache2/conf/httpd.conf:ro
@@ -70,7 +70,7 @@ services:
       - waf-e2e-net
 
   waf-test-envoy:
-    image: envoyproxy/envoy:v1.31-latest
+    image: envoyproxy/envoy:v1.31.0@sha256:2bf7f042e3960e3904864cb09c174498e20a06859a5c394b7e3a6528a649b1da
     container_name: waf-test-envoy
     volumes:
       - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
