@@ -30,7 +30,11 @@ jobs:
 
       - name: Betterleaks secret scanning
         run: >
-          docker run --rm -v "$PWD:/repo:ro"
+          docker run --rm
+          -e GIT_CONFIG_COUNT=1
+          -e GIT_CONFIG_KEY_0=safe.directory
+          -e GIT_CONFIG_VALUE_0=/repo
+          -v "$PWD:/repo:ro"
           ghcr.io/betterleaks/betterleaks:v1.9.0@sha256:e3b95b0db6c2735db17165c009b0ad6d9cef34fb4578659232b98f69d7346cac
           git /repo
 
