@@ -46,6 +46,15 @@ export const ADVANCED_PAYLOADS: Record<string, PayloadCategory> = {
 			// Version-specific bypasses
 			"'UNION/*!50000SELECT*/1,2,3--", // MySQL version comment
 			"'UNION/*#*/SELECT/*#*/1,2,3--", // Alternative comment
+
+			// Whitespace-free bypasses (parentheses instead of spaces)
+			"'UNION(SELECT(1),2,3)--",
+			"'OR(1)=(1)--",
+			"'AND(SELECT'1')='1",
+
+			// Scientific-notation tautology (space-optional, digit-boundary evasion)
+			"'OR 1E0=1--",
+			"'OR.1=0.1--",
 		],
 		falsePayloads: [
 			"John O'Connor's Profile",
@@ -101,6 +110,16 @@ export const ADVANCED_PAYLOADS: Record<string, PayloadCategory> = {
 			'<math href=javascript:alert(1)>CLICK',
 			'<marquee onstart=alert(1)>',
 			'<details open ontoggle=alert(1)>',
+
+			// Tag/attribute separator obfuscation (slash, tab, newline, form-feed)
+			'<svg\tonload=alert(1)>',
+			'<svg\nonload=alert(1)>',
+			'<svg\fonload=alert(1)>',
+			'<img//src=x//onerror=alert(1)>',
+
+			// Full-width homoglyphs (NFKC-normalizing backends fold these to ASCII)
+			'＜script＞alert(1)＜/script＞',
+			'＜img src=x onerror=alert(1)＞',
 
 			// Polyglot XSS
 			'jaVasCript:/*-/*`/*\\`/*\'/*"/**/(/* */onerror=alert(1) )//%0D%0A%0d%0a//</stYle/</titLe/</teXtarEa/</scRipt/--!>\\x3csVg/<sVg/oNloAd=alert(1)//>',
@@ -459,6 +478,23 @@ export const ADVANCED_PAYLOADS: Record<string, PayloadCategory> = {
 			'\\u0027 UNION SELECT null,null--',
 		],
 		falsePayloads: ['Safe form input', 'Search term', 'Standard post body'],
+	},
+
+	'Unicode Normalization (NFKC) Evasion': {
+		type: 'ParamCheck',
+		payloads: [
+			// Full-width SQLi — NFKC folds U+FF21-FF5A back to ASCII keywords
+			'＇ＯＲ １＝１－－',
+			'＇ ＵＮＩＯＮ ＳＥＬＥＣＴ ｎｕｌｌ－－',
+			// Full-width XSS
+			'＜ｓｃｒｉｐｔ＞ａｌｅｒｔ（１）＜／ｓｃｒｉｐｔ＞',
+			'＜ｉｍｇ ｓｒｃ＝ｘ ｏｎｅｒｒｏｒ＝ａｌｅｒｔ（１）＞',
+			// Full-width path traversal
+			'．．／．．／．．／ｅｔｃ／ｐａｓｓｗｄ',
+			// Ideographic space as separator (NFKC -> ' ')
+			"'　OR　1=1--",
+		],
+		falsePayloads: ['Full width text サンプル', 'ｎｏｒｍａｌ ｓｅａｒｃｈ', 'Japanese：テスト'],
 	},
 
 	'Prototype Pollution - Advanced Bypasses': {

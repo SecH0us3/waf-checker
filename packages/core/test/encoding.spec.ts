@@ -43,6 +43,46 @@ describe('encoding.ts', () => {
 			expect(res.some((r) => r.includes('%C0%AF'))).toBe(true);
 		});
 
+		it('should full-width encode ASCII and NFKC-normalize back to the original', () => {
+			const encoded = PayloadEncoder.fullWidthEncode('<script>');
+			expect(encoded).toBe('＜ｓｃｒｉｐｔ＞');
+			// The whole point: an NFKC-normalizing backend recovers the attack.
+			expect(encoded.normalize('NFKC')).toBe('<script>');
+		});
+
+		it('should full-width encode spaces to ideographic space (NFKC -> space)', () => {
+			const encoded = PayloadEncoder.fullWidthEncode('a b');
+			expect(encoded).toContain('　');
+			expect(encoded.normalize('NFKC')).toBe('a b');
+		});
+
+		it('should include full-width variant in applyEncodings', () => {
+			const res = PayloadEncoder.applyEncodings('SELECT', { fullWidth: true });
+			expect(res.some((r) => r.normalize('NFKC') === 'SELECT' && r !== 'SELECT')).toBe(true);
+		});
+
+		it('should produce parenthesis-wrapped tautology SQL obfuscation', () => {
+			const res = PayloadEncoder.sqlObfuscation("' OR 1=1--");
+			expect(res.some((r) => r.includes('OR(1)=(1)'))).toBe(true);
+		});
+
+		it('should not recase OR/AND inside unrelated case-sensitive tokens', () => {
+			// Regression: \b anchoring keeps 'constructor' and 'command' intact.
+			const out = PayloadEncoder.mixedCaseEncode('x[constructor][prototype]=1&command=2');
+			expect(out).toContain('constructor');
+			expect(out).toContain('command');
+		});
+
+		it('should produce MySQL inline-comment keyword obfuscation', () => {
+			const res = PayloadEncoder.sqlObfuscation('UNION SELECT 1');
+			expect(res.some((r) => r.includes('/*!50000SELECT*/'))).toBe(true);
+		});
+
+		it('should obfuscate tag/attribute separators in xss', () => {
+			const res = PayloadEncoder.xssObfuscation('<svg onload=alert(1)>');
+			expect(res.some((r) => r.includes('<svg/onload='))).toBe(true);
+		});
+
 		it('should apply multiple encodings', () => {
 			const res = PayloadEncoder.applyEncodings('test <', { 
 				doubleUrlEncode: true, 
