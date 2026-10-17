@@ -27,15 +27,24 @@ export function generateSARIFReport(results: AuditResultItem[], targetUrl?: stri
 	});
 
 	const sarifResults = results
-		.filter((r) => r.status === 200 || r.status === '200')
+		.filter((r) => {
+			if (r.ipHeaderBypass?.bypassed || r.userAgentBypass?.bypassed) return true;
+			if (r.blocked === true) return false;
+			return r.status === 200 || r.status === '200';
+		})
 		.map((r) => {
 			const ruleId = `WAF-${r.category.toUpperCase().replace(/[^A-Z0-9]/g, '-')}`;
+			const bypassDetails = r.ipHeaderBypass?.bypassed
+				? ` (IP Header bypass via ${r.ipHeaderBypass.hits.map((h) => `${h.headerName}: ${h.headerValue}`).join(', ')})`
+				: r.userAgentBypass?.bypassed
+					? ` (User-Agent bypass via ${r.userAgentBypass.hits.map((h) => h.name).join(', ')})`
+					: '';
 			return {
 				ruleId,
 				ruleIndex: uniqueCategories.indexOf(r.category),
 				level: 'error',
 				message: {
-					text: `WAF Bypass detected: [${r.category}] attack payload succeeded using ${r.method} method (${r.responseTime}ms). Payload: "${r.payload}"`,
+					text: `WAF Bypass detected: [${r.category}] attack payload succeeded${bypassDetails} using ${r.method} method (${r.responseTime}ms). Payload: "${r.payload}"`,
 				},
 				locations: [
 					{
@@ -65,6 +74,8 @@ export function generateSARIFReport(results: AuditResultItem[], targetUrl?: stri
 					responseTimeMs: r.responseTime,
 					bypassTechnique: r.bypassTechnique || 'Standard',
 					detectedWAF: r.wafType || stats.detectedWAF,
+					...(r.ipHeaderBypass?.bypassed ? { ipHeaderBypass: r.ipHeaderBypass } : {}),
+					...(r.userAgentBypass?.bypassed ? { userAgentBypass: r.userAgentBypass } : {}),
 				},
 			};
 		});

@@ -18,7 +18,11 @@ export interface CheckResult {
 	wafType?: string;
 	bypassTechnique?: string;
 	originalPayload?: string;
+	blocked?: boolean;
 	verdict?: 'blocked' | 'passed' | 'exposed';
+	baselineNote?: 'origin_blocked' | 'custom_block_page';
+	userAgentBypass?: any;
+	ipHeaderBypass?: any;
 }
 
 export interface BatchResult {

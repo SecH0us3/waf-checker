@@ -178,6 +178,9 @@ checkCmd
 	.option('--http-manipulation', 'Run HTTP manipulation tests (Verb Tampering, Parameter Pollution, etc.)', false)
 	.option('--padding <size>', 'Enable WAF inspection buffer padding evasion (e.g. 8kb, 16kb, 64kb, 128kb)')
 	.option('--no-spoof-user-agent', 'Disable the legitimate User-Agent bypass test (replays blocked 403 requests as Googlebot, Slackbot, etc.)')
+	.option('--no-spoof-ip', 'Disable the trusted IP header bypass test (replays blocked 403/406 requests with X-Forwarded-For, X-Real-IP, True-Client-IP, etc.)')
+	.option('--no-calibrate-baseline', 'Disable baseline calibration before scanning')
+	.option('--concurrency <number>', 'Number of concurrent payload requests', '5')
 	.option('--json', 'Output results in JSON format')
 	.option('-f, --format <format>', 'Output format for report: json, csv, html, sarif, markdown, junit')
 	.option('-o, --output <path>', 'File path to save the report to')
@@ -222,6 +225,8 @@ checkCmd
 				paddingSize: options.padding || '16kb',
 			} : undefined;
 
+			const concurrency = Math.max(1, parseInt(options.concurrency, 10) || 5);
+
 			const results = await handleApiCheckFiltered(
 				url,
 				0, // Single page holding every payload (see ALL_PAYLOADS_PAGE_SIZE)
@@ -238,7 +243,17 @@ checkCmd
 				options.encodingVariations,
 				options.detectedWaf,
 				httpManipulationOpts,
-				{ fetch: customFetch, color: useColor, quiet: isQuiet, allowLocal, spoofUserAgents: options.spoofUserAgent !== false, pageSize: ALL_PAYLOADS_PAGE_SIZE }
+				{
+					fetch: customFetch,
+					color: useColor,
+					quiet: isQuiet,
+					allowLocal,
+					spoofUserAgents: options.spoofUserAgent !== false,
+					spoofIpHeaders: options.spoofIp !== false,
+					calibrateBaseline: options.calibrateBaseline !== false,
+					concurrency,
+					pageSize: ALL_PAYLOADS_PAGE_SIZE,
+				}
 			);
 
 			let reverseReport: ReverseEngineeringReport | undefined = undefined;
@@ -291,20 +306,23 @@ checkCmd
 			console.log(`\n=== WAF Audit Results for ${colors.cyan(url)} ===`);
 			console.log(`Total tests executed: ${results.length}`);
 
-			const blocked = results.filter((r: any) => r.status === 403 || r.status === 'BLOCKED');
-			const bypassed = results.filter((r: any) => r.status === 200 || r.status === '200');
+			const blocked = results.filter((r: any) => (r.status === 403 || r.status === 'BLOCKED' || r.blocked === true) && r.baselineNote !== 'origin_blocked');
+			const bypassed = results.filter((r: any) => (r.status === 200 || r.status === '200') && r.blocked !== true);
+			const originBlocked = results.filter((r: any) => r.baselineNote === 'origin_blocked');
 			const redirect = results.filter((r: any) => r.is_redirect);
 			const errors = results.filter((r: any) => r.status === 'ERR');
-			// Legitimate User-Agent bypasses: blocked (403) with a normal UA, but let
-			// through once the request claimed to be a trusted bot. Tracked separately
-			// from `bypassed` (their status is 403) so protectionScore stays honest,
-			// but they still fail CI checks below.
+			// Legitimate User-Agent & Trusted IP Header bypasses: blocked (403) normally,
+			// but let through once the request claimed to be a trusted bot or spoofed
+			// proxy IP headers. Tracked separately from `bypassed` so protectionScore
+			// stays honest, but they still fail CI checks below.
 			const uaBypasses = results.filter((r: any) => r.userAgentBypass?.bypassed);
+			const ipBypasses = results.filter((r: any) => r.ipHeaderBypass?.bypassed);
 
 			const protectionScore = results.length ? Math.round((blocked.length / results.length) * 100) : 100;
 
 			console.log(`  🛡️ Blocked:   ${colors.green(`${blocked.length} (${protectionScore}%)`)}`);
 			console.log(`  🔓 Bypassed:  ${bypassed.length > 0 ? colors.red(`${bypassed.length} (${results.length ? Math.round(bypassed.length / results.length * 100) : 0}%)`) : colors.green('0 (0%)')}`);
+			if (originBlocked.length > 0) console.log(`  ⚠️ Origin 403: ${colors.yellow(`${originBlocked.length} (matches benign baseline 403/406)`)}`);
 			if (redirect.length > 0) console.log(`  🔄 Redirects: ${colors.yellow(String(redirect.length))}`);
 			if (errors.length > 0) console.log(`  ⚠️ Errors:    ${colors.red(String(errors.length))}`);
 
@@ -325,7 +343,7 @@ checkCmd
 					console.log(`... and ${colors.yellow(String(bypassed.length - 50))} more bypasses.`);
 				}
 				console.log('--------------------------------------------------------------------------------');
-			} else if (uaBypasses.length === 0) {
+			} else if (uaBypasses.length === 0 && ipBypasses.length === 0) {
 				console.log(`\n${colors.green('🛡️ Perfect Score: All attack vectors were successfully blocked.')}`);
 			}
 
@@ -344,6 +362,25 @@ checkCmd
 				});
 				if (uaBypasses.length > 50) {
 					console.log(`  ... and ${colors.yellow(String(uaBypasses.length - 50))} more User-Agent bypasses.`);
+				}
+				console.log('--------------------------------------------------------------------------------');
+			}
+
+			// Trusted IP Header bypasses: requests blocked normally that sailed through
+			// when spoofing X-Forwarded-For, X-Real-IP, True-Client-IP, etc.
+			if (ipBypasses.length > 0) {
+				console.log(`\n${colors.red('🌐 TRUSTED IP HEADER ALLOW-LIST BYPASSES DETECTED:')}`);
+				console.log(colors.yellow('   (blocked normally, but let through when spoofing proxy/forwarding headers)'));
+				console.log('--------------------------------------------------------------------------------');
+				ipBypasses.slice(0, 50).forEach((r: any) => {
+					const headersList = r.ipHeaderBypass.hits.map((h: any) => `${h.header}: ${h.value}`).join(', ');
+					const cat = colors.cyan(r.category);
+					const pay = colors.bold(String(r.payload).substring(0, 50));
+					console.log(`  • ${cat} [${r.method}] ${colors.green('403')} ${colors.red('→ bypassed')} via ${colors.red(headersList)}`);
+					console.log(`      payload: ${pay}`);
+				});
+				if (ipBypasses.length > 50) {
+					console.log(`  ... and ${colors.yellow(String(ipBypasses.length - 50))} more Trusted IP header bypasses.`);
 				}
 				console.log('--------------------------------------------------------------------------------');
 			}
@@ -411,17 +448,22 @@ checkCmd
 					console.error(colors.red(`CI/CD Threshold Failed: Protection score ${protectionScore}% is below required threshold of ${minThreshold}%.`));
 					process.exit(1);
 				}
-				// A User-Agent allow-list bypass defeats the WAF regardless of score.
+				// A User-Agent or Trusted IP allow-list bypass defeats the WAF regardless of score.
 				if (uaBypasses.length > 0) {
 					console.error(colors.red(`CI/CD Threshold Failed: ${uaBypasses.length} User-Agent allow-list bypass(es) detected.`));
 					process.exit(1);
 				}
+				if (ipBypasses.length > 0) {
+					console.error(colors.red(`CI/CD Threshold Failed: ${ipBypasses.length} Trusted IP header allow-list bypass(es) detected.`));
+					process.exit(1);
+				}
 			}
 
-			if (options.failOnBypass && (bypassed.length > 0 || uaBypasses.length > 0)) {
+			if (options.failOnBypass && (bypassed.length > 0 || uaBypasses.length > 0 || ipBypasses.length > 0)) {
 				const parts = [];
 				if (bypassed.length > 0) parts.push(`${bypassed.length} bypass(es)`);
 				if (uaBypasses.length > 0) parts.push(`${uaBypasses.length} User-Agent allow-list bypass(es)`);
+				if (ipBypasses.length > 0) parts.push(`${ipBypasses.length} Trusted IP header allow-list bypass(es)`);
 				console.error(colors.red(`CI/CD Check Failed: ${parts.join(' and ')} detected.`));
 				process.exit(1);
 			}

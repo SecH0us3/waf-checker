@@ -44,6 +44,8 @@ type Outcome = 'failure' | 'error' | 'pass';
  */
 function classify(r: AuditResultItem): Outcome {
 	if (r.userAgentBypass?.bypassed) return 'failure';
+	if (r.ipHeaderBypass?.bypassed) return 'failure';
+	if (r.blocked === true) return 'pass';
 	if (r.status === 200 || r.status === '200') return 'failure';
 	if (r.status === 'ERR' || r.status === 500 || r.status === '500' || r.error) return 'error';
 	return 'pass';
@@ -103,7 +105,9 @@ export function generateJUnitReport(results: AuditResultItem[], targetUrl?: stri
 				outcome === 'failure'
 					? (r.userAgentBypass?.bypassed
 						? `WAF bypass: request allowed under a trusted User-Agent (${r.userAgentBypass.hits.map((h) => h.name).join(', ')})`
-						: `WAF bypass: ${category} payload was not blocked (status ${r.status})`)
+						: r.ipHeaderBypass?.bypassed
+							? `WAF bypass: request allowed under a trusted IP header (${r.ipHeaderBypass.hits.map((h) => `${h.headerName}: ${h.headerValue}`).join(', ')})`
+							: `WAF bypass: ${category} payload was not blocked (status ${r.status})`)
 					: `Request error (status ${r.status})`;
 			const type = outcome === 'failure' ? 'WafBypass' : 'RequestError';
 			const body = [

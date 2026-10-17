@@ -10,8 +10,16 @@ import {
 import { HTTPManipulationOptions, HTTPManipulator } from './http-manipulation';
 import { isValidTargetUrl, isInScopeRedirect } from './utils/security';
 import { substitutePayload, processCustomHeaders, randomUppercase, seededRandom, redactHeaders, redactUrl } from './utils/payload-utils';
-import { AuditResultItem, CheckResultEnvelope, UserAgentBypassInfo } from './reports/types';
+import { AuditResultItem, CheckResultEnvelope, UserAgentBypassInfo, IpHeaderBypassInfo } from './reports/types';
 import { LegitUserAgent, resolveLegitUserAgents } from './payloads-data/legit-user-agents';
+import { TrustedIpHeader, resolveTrustedIpHeaders } from './payloads-data/trusted-ip-headers';
+import {
+	BaselineProfile,
+	computeBodySignature,
+	areBodiesStructurallySimilar,
+	isSoftBlockBody,
+} from './baseline';
+import { mapWithConcurrency } from './utils/concurrency';
 
 /**
  * Replays a request that the WAF blocked (403) under a set of legitimate,
@@ -36,6 +44,7 @@ async function probeUserAgentBypass(
 	legitUserAgents: LegitUserAgent[],
 	detection: WAFDetectionResult | undefined,
 	probedPayload: string | undefined,
+	baseline?: BaselineProfile,
 ): Promise<UserAgentBypassInfo> {
 	const info: UserAgentBypassInfo = { bypassed: false, tested: 0, hits: [] };
 	const probe = async (ua: LegitUserAgent) => {
@@ -46,7 +55,7 @@ async function probeUserAgentBypass(
 		// the WAF did not block got past it, whatever the origin then answered: a
 		// 404, a 500 from a payload that broke a query, or a redirect.
 		if (status === 'ERR') return;
-		const { blocked, verdict } = evaluateWAFVerdict(status, res?.bodyText || '', detection, res?.response?.headers, probedPayload);
+		const { blocked, verdict } = evaluateWAFVerdict(status, res?.bodyText || '', detection, res?.response?.headers, probedPayload, baseline);
 		if (blocked) return;
 		info.bypassed = true;
 		info.hits.push({ name: ua.name, userAgent: ua.userAgent, status, verdict: verdict as 'passed' | 'exposed' });
@@ -66,8 +75,52 @@ async function probeUserAgentBypass(
 }
 
 /**
- * Trusted-UA probes in flight at once per blocked request. Kept below the
- * Workers limit of 6 simultaneously open connections.
+ * Replays a request that the WAF blocked (403/406) with a curated list of
+ * proxy / IP-spoofing headers (X-Forwarded-For: 127.0.0.1, X-Real-IP, True-Client-IP, ...).
+ * Mirrors `probeUserAgentBypass`: the first header goes alone, and any remaining
+ * headers run through a pool of `UA_PROBE_CONCURRENCY` until a bypass is found.
+ */
+export async function probeIpHeaderBypass(
+	reissue: (headerName: string, headerValue: string) => Promise<any>,
+	trustedIpHeaders: TrustedIpHeader[],
+	detection: WAFDetectionResult | undefined,
+	probedPayload: string | undefined,
+	baseline?: BaselineProfile,
+): Promise<IpHeaderBypassInfo> {
+	const info: IpHeaderBypassInfo = { bypassed: false, tested: 0, hits: [] };
+	const probe = async (ipHeader: TrustedIpHeader) => {
+		info.tested++;
+		const res = await reissue(ipHeader.headerName, ipHeader.headerValue).catch(() => undefined);
+		const status = res ? res.status : 'ERR';
+		if (status === 'ERR') return;
+		const { blocked, verdict } = evaluateWAFVerdict(status, res?.bodyText || '', detection, res?.response?.headers, probedPayload, baseline);
+		if (blocked) return;
+		info.bypassed = true;
+		info.hits.push({
+			name: ipHeader.name,
+			headerName: ipHeader.headerName,
+			headerValue: ipHeader.headerValue,
+			status,
+			verdict: verdict as 'passed' | 'exposed',
+		});
+	};
+
+	if (trustedIpHeaders.length === 0) return info;
+	await probe(trustedIpHeaders[0]);
+	let next = 1;
+	const runProbes = async () => {
+		while (!info.bypassed && next < trustedIpHeaders.length) {
+			await probe(trustedIpHeaders[next++]);
+		}
+	};
+	const poolSize = Math.min(UA_PROBE_CONCURRENCY, trustedIpHeaders.length - 1);
+	await Promise.all(Array.from({ length: poolSize }, runProbes));
+	return info;
+}
+
+/**
+ * Trusted-UA / IP-header probes in flight at once per blocked request. Kept below
+ * the Workers limit of 6 simultaneously open connections.
  */
 export const UA_PROBE_CONCURRENCY = 4;
 
@@ -86,7 +139,7 @@ export const WORKER_SUBREQUEST_LIMIT = 10_000;
  * Subrequests held back from the page budget: inline WAF detection
  * (WAFDetector.activeDetection on the Worker is a baseline plus 4 payload
  * probes, each following up to 3 redirects = 20 fetches; the /cdn-cgi probe is
- * skipped on the Worker) plus a small safety margin.
+ * skipped on the Worker) plus baseline calibration and a small safety margin.
  */
 const WORKER_RESERVED_SUBREQUESTS = 50;
 
@@ -94,13 +147,17 @@ const WORKER_RESERVED_SUBREQUESTS = 50;
  * Largest page one Worker invocation can scan within WORKER_SUBREQUEST_LIMIT.
  * Each page is a separate invocation with its own budget, so paging is what
  * lets a scan of any size run; this only has to keep a single page within it.
- * Worst case per item is one baseline plus one probe per trusted identity, each
- * following up to MAX_REDIRECTS hops when followRedirect is on.
+ * Worst case per item is one baseline plus one probe per trusted identity and
+ * trusted IP header, each following up to MAX_REDIRECTS hops when followRedirect is on.
  * handleApiCheckWithEnvelope clamps every Worker page to it.
  */
-export function maxWorkerPageSize(opts: { legitUserAgentCount: number; followRedirect: boolean }): number {
+export function maxWorkerPageSize(opts: {
+	legitUserAgentCount: number;
+	trustedIpHeaderCount?: number;
+	followRedirect: boolean;
+}): number {
 	const fetchesPerRequest = opts.followRedirect ? MAX_REDIRECTS + 1 : 1;
-	const perItem = (1 + opts.legitUserAgentCount) * fetchesPerRequest;
+	const perItem = (1 + opts.legitUserAgentCount + (opts.trustedIpHeaderCount || 0)) * fetchesPerRequest;
 	return Math.max(1, Math.floor((WORKER_SUBREQUEST_LIMIT - WORKER_RESERVED_SUBREQUESTS) / perItem));
 }
 
@@ -477,9 +534,11 @@ export function evaluateWAFVerdict(
 	bodyText: string = '',
 	detection?: WAFDetectionResult,
 	headers?: Headers,
-	probedPayload?: string
-): { blocked: boolean; verdict: 'blocked' | 'passed' | 'exposed' } {
+	probedPayload?: string,
+	baseline?: BaselineProfile,
+): { blocked: boolean; verdict: 'blocked' | 'passed' | 'exposed'; baselineNote?: 'origin_blocked' | 'custom_block_page' } {
 	let isBlocked = false;
+	let hasExplicitWafSignal = false;
 
 	// Characteristic WAF block status codes
 	if (
@@ -492,18 +551,22 @@ export function evaluateWAFVerdict(
 		status === 'BLOCKED'
 	) {
 		isBlocked = true;
+		if (status === 'BLOCKED') {
+			hasExplicitWafSignal = true;
+		}
 	}
 
 	// Response-level headers check
-	if (!isBlocked && headers) {
+	if (headers) {
 		const cfMitigated = headers.get('cf-mitigated');
 		if (cfMitigated && (cfMitigated === 'challenge' || cfMitigated === 'block')) {
 			isBlocked = true;
+			hasExplicitWafSignal = true;
 		}
 	}
 
 	// Response-level body markers check
-	if (!isBlocked && bodyText) {
+	if (bodyText) {
 		// Captcha challenges in this response's body
 		if (
 			bodyText.includes('cf-turnstile') ||
@@ -514,6 +577,7 @@ export function evaluateWAFVerdict(
 			bodyText.includes('h-captcha')
 		) {
 			isBlocked = true;
+			hasExplicitWafSignal = true;
 		} else if (
 			// Imperva / Incapsula block markers anchored to vendor context or fuller block page phrasing
 			((detection?.wafType === 'Imperva' ||
@@ -523,13 +587,64 @@ export function evaluateWAFVerdict(
 			/request unsuccessful\. incapsula incident id/i.test(bodyText)
 		) {
 			isBlocked = true;
+			hasExplicitWafSignal = true;
 		} else if (
 			// General WAF block markers
-			/waf-block|blocked by[^\n]{0,100}waf|request blocked|access denied[^\n]{0,100}firewall|security incident/i.test(bodyText) ||
+			/waf-block|blocked by[^\n]{0,100}waf|request blocked|access denied[^\n]{0,100}firewall|security incident|web application firewall/i.test(bodyText) ||
 			/powered by[^\n]{0,100}imperva|protected with[^\n]{0,100}bunkerweb/i.test(bodyText)
 		) {
 			isBlocked = true;
+			hasExplicitWafSignal = true;
 		}
+	}
+
+	const numStatus = typeof status === 'number' ? status : parseInt(String(status), 10);
+	const baselineNumStatus =
+		baseline && baseline.status !== undefined
+			? typeof baseline.status === 'number'
+				? baseline.status
+				: parseInt(String(baseline.status), 10)
+			: NaN;
+
+	// Baseline Case A: Origin-403 disambiguation.
+	// If the origin already returned 403/406 on a benign request (without WAF signals)
+	// and the attack response returns the same status and structurally similar body
+	// without explicit WAF headers/markers, it's an origin auth/rejection, not a WAF block.
+	if (
+		isBlocked &&
+		!hasExplicitWafSignal &&
+		baseline?.isOriginBlocked &&
+		!isNaN(numStatus) &&
+		numStatus === baselineNumStatus &&
+		areBodiesStructurallySimilar(
+			computeBodySignature(bodyText),
+			bodyText.length,
+			baseline.bodySignature,
+			baseline.bodyLength,
+		)
+	) {
+		return { blocked: false, verdict: 'passed', baselineNote: 'origin_blocked' };
+	}
+
+	// Baseline Case B: Custom Soft-Block Page (200 OK or 400 Bad Request).
+	// If the benign baseline was a normal 200 OK, and this response returned 200 or 400
+	// with a structurally different body containing explicit security rejection phrases,
+	// classify it as blocked.
+	if (
+		!isBlocked &&
+		baseline &&
+		baselineNumStatus === 200 &&
+		(numStatus === 200 || numStatus === 400) &&
+		bodyText &&
+		!areBodiesStructurallySimilar(
+			computeBodySignature(bodyText),
+			bodyText.length,
+			baseline.bodySignature,
+			baseline.bodyLength,
+		) &&
+		isSoftBlockBody(bodyText)
+	) {
+		return { blocked: true, verdict: 'blocked', baselineNote: 'custom_block_page' };
 	}
 
 	// 2. Derive verdict
@@ -537,7 +652,6 @@ export function evaluateWAFVerdict(
 		return { blocked: true, verdict: 'blocked' };
 	}
 
-	const numStatus = typeof status === 'number' ? status : parseInt(status, 10);
 	if (!isNaN(numStatus) && numStatus >= 200 && numStatus < 300) {
 		if (bodyText && bodyText.trim().length > 0 && isPlausibleArtifactContent(bodyText, probedPayload)) {
 			return { blocked: false, verdict: 'exposed' };
@@ -546,6 +660,104 @@ export function evaluateWAFVerdict(
 	}
 
 	return { blocked: false, verdict: 'passed' };
+}
+
+/**
+ * Sends a single benign reference request to build a BaselineProfile for
+ * disambiguating origin-level 403/401 responses and detecting custom soft-block pages.
+ */
+export async function captureBaseline(
+	url: string,
+	method: string = 'GET',
+	customHeaders?: string,
+	payloadTemplate?: string,
+	followRedirect: boolean = false,
+	detection?: WAFDetectionResult,
+	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; allowLocal?: boolean },
+): Promise<BaselineProfile> {
+	const benignToken = 'waf_baseline_check_9a7c';
+	const headersObj = customHeaders ? processCustomHeaders(customHeaders, benignToken) : undefined;
+	const res = await sendRequest(
+		url,
+		method,
+		benignToken,
+		headersObj,
+		payloadTemplate,
+		followRedirect,
+		false,
+		detection?.detected ? detection.wafType : undefined,
+		undefined,
+		options,
+	);
+
+	const status = res ? res.status : 'ERR';
+	const bodyText = res?.bodyText || '';
+	const contentType = res?.response?.headers?.get('content-type')?.split(';')[0]?.trim().toLowerCase() || '';
+	const bodySignature = computeBodySignature(bodyText);
+	const bodyLength = bodyText.length;
+
+	if (status === 'ERR' || status === 'BLOCKED') {
+		return {
+			status,
+			contentType,
+			bodyLength,
+			bodySignature,
+			wafBlockedOnBenign: status === 'BLOCKED',
+			isOriginBlocked: false,
+		};
+	}
+
+	// Check if explicit WAF markers fired on the benign request itself
+	const rawVerdict = evaluateWAFVerdict(status, bodyText, detection, res?.response?.headers, benignToken);
+	const numStatus = typeof status === 'number' ? status : parseInt(String(status), 10);
+	const is403Or406 = numStatus === 403 || numStatus === 406;
+
+	// Determine if an explicit WAF marker (header/body) vs bare status code caused `rawVerdict.blocked`
+	const status200Probe = evaluateWAFVerdict(200, bodyText, detection, res?.response?.headers, benignToken);
+	const wafBlockedOnBenign = status200Probe.blocked;
+	const isOriginBlocked = is403Or406 && !wafBlockedOnBenign && rawVerdict.blocked;
+
+	return {
+		status,
+		contentType,
+		bodyLength,
+		bodySignature,
+		wafBlockedOnBenign,
+		isOriginBlocked,
+	};
+}
+
+export interface CheckExecutionOptions {
+	fetch?: typeof fetch;
+	color?: boolean;
+	quiet?: boolean;
+	isWorker?: boolean;
+	allowLocal?: boolean;
+	pageSize?: number;
+	/**
+	 * Legitimate-User-Agent bypass test. `true` uses the curated list of
+	 * trusted identities; an array supplies custom ones; falsy disables it.
+	 * Blocked (403) requests are replayed under each identity to detect a
+	 * User-Agent allow-list bypass.
+	 */
+	spoofUserAgents?: boolean | LegitUserAgent[];
+	/**
+	 * Trusted IP / proxy header bypass test. `true` uses the curated list of
+	 * IP-spoofing headers (X-Forwarded-For: 127.0.0.1, X-Real-IP, True-Client-IP, ...);
+	 * an array supplies custom ones; falsy disables it.
+	 */
+	spoofIpHeaders?: boolean | TrustedIpHeader[];
+	/**
+	 * Baseline calibration before scanning. `true` sends one benign calibration
+	 * request; a `BaselineProfile` object reuses a previously captured baseline
+	 * (e.g. across pages of a multi-page scan).
+	 */
+	calibrateBaseline?: boolean | BaselineProfile;
+	/**
+	 * Maximum number of scan items to execute in parallel (default: 1, preserving
+	 * sequential behavior unless specified). Automatically steps down on 429 responses.
+	 */
+	concurrency?: number;
 }
 
 export async function handleApiCheckWithEnvelope(
@@ -564,34 +776,27 @@ export async function handleApiCheckWithEnvelope(
 	useEncodingVariations: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: {
-		fetch?: typeof fetch;
-		color?: boolean;
-		quiet?: boolean;
-		isWorker?: boolean;
-		allowLocal?: boolean;
-		pageSize?: number;
-		/**
-		 * Legitimate-User-Agent bypass test. `true` uses the curated list of
-		 * trusted identities; an array supplies custom ones; falsy disables it.
-		 * Blocked (403) requests are replayed under each identity to detect a
-		 * User-Agent allow-list bypass.
-		 */
-		spoofUserAgents?: boolean | LegitUserAgent[];
-	},
+	options?: CheckExecutionOptions,
 ): Promise<CheckResultEnvelope> {
 	const METHODS = methods && methods.length ? methods : ['GET'];
-	const results: AuditResultItem[] = [];
-	// Legitimate-User-Agent bypass test: identities to replay blocked requests with.
+	// Legitimate-User-Agent and Trusted-IP-Header bypass lists
 	const legitUserAgents = resolveLegitUserAgents(options?.spoofUserAgents);
+	const trustedIpHeaders = resolveTrustedIpHeaders(options?.spoofIpHeaders);
 	let baseUrl: string;
 	// Payloads per page. On the Worker, a page is clamped to what one invocation's
-	// subrequest budget allows for this scan's identity list and redirect setting;
+	// subrequest budget allows for this scan's identity/header lists and redirect setting;
 	// the CLI has no such limit.
 	const requestedPageSize =
 		options?.pageSize !== undefined && Number.isFinite(options.pageSize) && options.pageSize > 0 ? Math.floor(options.pageSize) : 50;
 	const limit = options?.isWorker
-		? Math.min(requestedPageSize, maxWorkerPageSize({ legitUserAgentCount: legitUserAgents.length, followRedirect }))
+		? Math.min(
+				requestedPageSize,
+				maxWorkerPageSize({
+					legitUserAgentCount: legitUserAgents.length,
+					trustedIpHeaderCount: trustedIpHeaders.length,
+					followRedirect,
+				}),
+			)
 		: requestedPageSize;
 	const start = page * limit;
 	const end = start + limit;
@@ -650,6 +855,30 @@ export async function handleApiCheckWithEnvelope(
 		} catch (e) {
 			if (!options?.quiet) {
 				console.error('WAF detection failed:', e);
+			}
+		}
+	}
+
+	// Baseline calibration if requested
+	let baselineProfile: BaselineProfile | undefined;
+	if (options?.calibrateBaseline) {
+		if (typeof options.calibrateBaseline === 'object') {
+			baselineProfile = options.calibrateBaseline;
+		} else {
+			try {
+				baselineProfile = await captureBaseline(
+					url,
+					METHODS[0] || 'GET',
+					customHeaders,
+					payloadTemplate,
+					followRedirect,
+					wafDetectionResult,
+					options,
+				);
+			} catch (e) {
+				if (!options?.quiet) {
+					console.error('Baseline calibration failed:', e);
+				}
 			}
 		}
 	}
@@ -716,7 +945,10 @@ export async function handleApiCheckWithEnvelope(
 		}
 	}
 
-	for (const [category, info] of payloadEntries) {
+	const pageTasks: Array<() => Promise<AuditResultItem>> = [];
+	let stoppedEarly = false;
+
+	outerLoop: for (const [category, info] of payloadEntries) {
 		const checkType = info.type || 'ParamCheck';
 		const payloads = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
 		if (checkType === 'ParamCheck') {
@@ -724,22 +956,20 @@ export async function handleApiCheckWithEnvelope(
 				for (const currentPayload of payloadVariations) {
 					for (const method of METHODS) {
 						if (offset >= end) {
-							return { results, page, pageSize: limit, total: totalItems, hasMore: true };
+							stoppedEarly = true;
+							break outerLoop;
 						}
 						if (offset >= start) {
-							// Check if detected WAF is CloudFront
 							const detectedWAFType = detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined);
 							let finalPayload = currentPayload;
-							let finalMethod = method;
+							const finalMethod = method;
 
-							// Process custom headers if provided
 							const headersObj = customHeaders ? processCustomHeaders(customHeaders, currentPayload) : undefined;
 
-							// Apply HTTP manipulation if enabled
 							if (httpManipulation?.enableParameterPollution) {
 								const pollutedPayloads = generateHTTPManipulationPayloads(currentPayload, 'pollution');
 								if (pollutedPayloads.length > 1) {
-									finalPayload = pollutedPayloads[1]; // Use first variation
+									finalPayload = pollutedPayloads[1];
 								}
 							} else if (httpManipulation?.enableInspectionLimitPadding) {
 								const paddingSize = httpManipulation.paddingSize || '16kb';
@@ -747,11 +977,246 @@ export async function handleApiCheckWithEnvelope(
 								finalPayload = variations.queryPadding;
 							}
 
+							pageTasks.push(async () => {
+								const res = await sendRequest(
+									url,
+									finalMethod,
+									finalPayload,
+									headersObj,
+									payloadTemplate,
+									followRedirect,
+									useEnhancedPayloads,
+									detectedWAFType,
+									undefined,
+									options,
+								);
+
+								const bodyText = res?.bodyText || '';
+								const itemStatus = res ? res.status : 'ERR';
+								const itemError = res?.error || null;
+								const { blocked, verdict, baselineNote } = evaluateWAFVerdict(
+									itemStatus,
+									bodyText,
+									wafDetectionResult,
+									res?.response?.headers,
+									currentPayload,
+									baselineProfile,
+								);
+
+								let userAgentBypass: UserAgentBypassInfo | undefined;
+								if (legitUserAgents.length && blocked && (itemStatus === 403 || itemStatus === '403' || itemStatus === 406 || itemStatus === '406')) {
+									userAgentBypass = await probeUserAgentBypass(
+										(ua) =>
+											sendRequest(
+												url,
+												finalMethod,
+												finalPayload,
+												{ ...(headersObj || {}), 'User-Agent': ua },
+												payloadTemplate,
+												followRedirect,
+												useEnhancedPayloads,
+												detectedWAFType,
+												undefined,
+												options,
+											),
+										legitUserAgents,
+										wafDetectionResult,
+										currentPayload,
+										baselineProfile,
+									);
+								}
+
+								let ipHeaderBypass: IpHeaderBypassInfo | undefined;
+								if (trustedIpHeaders.length && blocked && (itemStatus === 403 || itemStatus === '403' || itemStatus === 406 || itemStatus === '406')) {
+									ipHeaderBypass = await probeIpHeaderBypass(
+										(hName, hVal) =>
+											sendRequest(
+												url,
+												finalMethod,
+												finalPayload,
+												{ ...(headersObj || {}), [hName]: hVal },
+												payloadTemplate,
+												followRedirect,
+												useEnhancedPayloads,
+												detectedWAFType,
+												undefined,
+												options,
+											),
+										trustedIpHeaders,
+										wafDetectionResult,
+										currentPayload,
+										baselineProfile,
+									);
+								}
+
+								return {
+									category,
+									payload: currentPayload,
+									originalPayload: payload,
+									method,
+									status: itemStatus,
+									is_redirect: res ? res.is_redirect : false,
+									responseTime: res ? res.responseTime : 0,
+									wafDetected: wafDetectionResult?.detected || false,
+									wafType: detectedWAFType || 'Unknown',
+									bypassTechnique: currentPayload !== payload ? 'Advanced' : 'Standard',
+									blocked,
+									verdict,
+									...(baselineNote ? { baselineNote } : {}),
+									error: itemError,
+									userAgentBypass,
+									...(ipHeaderBypass ? { ipHeaderBypass } : {}),
+								};
+							});
+						}
+						offset++;
+					}
+				}
+			}
+		} else if (checkType === 'FileCheck') {
+			for (let payload of payloads) {
+				if (caseSensitiveTest) {
+					payload = randomUppercase(payload);
+				}
+				if (offset >= end) {
+					stoppedEarly = true;
+					break outerLoop;
+				}
+				if (offset >= start) {
+					const currentPayload = payload;
+					const fileUrl = baseUrl.replace(/\/$/, '') + '/' + currentPayload.replace(/^\//, '');
+					const headersObj = customHeaders ? processCustomHeaders(customHeaders, currentPayload) : undefined;
+					const detectedWAFType = detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined);
+
+					pageTasks.push(async () => {
+						const res = await sendRequest(
+							fileUrl,
+							'GET',
+							undefined,
+							headersObj,
+							undefined,
+							followRedirect,
+							useEnhancedPayloads,
+							detectedWAFType,
+							undefined,
+							options,
+						);
+
+						const bodyText = res?.bodyText || '';
+						const itemStatus = res ? res.status : 'ERR';
+						const itemError = res?.error || null;
+						const { blocked, verdict, baselineNote } = evaluateWAFVerdict(
+							itemStatus,
+							bodyText,
+							wafDetectionResult,
+							res?.response?.headers,
+							currentPayload,
+							baselineProfile,
+						);
+
+						let userAgentBypass: UserAgentBypassInfo | undefined;
+						if (legitUserAgents.length && blocked && (itemStatus === 403 || itemStatus === '403' || itemStatus === 406 || itemStatus === '406')) {
+							userAgentBypass = await probeUserAgentBypass(
+								(ua) =>
+									sendRequest(
+										fileUrl,
+										'GET',
+										undefined,
+										{ ...(headersObj || {}), 'User-Agent': ua },
+										undefined,
+										followRedirect,
+										useEnhancedPayloads,
+										detectedWAFType,
+										undefined,
+										options,
+									),
+								legitUserAgents,
+								wafDetectionResult,
+								currentPayload,
+								baselineProfile,
+							);
+						}
+
+						let ipHeaderBypass: IpHeaderBypassInfo | undefined;
+						if (trustedIpHeaders.length && blocked && (itemStatus === 403 || itemStatus === '403' || itemStatus === 406 || itemStatus === '406')) {
+							ipHeaderBypass = await probeIpHeaderBypass(
+								(hName, hVal) =>
+									sendRequest(
+										fileUrl,
+										'GET',
+										undefined,
+										{ ...(headersObj || {}), [hName]: hVal },
+										undefined,
+										followRedirect,
+										useEnhancedPayloads,
+										detectedWAFType,
+										undefined,
+										options,
+									),
+								trustedIpHeaders,
+								wafDetectionResult,
+								currentPayload,
+								baselineProfile,
+							);
+						}
+
+						return {
+							category,
+							payload: currentPayload,
+							method: 'GET',
+							status: itemStatus,
+							is_redirect: res ? res.is_redirect : false,
+							responseTime: res ? res.responseTime : 0,
+							wafDetected: wafDetectionResult?.detected || false,
+							wafType: detectedWAFType || 'Unknown',
+							blocked,
+							verdict,
+							...(baselineNote ? { baselineNote } : {}),
+							error: itemError,
+							userAgentBypass,
+							...(ipHeaderBypass ? { ipHeaderBypass } : {}),
+						};
+					});
+				}
+				offset++;
+			}
+		} else if (checkType === 'Header') {
+			for (let payload of payloads) {
+				if (caseSensitiveTest) {
+					payload = randomUppercase(payload);
+				}
+				const headersObj: Record<string, string> = {};
+				for (const line of payload.split(/\r?\n/)) {
+					const idx = line.indexOf(':');
+					if (idx > 0) {
+						const name = line.slice(0, idx).trim();
+						const value = line.slice(idx + 1).trim();
+						headersObj[name] = value;
+					}
+				}
+
+				if (customHeaders) {
+					const customHeadersObj = processCustomHeaders(customHeaders, payload);
+					Object.assign(headersObj, customHeadersObj);
+				}
+
+				for (const method of METHODS) {
+					if (offset >= end) {
+						stoppedEarly = true;
+						break outerLoop;
+					}
+					if (offset >= start) {
+						const currentPayload = payload;
+						const currentHeadersObj = { ...headersObj };
+						const currentMethod = method;
+						const detectedWAFType = detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined);
+
+						pageTasks.push(async () => {
 							const res = await sendRequest(
 								url,
-								finalMethod,
-								finalPayload,
-								headersObj,
+								currentMethod,
+								undefined,
+								currentHeadersObj,
 								payloadTemplate,
 								followRedirect,
 								useEnhancedPayloads,
@@ -763,19 +1228,31 @@ export async function handleApiCheckWithEnvelope(
 							const bodyText = res?.bodyText || '';
 							const itemStatus = res ? res.status : 'ERR';
 							const itemError = res?.error || null;
-							const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers, currentPayload);
+							const { blocked, verdict, baselineNote } = evaluateWAFVerdict(
+								itemStatus,
+								bodyText,
+								wafDetectionResult,
+								res?.response?.headers,
+								currentPayload,
+								baselineProfile,
+							);
 
-							// If the WAF blocked this (403), replay it under trusted User-Agents
-							// to see whether a legitimate identity bypasses the block.
+							// Skip the User-Agent category: its payload IS the UA header, so
+							// swapping in a trusted UA would be a meaningless "bypass".
 							let userAgentBypass: UserAgentBypassInfo | undefined;
-							if (legitUserAgents.length && (itemStatus === 403 || itemStatus === '403')) {
+							if (
+								legitUserAgents.length &&
+								category !== 'User-Agent' &&
+								blocked &&
+								(itemStatus === 403 || itemStatus === '403' || itemStatus === 406 || itemStatus === '406')
+							) {
 								userAgentBypass = await probeUserAgentBypass(
 									(ua) =>
 										sendRequest(
 											url,
-											finalMethod,
-											finalPayload,
-											{ ...(headersObj || {}), 'User-Agent': ua },
+											currentMethod,
+											undefined,
+											{ ...currentHeadersObj, 'User-Agent': ua },
 											payloadTemplate,
 											followRedirect,
 											useEnhancedPayloads,
@@ -786,186 +1263,60 @@ export async function handleApiCheckWithEnvelope(
 									legitUserAgents,
 									wafDetectionResult,
 									currentPayload,
+									baselineProfile,
 								);
 							}
 
-							results.push({
+							// Filter out any trusted IP header whose headerName is already being tested by this Header payload
+							let ipHeaderBypass: IpHeaderBypassInfo | undefined;
+							if (
+								trustedIpHeaders.length &&
+								blocked &&
+								(itemStatus === 403 || itemStatus === '403' || itemStatus === 406 || itemStatus === '406')
+							) {
+								const existingKeysLower = new Set(Object.keys(currentHeadersObj).map((k) => k.toLowerCase()));
+								const eligibleIpHeaders = trustedIpHeaders.filter(
+									(h) => !existingKeysLower.has(h.headerName.toLowerCase()),
+								);
+								if (eligibleIpHeaders.length > 0) {
+									ipHeaderBypass = await probeIpHeaderBypass(
+										(hName, hVal) =>
+											sendRequest(
+												url,
+												currentMethod,
+												undefined,
+												{ ...currentHeadersObj, [hName]: hVal },
+												payloadTemplate,
+												followRedirect,
+												useEnhancedPayloads,
+												detectedWAFType,
+												undefined,
+												options,
+											),
+										eligibleIpHeaders,
+										wafDetectionResult,
+										currentPayload,
+										baselineProfile,
+									);
+								}
+							}
+
+							return {
 								category,
 								payload: currentPayload,
-								originalPayload: payload, // Keep track of original
-								method,
+								method: currentMethod,
 								status: itemStatus,
 								is_redirect: res ? res.is_redirect : false,
 								responseTime: res ? res.responseTime : 0,
 								wafDetected: wafDetectionResult?.detected || false,
 								wafType: detectedWAFType || 'Unknown',
-								bypassTechnique: currentPayload !== payload ? 'Advanced' : 'Standard',
 								blocked,
 								verdict,
+								...(baselineNote ? { baselineNote } : {}),
 								error: itemError,
 								userAgentBypass,
-							});
-						}
-						offset++;
-					}
-				}
-			}
-		} else if (checkType === 'FileCheck') {
-			for (let payload of payloads) {
-				// Use let so we can reassign
-				if (caseSensitiveTest) {
-					payload = randomUppercase(payload); // Modify payload
-				}
-				if (offset >= end) {
-					return { results, page, pageSize: limit, total: totalItems, hasMore: true };
-				}
-				if (offset >= start) {
-					// Use potentially modified baseUrl for the base, and modified payload for the file path
-					const fileUrl = baseUrl.replace(/\/$/, '') + '/' + payload.replace(/^\//, '');
-					// Process custom headers if provided
-					const headersObj = customHeaders ? processCustomHeaders(customHeaders, payload) : undefined;
-					const res = await sendRequest(
-						fileUrl,
-						'GET',
-						undefined,
-						headersObj,
-						undefined,
-						followRedirect,
-						useEnhancedPayloads,
-						detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined),
-						undefined,
-						options,
-					);
-
-					const bodyText = res?.bodyText || '';
-					const itemStatus = res ? res.status : 'ERR';
-					const itemError = res?.error || null;
-					const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers, payload);
-
-					let userAgentBypass: UserAgentBypassInfo | undefined;
-					if (legitUserAgents.length && (itemStatus === 403 || itemStatus === '403')) {
-						userAgentBypass = await probeUserAgentBypass(
-							(ua) =>
-								sendRequest(
-									fileUrl,
-									'GET',
-									undefined,
-									{ ...(headersObj || {}), 'User-Agent': ua },
-									undefined,
-									followRedirect,
-									useEnhancedPayloads,
-									detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined),
-									undefined,
-									options,
-								),
-							legitUserAgents,
-							wafDetectionResult,
-							payload,
-						);
-					}
-
-					results.push({
-						category,
-						payload,
-						method: 'GET',
-						status: itemStatus,
-						is_redirect: res ? res.is_redirect : false,
-						responseTime: res ? res.responseTime : 0,
-						wafDetected: wafDetectionResult?.detected || false,
-						wafType: detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : 'Unknown'),
-						blocked,
-						verdict,
-						error: itemError,
-						userAgentBypass,
-					});
-				}
-				offset++;
-			}
-		} else if (checkType === 'Header') {
-			for (let payload of payloads) {
-				// Use let so we can reassign
-				if (caseSensitiveTest) {
-					payload = randomUppercase(payload); // Modify payload
-				}
-				// Create headers from payload (potentially modified)
-				const headersObj: Record<string, string> = {};
-				for (const line of payload.split(/\r?\n/)) {
-					// Use the potentially modified payload here
-					const idx = line.indexOf(':');
-					if (idx > 0) {
-						const name = line.slice(0, idx).trim();
-						const value = line.slice(idx + 1).trim();
-						headersObj[name] = value;
-					}
-				}
-
-				// Add custom headers if provided
-				if (customHeaders) {
-					const customHeadersObj = processCustomHeaders(customHeaders, payload);
-					// Merge headers (custom headers override payload headers if same name)
-					Object.assign(headersObj, customHeadersObj);
-				}
-
-				for (const method of METHODS) {
-					if (offset >= end) {
-						return { results, page, pageSize: limit, total: totalItems, hasMore: true };
-					}
-					if (offset >= start) {
-						const res = await sendRequest(
-							url,
-							method,
-							undefined,
-							headersObj,
-							payloadTemplate,
-							followRedirect,
-							useEnhancedPayloads,
-							detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined),
-							undefined,
-							options,
-						);
-
-						const bodyText = res?.bodyText || '';
-						const itemStatus = res ? res.status : 'ERR';
-						const itemError = res?.error || null;
-						const { blocked, verdict } = evaluateWAFVerdict(itemStatus, bodyText, wafDetectionResult, res?.response?.headers, payload);
-
-						// Skip the User-Agent category: its payload IS the UA header, so
-						// swapping in a trusted UA would be a meaningless "bypass".
-						let userAgentBypass: UserAgentBypassInfo | undefined;
-						if (legitUserAgents.length && category !== 'User-Agent' && (itemStatus === 403 || itemStatus === '403')) {
-							userAgentBypass = await probeUserAgentBypass(
-								(ua) =>
-									sendRequest(
-										url,
-										method,
-										undefined,
-										{ ...headersObj, 'User-Agent': ua },
-										payloadTemplate,
-										followRedirect,
-										useEnhancedPayloads,
-										detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : undefined),
-										undefined,
-										options,
-									),
-							legitUserAgents,
-							wafDetectionResult,
-							payload,
-						);
-						}
-
-						results.push({
-							category,
-							payload,
-							method,
-							status: itemStatus,
-							is_redirect: res ? res.is_redirect : false,
-							responseTime: res ? res.responseTime : 0,
-							wafDetected: wafDetectionResult?.detected || false,
-							wafType: detectedWAF || (wafDetectionResult?.detected ? wafDetectionResult.wafType : 'Unknown'),
-							blocked,
-							verdict,
-							error: itemError,
-							userAgentBypass,
+								...(ipHeaderBypass ? { ipHeaderBypass } : {}),
+							};
 						});
 					}
 					offset++;
@@ -973,7 +1324,29 @@ export async function handleApiCheckWithEnvelope(
 			}
 		}
 	}
-	return { results, page, pageSize: limit, total: totalItems, hasMore: end < totalItems };
+
+	const effectiveConcurrency =
+		options?.concurrency !== undefined && Number.isFinite(options.concurrency) && options.concurrency > 0
+			? Math.floor(options.concurrency)
+			: 1;
+
+	const results = await mapWithConcurrency<() => Promise<AuditResultItem>, AuditResultItem>(
+		pageTasks,
+		{
+			concurrency: effectiveConcurrency,
+			isRateLimited: (item: AuditResultItem) => item.status === 429 || item.status === '429',
+		},
+		(task) => task(),
+	);
+
+	return {
+		results,
+		page,
+		pageSize: limit,
+		total: totalItems,
+		hasMore: stoppedEarly || end < totalItems,
+		...(baselineProfile ? { baseline: baselineProfile } : {}),
+	};
 }
 
 export async function handleApiCheckFiltered(
@@ -992,21 +1365,7 @@ export async function handleApiCheckFiltered(
 	useEncodingVariations: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: {
-		fetch?: typeof fetch;
-		color?: boolean;
-		quiet?: boolean;
-		isWorker?: boolean;
-		allowLocal?: boolean;
-		pageSize?: number;
-		/**
-		 * Legitimate-User-Agent bypass test. `true` uses the curated list of
-		 * trusted identities; an array supplies custom ones; falsy disables it.
-		 * Blocked (403) requests are replayed under each identity to detect a
-		 * User-Agent allow-list bypass.
-		 */
-		spoofUserAgents?: boolean | LegitUserAgent[];
-	},
+	options?: CheckExecutionOptions,
 ): Promise<AuditResultItem[]> {
 	const envelope = await handleApiCheckWithEnvelope(
 		url,
