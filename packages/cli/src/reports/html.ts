@@ -17,8 +17,8 @@ export function escapeHtml(str: string): string {
  */
 export function generateCheckHtml(url: string, results: CheckResult[], reverseEngineering?: ReverseEngineeringReport): string {
 	const total = results.length;
-	const blocked = results.filter(r => r.status === 403 || r.status === 'BLOCKED').length;
-	const bypassed = results.filter(r => r.status === 200 || r.status === '200').length;
+	const blocked = results.filter(r => (r.status === 403 || r.status === 'BLOCKED' || r.blocked === true) && r.baselineNote !== 'origin_blocked').length;
+	const bypassed = results.filter(r => (r.status === 200 || r.status === '200') && r.blocked !== true).length;
 	const redirect = results.filter(r => r.is_redirect).length;
 	const errors = results.filter(r => r.status === 'ERR' || r.error).length;
 

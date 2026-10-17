@@ -159,12 +159,36 @@ describe('WAF Checker API', () => {
 		const html = renderReport([
 			{ category: 'SQL Injection', method: 'GET', payload: 'union select', status: 200, responseTime: 120 },
 			{ category: 'Sensitive Files', method: 'GET', payload: '/.git/config', status: 404, responseTime: 95 },
+			{
+				category: 'XSS',
+				method: 'GET',
+				payload: '<script>alert(1)</script>',
+				status: 403,
+				responseTime: 50,
+				ipHeaderBypass: {
+					bypassed: true,
+					tested: 4,
+					hits: [{ header: 'X-Forwarded-For', value: '127.0.0.1', status: 200, verdict: 'passed' }],
+				},
+			},
+			{
+				category: 'Command Injection',
+				method: 'GET',
+				payload: ';id',
+				status: 403,
+				responseTime: 45,
+				baselineNote: 'origin_blocked',
+			},
 		], false);
 		expect(html).toContain('120ms');
 		expect(html).toContain('95ms');
 		expect(html).toContain('btn-outline-danger');
 		expect(html).toContain('btn-outline-warning');
 		expect(html).toContain('showVirtualPatchModal(\'misses\')');
+		expect(html).toContain('Trusted IP Header Allow-List Bypass Detected');
+		expect(html).toContain('IP bypass via X-Forwarded-For: 127.0.0.1');
+		expect(html).toContain('Origin Baseline Returns 403/406');
+		expect(html).toContain('Origin 403');
 	});
 
 	it('handles /api/virtual-patch with includeMisses: true for 404 status vectors', async () => {

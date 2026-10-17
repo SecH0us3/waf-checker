@@ -18,9 +18,9 @@ export function generateMarkdownReport(
 		if (r.wafType && r.wafType !== 'Unknown') {
 			detectedWAF = r.wafType;
 		}
-		if (r.status === 403 || r.status === '403' || r.status === 'BLOCKED') {
+		if ((r.status === 403 || r.status === '403' || r.status === 'BLOCKED' || r.blocked === true) && r.baselineNote !== 'origin_blocked') {
 			blocked++;
-		} else if (r.status === 200 || r.status === '200') {
+		} else if ((r.status === 200 || r.status === '200') && r.blocked !== true) {
 			bypassed++;
 		} else if (r.status === 404 || r.status === '404') {
 			misses++;
@@ -40,9 +40,9 @@ export function generateMarkdownReport(
 	for (const r of results) {
 		const entry = categoryMap.get(r.category) || { total: 0, blocked: 0, bypassed: 0, misses: 0, errors: 0 };
 		entry.total++;
-		if (r.status === 403 || r.status === '403' || r.status === 'BLOCKED') {
+		if ((r.status === 403 || r.status === '403' || r.status === 'BLOCKED' || r.blocked === true) && r.baselineNote !== 'origin_blocked') {
 			entry.blocked++;
-		} else if (r.status === 200 || r.status === '200') {
+		} else if ((r.status === 200 || r.status === '200') && r.blocked !== true) {
 			entry.bypassed++;
 		} else if (r.status === 404 || r.status === '404') {
 			entry.misses++;
@@ -52,8 +52,10 @@ export function generateMarkdownReport(
 		categoryMap.set(r.category, entry);
 	}
 
-	const bypassedItems = results.filter((r) => r.status === 200 || r.status === '200');
+	const bypassedItems = results.filter((r) => (r.status === 200 || r.status === '200') && r.blocked !== true);
 	const missedItems = results.filter((r) => r.status === 404 || r.status === '404');
+	const uaBypassItems = results.filter((r) => r.userAgentBypass?.bypassed);
+	const ipBypassItems = results.filter((r) => r.ipHeaderBypass?.bypassed);
 
 	// Status badge
 	const scoreEmoji = protectionScore >= 90 ? '🟢' : protectionScore >= 70 ? '🟡' : '🔴';
@@ -125,6 +127,18 @@ export function generateMarkdownReport(
 	} else {
 		lines.push(`### ✅ No Bypasses Detected`);
 		lines.push(`No attack payloads yielded active 200 OK responses.`);
+	}
+
+	if (uaBypassItems.length > 0 || ipBypassItems.length > 0) {
+		lines.push(``);
+		lines.push(`### 🕵️ Allow-List Bypasses (User-Agent / Trusted IP Headers)`);
+		lines.push(``);
+		if (uaBypassItems.length > 0) {
+			lines.push(`- **User-Agent Bypasses (${uaBypassItems.length}):** Blocked normally, but reached origin when spoofing trusted crawler User-Agents.`);
+		}
+		if (ipBypassItems.length > 0) {
+			lines.push(`- **Trusted IP Header Bypasses (${ipBypassItems.length}):** Blocked normally, but reached origin when spoofing proxy forwarding headers (\`X-Forwarded-For\`, \`X-Real-IP\`, etc.).`);
+		}
 	}
 
 	if (missedItems.length > 0) {

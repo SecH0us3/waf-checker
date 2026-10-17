@@ -624,6 +624,64 @@ describe('CLI Argument Processing', () => {
 			expect(logged).toContain('USER-AGENT ALLOW-LIST BYPASSES DETECTED');
 			expect(logged).not.toContain('Perfect Score');
 		});
+
+		it('should pass spoofIpHeaders, calibrateBaseline, and concurrency options to handleApiCheckFiltered', async () => {
+			await expect(
+				program.parseAsync([
+					'node', 'index.js', 'check', 'https://example.com',
+					'--no-spoof-ip',
+					'--no-calibrate-baseline',
+					'--concurrency', '3',
+				])
+			).resolves.toBeDefined();
+
+			const options = vi.mocked(core.handleApiCheckFiltered).mock.calls[0][15];
+			expect(options?.spoofIpHeaders).toBe(false);
+			expect(options?.calibrateBaseline).toBe(false);
+			expect(options?.concurrency).toBe(3);
+		});
+
+		it('should exit with 1 on a Trusted IP header allow-list bypass when --fail-on-bypass is specified', async () => {
+			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
+				{
+					status: 403, method: 'GET', payload: 'test', responseTime: 120, category: 'SQL Injection',
+					ipHeaderBypass: { bypassed: true, tested: 4, hits: [{ header: 'X-Forwarded-For', value: '127.0.0.1', status: 200, verdict: 'passed' }] },
+				},
+			]);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--fail-on-bypass'])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Trusted IP header allow-list bypass'));
+		});
+
+		it('should report a Trusted IP header bypass and origin 403 baseline note', async () => {
+			vi.mocked(core.handleApiCheckFiltered).mockResolvedValueOnce([
+				{
+					status: 403, method: 'GET', payload: 'test', responseTime: 120, category: 'SQL Injection',
+					ipHeaderBypass: {
+						bypassed: true, tested: 4,
+						hits: [{ header: 'X-Forwarded-For', value: '127.0.0.1', status: 200, verdict: 'passed' }],
+					},
+				},
+				{
+					status: 403, method: 'GET', payload: 'test2', responseTime: 100, category: 'XSS',
+					blocked: false, baselineNote: 'origin_blocked',
+				},
+			]);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com'])
+			).resolves.toBeDefined();
+
+			expect(exitCode).toBeNull();
+			const logged = consoleLogSpy.mock.calls.map((c: any[]) => c.join(' ')).join('\n');
+			expect(logged).toContain('TRUSTED IP HEADER ALLOW-LIST BYPASSES DETECTED');
+			expect(logged).toContain('Origin 403:');
+			expect(logged).not.toContain('Perfect Score');
+		});
 	});
 
 	describe('batch command', () => {
