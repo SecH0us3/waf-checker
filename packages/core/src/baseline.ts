@@ -28,13 +28,52 @@ export interface BaselineProfile {
 	isOriginBlocked: boolean;
 }
 
+const MAX_SIGNATURE_SCAN_CHARS = 8192;
+
+function collapseWhitespace(input: string): string {
+	let out = '';
+	let prevSpace = true;
+	for (let i = 0; i < input.length; i++) {
+		const code = input.charCodeAt(i);
+		const isSpace = code === 32 || (code >= 9 && code <= 13);
+		if (isSpace) {
+			if (!prevSpace) {
+				out += ' ';
+				prevSpace = true;
+			}
+		} else {
+			out += input[i];
+			prevSpace = false;
+		}
+	}
+	return out.endsWith(' ') ? out.slice(0, -1) : out;
+}
+
+function stripHtmlTagsLinear(input: string): string {
+	let out = '';
+	let inTag = false;
+	for (let i = 0; i < input.length; i++) {
+		const ch = input[i];
+		if (ch === '<') {
+			inTag = true;
+			out += ' ';
+		} else if (ch === '>') {
+			inTag = false;
+			out += ' ';
+		} else if (!inTag) {
+			out += ch;
+		}
+	}
+	return out;
+}
+
 /**
  * Strips volatile tokens (UUIDs, ISO dates, hex ray IDs, numbers >= 4 digits)
  * and extracts a deterministic structural fingerprint of an HTTP response body.
  */
 export function computeBodySignature(bodyText: string): string {
 	if (!bodyText) return 'empty:0';
-	const trimmed = bodyText.trim();
+	const trimmed = bodyText.slice(0, MAX_SIGNATURE_SCAN_CHARS).trim();
 	if (trimmed.length === 0) return 'empty:0';
 
 	// 1. JSON structural fingerprint: top-level keys + normalized error/code/status values
@@ -59,24 +98,24 @@ export function computeBodySignature(bodyText: string): string {
 	// 2. HTML structural fingerprint: sequence of up to 24 opening tags + normalized text prefix
 	const isHtml = /^(?:<!doctype\s+html|<html[\s>]|<[a-z0-9]+[\s>])/i.test(trimmed);
 	const scrubDynamic = (s: string) =>
-		s
-			// ISO timestamps
-			.replace(/\b\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/g, '<TS>')
-			// UUIDs
-			.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<UUID>')
-			// Long hex strings (8+ chars, e.g. Ray IDs, trace IDs, hashes)
-			.replace(/\b[0-9a-f]{8,64}\b/gi, '<HEX>')
-			// Numbers with 4+ digits
-			.replace(/\b\d{4,}\b/g, '<NUM>')
-			.replace(/\s+/g, ' ')
-			.trim();
+		collapseWhitespace(
+			s
+				// ISO timestamps
+				.replace(/\b\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/g, '<TS>')
+				// UUIDs
+				.replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '<UUID>')
+				// Long hex strings (8+ chars, e.g. Ray IDs, trace IDs, hashes)
+				.replace(/\b[0-9a-f]{8,64}\b/gi, '<HEX>')
+				// Numbers with 4+ digits
+				.replace(/\b\d{4,}\b/g, '<NUM>'),
+		);
 
 	if (isHtml) {
-		const tags = (trimmed.match(/<([a-zA-Z][a-zA-Z0-9-]*)\b/g) || [])
+		const tags = (trimmed.match(/<([a-zA-Z][a-zA-Z0-9-]*)/g) || [])
 			.slice(0, 24)
 			.map((t) => t.slice(1).toLowerCase())
 			.join('>');
-		const textOnly = scrubDynamic(trimmed.replace(/<[^>]+>/g, ' '))
+		const textOnly = scrubDynamic(stripHtmlTagsLinear(trimmed))
 			.toLowerCase()
 			.slice(0, 120);
 		return `html:${tags}|${textOnly}`;
@@ -106,13 +145,35 @@ export function areBodiesStructurallySimilar(
 	return diff / maxLen <= 0.15;
 }
 
+const SOFT_BLOCK_PHRASES = [
+	'request rejected',
+	'malicious input',
+	'security violation',
+	'blocked by security policy',
+	'security policy violation',
+	'automated access is prohibited',
+	'web application firewall',
+];
+
 /**
  * Checks whether a 200 OK or 400 Bad Request body that diverged from a valid
  * baseline contains explicit custom WAF / security rejection indicators.
  */
 export function isSoftBlockBody(bodyText: string): boolean {
-	if (!bodyText || bodyText.trim().length === 0) return false;
-	return /(?:request\s+rejected|malicious\s+input|security\s+violation|blocked\s+by\s+security\s+policy|security\s+policy\s+violation|your\s+support\s+id\s+is\s*[:#]?\s*\d{6,}|automated\s+access\s+is\s+prohibited|web\s+application\s+firewall)/i.test(
-		bodyText,
-	);
+	if (!bodyText) return false;
+	const normalized = collapseWhitespace(bodyText.slice(0, MAX_SIGNATURE_SCAN_CHARS).toLowerCase());
+	if (normalized.length === 0) return false;
+
+	for (const phrase of SOFT_BLOCK_PHRASES) {
+		if (normalized.includes(phrase)) return true;
+	}
+
+	const supportPrefix = 'your support id is';
+	const supportIdx = normalized.indexOf(supportPrefix);
+	if (supportIdx !== -1) {
+		const tail = normalized.slice(supportIdx + supportPrefix.length, supportIdx + supportPrefix.length + 32);
+		if (/^ ?[:#]? ?\d{6}/.test(tail)) return true;
+	}
+
+	return false;
 }

@@ -76,6 +76,16 @@ describe('Baseline Calibration & Structural Diffing (baseline.ts)', () => {
 			expect(isSoftBlockBody('<html><body><h1>Welcome to Example</h1><p>Browse our products</p></body></html>')).toBe(false);
 			expect(isSoftBlockBody('{"items": [], "total": 0}')).toBe(false);
 		});
+
+		it('processes adversarial inputs with repeated "<" or whitespace in linear time without ReDoS', () => {
+			const start = Date.now();
+			const pathologicalHtml = '<html>' + '<'.repeat(50_000);
+			const pathologicalSupport = 'your support id is' + ' '.repeat(50_000) + '!';
+
+			expect(computeBodySignature(pathologicalHtml)).toMatch(/^html:html\|/);
+			expect(isSoftBlockBody(pathologicalSupport)).toBe(false);
+			expect(Date.now() - start).toBeLessThan(200);
+		});
 	});
 
 	describe('evaluateWAFVerdict with BaselineProfile', () => {
