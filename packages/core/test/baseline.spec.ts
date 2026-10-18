@@ -195,5 +195,73 @@ describe('Baseline Calibration & Structural Diffing (baseline.ts)', () => {
 				expect(r.baselineNote).toBe('origin_blocked');
 			}
 		});
+
+		it('does not misclassify a Cloudflare 403 HTML block on the baseline request as Origin-403, preserving UA bypass detection on Sensitive Files', async () => {
+			const cfBlockHtml =
+				'<!DOCTYPE html><html><head><title>Attention Required! | Cloudflare</title></head><body><h1>Sorry, you have been blocked</h1><p>Cloudflare Ray ID: 89abcdef12345678</p></body></html>';
+			const origin404Html = '<!DOCTYPE html><html><head><title>Not Found</title></head><body><h1>404</h1></body></html>';
+
+			const mockFetch = vi.fn().mockImplementation(async (reqUrl: string, options: any) => {
+				const h = options?.headers || {};
+				const ua = typeof h.get === 'function' ? h.get('User-Agent') : h['User-Agent'] || h['user-agent'] || '';
+				// Strict rules on /.git always block even for Slackbot
+				if (reqUrl.endsWith('/.git') || reqUrl.endsWith('/.git/config')) {
+					return {
+						status: 403,
+						headers: new Headers({ 'content-type': 'text/html', server: 'cloudflare', 'cf-ray': '89abcdef-IAD' }),
+						text: async () => cfBlockHtml,
+					};
+				}
+				// Slackbot / DuckDuckBot bypasses Cloudflare Bot Fight on other sensitive file paths and hits origin 404
+				if (/Slackbot|DuckDuckBot|facebookexternalhit/i.test(String(ua))) {
+					return {
+						status: 404,
+						headers: new Headers({ 'content-type': 'text/html', server: 'cloudflare', 'cf-ray': '89abcdef-IAD' }),
+						text: async () => origin404Html,
+					};
+				}
+				return {
+					status: 403,
+					headers: new Headers({ 'content-type': 'text/html', server: 'cloudflare', 'cf-ray': '89abcdef-IAD' }),
+					text: async () => cfBlockHtml,
+				};
+			});
+
+			const envelope = await handleApiCheckWithEnvelope(
+				'https://medium.example.com',
+				0,
+				['GET'],
+				['Sensitive Files'],
+				undefined,
+				false,
+				undefined,
+				false,
+				false,
+				false,
+				false,
+				false,
+				false,
+				undefined,
+				undefined,
+				{
+					fetch: mockFetch as any,
+					quiet: true,
+					pageSize: 5,
+					calibrateBaseline: true,
+					spoofUserAgents: true,
+				},
+			);
+
+			expect(envelope.baseline).toBeDefined();
+			expect(envelope.baseline!.wafBlockedOnBenign).toBe(true);
+			expect(envelope.baseline!.isOriginBlocked).toBe(false);
+
+			// Payloads other than /.git and /.git/config should be marked blocked=true AND detect UA bypasses
+			const bypassedItem = envelope.results.find((r) => r.payload !== '.git' && r.payload !== '.git/config');
+			expect(bypassedItem).toBeDefined();
+			expect(bypassedItem!.blocked).toBe(true);
+			expect(bypassedItem!.baselineNote).toBeUndefined();
+			expect(bypassedItem!.userAgentBypass?.bypassed).toBe(true);
+		});
 	});
 });

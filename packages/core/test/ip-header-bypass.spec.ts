@@ -30,7 +30,7 @@ describe('Trusted IP / Proxy Header Definitions (trusted-ip-headers.ts)', () => 
 		const headerNames = TRUSTED_IP_HEADERS.map((h) => h.headerName);
 		expect(headerNames).toContain('X-Real-IP');
 		expect(headerNames).toContain('True-Client-IP');
-		expect(headerNames).toContain('CF-Connecting-IP');
+		expect(headerNames).toContain('X-Cluster-Client-IP');
 		expect(headerNames).toContain('Forwarded');
 	});
 

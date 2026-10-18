@@ -23,7 +23,7 @@ export const TRUSTED_IP_HEADERS: TrustedIpHeader[] = [
 	{ name: 'XFF-Private-192', headerName: 'X-Forwarded-For', headerValue: '192.168.1.1' },
 	{ name: 'X-Real-IP', headerName: 'X-Real-IP', headerValue: '127.0.0.1' },
 	{ name: 'True-Client-IP', headerName: 'True-Client-IP', headerValue: '127.0.0.1' },
-	{ name: 'CF-Connecting-IP', headerName: 'CF-Connecting-IP', headerValue: '127.0.0.1' },
+	{ name: 'X-Cluster-Client-IP', headerName: 'X-Cluster-Client-IP', headerValue: '127.0.0.1' },
 	{ name: 'X-Originating-IP', headerName: 'X-Originating-IP', headerValue: '127.0.0.1' },
 	{ name: 'X-Client-IP', headerName: 'X-Client-IP', headerValue: '127.0.0.1' },
 	{ name: 'Forwarded-Loopback', headerName: 'Forwarded', headerValue: 'for=127.0.0.1;by=127.0.0.1' },

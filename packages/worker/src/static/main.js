@@ -697,7 +697,7 @@ async function fetchResults() {
 				spoofUserAgent: spoofUserAgent ? '1' : '0',
 				spoofIpHeaders: spoofIpHeaders ? '1' : '0',
 				calibrateBaseline: calibrateBaseline ? '1' : '0',
-				concurrency: '4',
+				concurrency: spoofUserAgent || spoofIpHeaders ? '2' : '4',
 				detectedWAF: detectedWAFType || '',
 			});
 			const resp = await fetch(`/api/check?${params.toString()}`, {
