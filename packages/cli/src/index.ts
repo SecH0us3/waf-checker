@@ -16,6 +16,9 @@ import {
 	PatchVendor,
 	PatchTier,
 	PatchAction,
+	diffScans,
+	parseStoredReport,
+	ScanDiff,
 } from '@waf-checker/core';
 import { writeReport, deduceFormat, ReportFormat } from './report';
 
@@ -112,6 +115,66 @@ function parseThreshold(val: string): number {
 	return minThreshold;
 }
 
+const STATUS_LABEL: Record<string, string> = {
+	blocked: 'BLOCKED',
+	exposed: 'EXPOSED',
+	passed: 'passed',
+	inconclusive: 'inconclusive',
+};
+
+function statusTransition(from?: string, to?: string): string {
+	return `${from ? STATUS_LABEL[from] ?? from : '—'} → ${to ? STATUS_LABEL[to] ?? to : '—'}`;
+}
+
+/**
+ * Load a previous JSON report and print a regression/improvement diff against
+ * the current results. Returns the computed diff so the caller can set the
+ * process exit code. Returns null if the report could not be read/parsed.
+ */
+function runScanDiff(comparePath: string, current: any[]): ScanDiff | null {
+	let raw: string;
+	try {
+		raw = fs.readFileSync(comparePath, 'utf8');
+	} catch (err: any) {
+		console.error(colors.red(`Error reading --compare report "${comparePath}": ${err.message}`));
+		return null;
+	}
+	let previous;
+	try {
+		previous = parseStoredReport(raw);
+	} catch (err: any) {
+		console.error(colors.red(err.message));
+		return null;
+	}
+
+	const diff = diffScans(previous, current);
+	console.log();
+	console.log(colors.cyan('🔀 Scan Diff (vs previous report)'));
+	console.log(
+		`  ${colors.red(`Regressions: ${diff.regressions.length}`)}  ·  ` +
+			`${colors.green(`Improvements: ${diff.improvements.length}`)}  ·  ` +
+			`Added: ${diff.added.length}  ·  Removed: ${diff.removed.length}  ·  Unchanged: ${diff.unchanged}`,
+	);
+
+	if (diff.regressions.length > 0) {
+		console.log(colors.red('\n  ⚠️  New bypasses (previously blocked, now NOT blocked):'));
+		for (const r of diff.regressions) {
+			const tech = r.bypassTechnique ? ` [${r.bypassTechnique}]` : '';
+			console.log(
+				colors.red(`    • ${r.category} (${r.method})${tech}: ${statusTransition(r.from, r.to)}  payload: ${r.payload}`),
+			);
+		}
+	}
+	if (diff.improvements.length > 0) {
+		console.log(colors.green('\n  ✅ Newly blocked (previously got through):'));
+		for (const i of diff.improvements) {
+			const tech = i.bypassTechnique ? ` [${i.bypassTechnique}]` : '';
+			console.log(colors.green(`    • ${i.category} (${i.method})${tech}: ${statusTransition(i.from, i.to)}`));
+		}
+	}
+	return diff;
+}
+
 // Command: detect
 program
 	.command('detect <url>')
@@ -199,6 +262,8 @@ checkCmd
 	.option('-q, --quiet', 'Suppress per-request logging, displaying only final results')
 	.option('--silent', 'Alias for --quiet')
 	.option('--fail-on-bypass', 'Exit with exit code 1 if any bypasses are detected', false)
+	.option('--compare <path>', 'Compare against a previous JSON report and show regressions/improvements (scan diff)')
+	.option('--fail-on-regression', 'Exit with exit code 1 if any payload blocked in the --compare report is no longer blocked', false)
 	.option('--allow-local', 'Allow testing localhost, 127.0.0.1, and private IP ranges (Docker/LAN)', false)
 	.addHelpText('after', detailedHelp)
 	.action(async (url: string, options: any) => {
@@ -442,6 +507,15 @@ checkCmd
 				}
 			}
 
+			let scanDiff: ScanDiff | null = null;
+			if (options.compare) {
+				scanDiff = runScanDiff(options.compare, results);
+				if (scanDiff === null && options.failOnRegression) {
+					// Could not load the baseline report but the gate was requested.
+					process.exit(1);
+				}
+			}
+
 			if (options.threshold !== undefined) {
 				const minThreshold = parseThreshold(options.threshold);
 				if (protectionScore < minThreshold) {
@@ -465,6 +539,13 @@ checkCmd
 				if (uaBypasses.length > 0) parts.push(`${uaBypasses.length} User-Agent allow-list bypass(es)`);
 				if (ipBypasses.length > 0) parts.push(`${ipBypasses.length} Trusted IP header allow-list bypass(es)`);
 				console.error(colors.red(`CI/CD Check Failed: ${parts.join(' and ')} detected.`));
+				process.exit(1);
+			}
+
+			if (options.failOnRegression && scanDiff && scanDiff.hasRegressions) {
+				console.error(
+					colors.red(`CI/CD Regression Failed: ${scanDiff.regressions.length} payload(s) blocked in the previous report are no longer blocked.`),
+				);
 				process.exit(1);
 			}
 		} catch (err: any) {

@@ -79,6 +79,10 @@ SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusio
 - Configurable concurrency and delay between requests.
 - Real-time progress tracking.
 
+### 🔀 Regression Diffing (`--compare` / `--fail-on-regression`)
+- Diff a scan against a previously saved JSON report to surface **new bypasses** (previously blocked, now not), **newly blocked** payloads, and added/removed tests.
+- CI gate (`--fail-on-regression`) that fails only on *worsening* WAF posture, not on the full result list — ideal for catching managed-ruleset drift.
+
 ---
 
 ## Project Structure
@@ -184,6 +188,20 @@ node packages/cli/dist/index.js check https://example.com --threshold 95 -q
 
 # Fail immediately on any detected bypass
 node packages/cli/dist/index.js check https://example.com --fail-on-bypass -q
+```
+
+#### 🔀 Regression Diffing (Scan vs Scan)
+WAF posture drifts over time — a vendor ships a managed-ruleset update, a CRS rule gets disabled, an origin change shifts a verdict. Instead of re-triaging the full result list every run, compare against a previously saved JSON report and gate CI on *worsening* only. A payload that was `blocked` in the baseline report and is no longer blocked counts as a regression; a payload newly blocked counts as an improvement. Matching is by `(category, method, evasion technique, payload)`, and network errors / origin-side blocks are treated as inconclusive so they never show up as false regressions.
+
+```bash
+# Save a known-good baseline report
+node packages/cli/dist/index.js check https://example.com -f json -o baseline.json -q
+
+# Later: diff the current scan against it and print regressions/improvements
+node packages/cli/dist/index.js check https://example.com --compare baseline.json -q
+
+# Fail CI only when a previously-blocked payload is no longer blocked
+node packages/cli/dist/index.js check https://example.com --compare baseline.json --fail-on-regression -q
 ```
 
 #### 🛡️ Virtual Patching & Auto-Remediation
