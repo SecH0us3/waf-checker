@@ -136,6 +136,7 @@ export default {
 			let payloadTemplate: string | undefined = undefined;
 			let customHeaders: string | undefined = undefined;
 			let bodyDetectedWAF: string | undefined = undefined;
+			let bodyBaseline: any = undefined;
 			if (request.method === 'POST') {
 				try {
 					const body: any = await request.json();
@@ -147,6 +148,9 @@ export default {
 					}
 					if (body && typeof body.detectedWAF === 'string') {
 						bodyDetectedWAF = body.detectedWAF;
+					}
+					if (body && body.baseline && typeof body.baseline === 'object') {
+						bodyBaseline = body.baseline;
 					}
 				} catch (e) {
 					console.error('Error parsing request body:', e);
@@ -162,10 +166,18 @@ export default {
 			const enableHTTPManipulation = urlObj.searchParams.get('httpManipulation') === '1';
 			const enablePadding = urlObj.searchParams.get('enablePadding') === '1' || Boolean(urlObj.searchParams.get('paddingSize'));
 			const paddingSize = urlObj.searchParams.get('paddingSize') || '16kb';
-			// Legitimate-User-Agent bypass test. Opt-in at the raw API (it can multiply
-			// request volume ~16x per blocked payload); the UI/CLI enable it by default
-			// and send spoofUserAgent=1.
+			// Legitimate-User-Agent & Trusted-IP-Header bypass tests. Opt-in at the raw
+			// API; the UI/CLI enable them and pass spoofUserAgent=1 / spoofIpHeaders=1.
 			const spoofUserAgents = urlObj.searchParams.get('spoofUserAgent') === '1';
+			const spoofIpHeaders = urlObj.searchParams.get('spoofIpHeaders') === '1';
+			const calibrateBaselineParam = urlObj.searchParams.get('calibrateBaseline') === '1';
+			const calibrateBaseline = bodyBaseline || calibrateBaselineParam;
+			const concurrencyParam = urlObj.searchParams.get('concurrency');
+			const parsedConcurrency = concurrencyParam ? parseInt(concurrencyParam, 10) : undefined;
+			const concurrency =
+				parsedConcurrency !== undefined && Number.isFinite(parsedConcurrency) && parsedConcurrency > 0
+					? Math.min(6, Math.max(1, Math.floor(parsedConcurrency)))
+					: undefined;
 			const detectedWAF = urlObj.searchParams.get('detectedWAF') || bodyDetectedWAF || undefined;
 
 			const wantsEnvelope =
@@ -201,13 +213,24 @@ export default {
 							paddingSize: paddingSize as any,
 						}
 					: undefined,
-				{ isWorker: true, pageSize, spoofUserAgents },
+				{
+					isWorker: true,
+					pageSize,
+					spoofUserAgents,
+					spoofIpHeaders,
+					calibrateBaseline,
+					concurrency,
+				},
 			);
 
-			if (wantsEnvelope) {
-				return new Response(JSON.stringify(envelope), { headers: { 'content-type': 'application/json; charset=UTF-8' } });
+			const responseHeaders: Record<string, string> = { 'content-type': 'application/json; charset=UTF-8' };
+			if (envelope.baseline) {
+				responseHeaders['x-waf-baseline'] = JSON.stringify(envelope.baseline);
 			}
-			return new Response(JSON.stringify(envelope.results), { headers: { 'content-type': 'application/json; charset=UTF-8' } });
+			if (wantsEnvelope) {
+				return new Response(JSON.stringify(envelope), { headers: responseHeaders });
+			}
+			return new Response(JSON.stringify(envelope.results), { headers: responseHeaders });
 		}
 		if (urlObj.pathname === '/api/audit') {
 			let url = urlObj.searchParams.get('url');

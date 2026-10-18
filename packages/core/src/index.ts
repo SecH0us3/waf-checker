@@ -10,3 +10,6 @@ export * from './reports';
 export * from './reverse-engineering';
 export * from './virtual-patch';
 export * from './payloads-data/legit-user-agents';
+export * from './payloads-data/trusted-ip-headers';
+export * from './baseline';
+export * from './utils/concurrency';
