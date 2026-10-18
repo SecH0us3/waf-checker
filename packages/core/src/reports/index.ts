@@ -1,6 +1,7 @@
 export * from './types';
 export * from './sarif';
 export * from './junit';
+export * from './diff';
 
 import { AuditReportStats, AuditResultItem, calculateAuditStats } from './types';
 import { generateSARIFReport } from './sarif';
