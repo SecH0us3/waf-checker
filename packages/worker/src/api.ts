@@ -3,6 +3,7 @@ import { handleWAFDetection } from './handlers/waf-detect';
 import { handleHTTPManipulation } from './handlers/http-manip';
 import {
 	isValidTargetUrl,
+	isValidOriginIp,
 	runReverseEngineeringAudit,
 	generateVirtualPatches,
 	WAFDetector,
@@ -137,6 +138,7 @@ export default {
 			let customHeaders: string | undefined = undefined;
 			let bodyDetectedWAF: string | undefined = undefined;
 			let bodyBaseline: any = undefined;
+			let bodyOriginIp: string | undefined = undefined;
 			if (request.method === 'POST') {
 				try {
 					const body: any = await request.json();
@@ -152,9 +154,27 @@ export default {
 					if (body && body.baseline && typeof body.baseline === 'object') {
 						bodyBaseline = body.baseline;
 					}
+					if (body && typeof body.originIp === 'string') {
+						bodyOriginIp = body.originIp;
+					}
 				} catch (e) {
 					console.error('Error parsing request body:', e);
 				}
+			}
+
+			// Origin-IP bypass test: resolve the target hostname to a caller-supplied
+			// origin IP. Must be a public IP literal; reject anything private/reserved
+			// so this cannot become an SSRF vector into internal networks.
+			const originIpRaw = (urlObj.searchParams.get('originIp') || bodyOriginIp || '').trim();
+			let originIpOverride: string | undefined = undefined;
+			if (originIpRaw) {
+				if (!isValidOriginIp(originIpRaw)) {
+					return new Response(JSON.stringify({ error: 'Invalid or restricted origin IP' }), {
+						status: 400,
+						headers: { 'content-type': 'application/json; charset=UTF-8' },
+					});
+				}
+				originIpOverride = originIpRaw;
 			}
 			const followRedirect = urlObj.searchParams.get('followRedirect') === '1';
 			const falsePositiveTest = urlObj.searchParams.get('falsePositiveTest') === '1';
@@ -220,6 +240,7 @@ export default {
 					spoofIpHeaders,
 					calibrateBaseline,
 					concurrency,
+					originIpOverride,
 				},
 			);
 

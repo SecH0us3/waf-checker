@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { isValidTargetUrl, isInScopeRedirect, normalizeHostname } from '../src/utils/security';
+import {
+	isValidTargetUrl,
+	isInScopeRedirect,
+	normalizeHostname,
+	isValidOriginIp,
+	applyOriginIpOverride,
+} from '../src/utils/security';
 
 describe('isValidTargetUrl', () => {
     describe('Valid URLs', () => {
@@ -236,5 +242,59 @@ describe('Host normalization parity (validation vs. comparison)', () => {
 	it('normalizes both sides of a redirect-scope comparison identically', () => {
 		expect(normalizeHostname('Example.COM.')).toBe('example.com');
 		expect(isInScopeRedirect('https://example.com/a', 'https://EXAMPLE.com./b')).toBe(true);
+	});
+});
+
+describe('isValidOriginIp (origin-IP bypass test)', () => {
+	it('accepts public IPv4 and IPv6 literals', () => {
+		expect(isValidOriginIp('8.8.8.8')).toBe(true);
+		expect(isValidOriginIp('8.8.8.8')).toBe(true);
+		expect(isValidOriginIp('2001:4860:4860::8888')).toBe(true);
+		expect(isValidOriginIp('[2001:4860:4860::8888]')).toBe(true);
+		expect(isValidOriginIp('  1.1.1.1  ')).toBe(true);
+	});
+
+	it('rejects private, loopback, link-local and reserved ranges (SSRF guard)', () => {
+		expect(isValidOriginIp('127.0.0.1')).toBe(false);
+		expect(isValidOriginIp('10.0.0.5')).toBe(false);
+		expect(isValidOriginIp('192.168.1.1')).toBe(false);
+		expect(isValidOriginIp('172.16.0.1')).toBe(false);
+		expect(isValidOriginIp('169.254.169.254')).toBe(false); // cloud metadata
+		expect(isValidOriginIp('[::1]')).toBe(false);
+		expect(isValidOriginIp('[fd00::1]')).toBe(false);
+	});
+
+	it('rejects anything that is not a bare IP literal', () => {
+		expect(isValidOriginIp('')).toBe(false);
+		expect(isValidOriginIp('example.com')).toBe(false); // hostname, not an IP
+		expect(isValidOriginIp('8.8.8.8:8080')).toBe(false); // port not allowed here
+		expect(isValidOriginIp('http://8.8.8.8')).toBe(false); // scheme
+		expect(isValidOriginIp('8.8.8.8/path')).toBe(false); // path
+		expect(isValidOriginIp('user@8.8.8.8')).toBe(false); // credentials
+		expect(isValidOriginIp('999.1.1.1')).toBe(false); // octet out of range
+	});
+});
+
+describe('applyOriginIpOverride', () => {
+	it('rewrites the connect host to the IP while keeping the Host header on the domain', () => {
+		const out = applyOriginIpOverride('https://example.com/path?q=1', '8.8.8.8');
+		expect(out).not.toBeNull();
+		expect(out!.connectUrl).toBe('https://8.8.8.8/path?q=1');
+		expect(out!.hostHeader).toBe('example.com');
+		expect(out!.resolveIp).toBe('8.8.8.8');
+	});
+
+	it('preserves an explicit non-default port and brackets IPv6', () => {
+		const out = applyOriginIpOverride('http://example.com:8443/a', '2001:db8::1');
+		expect(out!.connectUrl).toBe('http://[2001:db8::1]:8443/a');
+		expect(out!.hostHeader).toBe('example.com:8443');
+		expect(out!.resolveIp).toBe('2001:db8::1');
+	});
+
+	it('returns null for a restricted IP or a non-http(s) target', () => {
+		expect(applyOriginIpOverride('https://example.com/', '127.0.0.1')).toBeNull();
+		expect(applyOriginIpOverride('https://example.com/', '10.0.0.1')).toBeNull();
+		expect(applyOriginIpOverride('ftp://example.com/', '8.8.8.8')).toBeNull();
+		expect(applyOriginIpOverride('not-a-url', '8.8.8.8')).toBeNull();
 	});
 });

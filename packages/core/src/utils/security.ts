@@ -179,6 +179,80 @@ const match = hex.match(/^ac1[0-9a-f]/);
 }
 
 /**
+ * Validates a user-supplied *origin IP* for the "resolve this domain to this IP"
+ * bypass test. The whole point of that test is to connect straight to an origin
+ * server that normally sits behind a WAF, so the value must be a bare IP literal
+ * (v4, or v6 bracketed or not) and nothing else — no scheme, path, port,
+ * credentials or hostname. A hostname is refused on purpose: it would skip the
+ * literal-IP range checks and reopen an SSRF hole (DNS rebinding, internal name
+ * resolution). The IP itself is then run through `isValidTargetUrl`, so every
+ * private / loopback / link-local / reserved range it already blocks is blocked
+ * here too — a scan must never be steered at 127.0.0.1, 169.254.169.254, etc.
+ */
+export function isValidOriginIp(ip: string): boolean {
+	const trimmed = (ip || '').trim();
+	if (!trimmed) return false;
+	// A bare host only: reject anything carrying a scheme, path, query, fragment,
+	// credentials, whitespace or an explicit port.
+	if (/[\s/\\?#@]/.test(trimmed)) return false;
+
+	const isBracketed = trimmed.startsWith('[') && trimmed.endsWith(']');
+	const inner = isBracketed ? trimmed.slice(1, -1) : trimmed;
+	const looksIpv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(inner);
+	const looksIpv6 = inner.includes(':');
+	if (!looksIpv4 && !looksIpv6) return false;
+	if (looksIpv4 && inner.split('.').some((o) => Number(o) > 255)) return false;
+
+	const hostForUrl = looksIpv6 ? `[${inner}]` : inner;
+	// Reuse the single SSRF validator so the blocked-range list can never drift
+	// from the one the rest of the scanner enforces.
+	return isValidTargetUrl(`http://${hostForUrl}`);
+}
+
+/**
+ * Builds the request shape for the origin-IP bypass test: connect to the
+ * user-supplied origin IP while still presenting the target's own hostname, so
+ * the origin's virtual-host routing and the target's reporting stay on the real
+ * domain. This is the programmatic equivalent of `curl --resolve domain:port:ip`.
+ *
+ * Returns the IP-targeted connect URL plus the `Host` header to send, or `null`
+ * when the IP is not a valid public origin (see `isValidOriginIp`) or the target
+ * URL is not http(s). The caller MUST still run the returned `connectUrl` through
+ * `isValidTargetUrl` before fetching — this function validates the IP, not the
+ * fully-substituted URL.
+ *
+ * Note: over HTTPS the TLS certificate/SNI will be for the IP, not the domain, so
+ * this test is most reliable against http:// origins (or origins that serve the
+ * domain's cert on the IP).
+ */
+export function applyOriginIpOverride(
+	targetUrl: string,
+	originIp: string,
+): { connectUrl: string; hostHeader: string; resolveIp: string } | null {
+	if (!isValidOriginIp(originIp)) return null;
+	let u: URL;
+	try {
+		u = new URL(targetUrl);
+	} catch {
+		return null;
+	}
+	if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+
+	const trimmed = originIp.trim();
+	const inner = trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed;
+	const isIpv6 = inner.includes(':');
+	const ipHost = isIpv6 ? `[${inner}]` : inner;
+
+	// Preserve the original authority (hostname + any explicit port) as the Host
+	// header, and reconstruct the URL by hand so the IPv6 brackets and the path /
+	// query / fragment are carried through verbatim.
+	const hostHeader = u.host;
+	const portPart = u.port ? `:${u.port}` : '';
+	const connectUrl = `${u.protocol}//${ipHost}${portPart}${u.pathname}${u.search}${u.hash}`;
+	return { connectUrl, hostHeader, resolveIp: inner };
+}
+
+/**
  * Decides whether a redirect stays within the scanned target's scope.
  *
  * A scan must not silently follow a redirect off to a CDN, a partner domain or an

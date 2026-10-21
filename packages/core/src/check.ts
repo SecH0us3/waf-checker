@@ -8,7 +8,7 @@ import {
 	generateEncodedPayloads,
 } from './advanced-payloads';
 import { HTTPManipulationOptions, HTTPManipulator } from './http-manipulation';
-import { isValidTargetUrl, isInScopeRedirect } from './utils/security';
+import { isValidTargetUrl, isInScopeRedirect, applyOriginIpOverride } from './utils/security';
 import { substitutePayload, processCustomHeaders, randomUppercase, seededRandom, redactHeaders, redactUrl } from './utils/payload-utils';
 import { AuditResultItem, CheckResultEnvelope, UserAgentBypassInfo, IpHeaderBypassInfo } from './reports/types';
 import { LegitUserAgent, resolveLegitUserAgents } from './payloads-data/legit-user-agents';
@@ -172,7 +172,7 @@ export async function sendRequest(
 	useEnhancedPayloads: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; rawPayload?: boolean; allowLocal?: boolean },
+	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; rawPayload?: boolean; allowLocal?: boolean; originIpOverride?: string },
 ) {
 	const fetchFn = options?.fetch || globalThis.fetch;
 	try {
@@ -211,6 +211,32 @@ export async function sendRequest(
 			return { status: 'BLOCKED', is_redirect: false, responseTime: 0, error: 'ssrf_blocked', bodyText: '' };
 		}
 
+		// Origin-IP bypass test: connect straight to a user-supplied origin IP while
+		// still presenting the target's own hostname. This is the WAF-bypass case
+		// where the operator knows the IP the WAF forwards to and wants to check
+		// whether that origin is reachable (and unprotected) directly.
+		let connectUrl = finalUrl;
+		let overrideHostHeader: string | undefined;
+		let overrideResolveIp: string | undefined;
+		if (options?.originIpOverride) {
+			const override = applyOriginIpOverride(finalUrl, options.originIpOverride);
+			// The IP is validated by applyOriginIpOverride (public ranges only); a null
+			// result means it was private/reserved/malformed — refuse rather than fetch.
+			if (!override) {
+				console.error('Blocked invalid or restricted origin IP override');
+				return { status: 'BLOCKED', is_redirect: false, responseTime: 0, error: 'invalid_origin_ip', bodyText: '' };
+			}
+			// Re-validate the rewritten connect URL through the SSRF guard: the IP now
+			// sits in the host position and must clear every blocked range again.
+			if (!isValidTargetUrl(override.connectUrl, { allowLocal: options?.allowLocal })) {
+				console.error(`Blocked SSRF origin IP override to: ${redactUrl(override.connectUrl)}`);
+				return { status: 'BLOCKED', is_redirect: false, responseTime: 0, error: 'ssrf_blocked', bodyText: '' };
+			}
+			connectUrl = override.connectUrl;
+			overrideHostHeader = override.hostHeader;
+			overrideResolveIp = override.resolveIp;
+		}
+
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), 10000);
 		let responseTime = 0;
@@ -218,10 +244,18 @@ export async function sendRequest(
 
 		try {
 			// Manual redirect handling to prevent SSRF bypass
-			let currentUrl = finalUrl;
+			let currentUrl = connectUrl;
 			let currentMethod = method;
 			let currentHeaders = headers;
 			let currentBody: any = undefined;
+
+			// Present the target's real hostname to the origin even though we connect
+			// by IP, so virtual-host routing still resolves to the intended site.
+			if (overrideHostHeader) {
+				const newHeaders = new Headers(currentHeaders || {});
+				newHeaders.set('Host', overrideHostHeader);
+				currentHeaders = newHeaders;
+			}
 
 			if (method === 'POST' || method === 'PUT') {
 				if (payloadTemplate) {
@@ -259,6 +293,14 @@ export async function sendRequest(
 					body: currentBody,
 					signal: controller.signal,
 				};
+
+				// On Cloudflare Workers, resolveOverride forces the DNS lookup to the
+				// chosen IP at the platform level, which also preserves the original
+				// SNI/Host when the request URL is left on the domain. Harmless where
+				// unsupported (ignored by non-Workers fetch and by the test mock).
+				if (overrideResolveIp) {
+					(fetchOptions as any).cf = { ...((fetchOptions as any).cf || {}), resolveOverride: overrideResolveIp };
+				}
 
 				resp = await fetchFn(currentUrl, fetchOptions);
 
@@ -785,6 +827,13 @@ export interface CheckExecutionOptions {
 	isWorker?: boolean;
 	allowLocal?: boolean;
 	pageSize?: number;
+	/**
+	 * Origin-IP bypass test. When set to a public IP literal, every scan request
+	 * connects to that IP while still sending the target's hostname as the Host
+	 * header — the "I know the origin behind the WAF" bypass check. Validated as a
+	 * public IP before use (see applyOriginIpOverride / isValidOriginIp).
+	 */
+	originIpOverride?: string;
 	/**
 	 * Legitimate-User-Agent bypass test. `true` uses the curated list of
 	 * trusted identities; an array supplies custom ones; falsy disables it.
