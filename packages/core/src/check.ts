@@ -8,7 +8,7 @@ import {
 	generateEncodedPayloads,
 } from './advanced-payloads';
 import { HTTPManipulationOptions, HTTPManipulator } from './http-manipulation';
-import { isValidTargetUrl, isInScopeRedirect } from './utils/security';
+import { isValidTargetUrl, isInScopeRedirect, applyOriginIpOverride } from './utils/security';
 import { substitutePayload, processCustomHeaders, randomUppercase, seededRandom, redactHeaders, redactUrl } from './utils/payload-utils';
 import { AuditResultItem, CheckResultEnvelope, UserAgentBypassInfo, IpHeaderBypassInfo } from './reports/types';
 import { LegitUserAgent, resolveLegitUserAgents } from './payloads-data/legit-user-agents';
@@ -172,7 +172,7 @@ export async function sendRequest(
 	useEnhancedPayloads: boolean = false,
 	detectedWAF?: string,
 	httpManipulation?: HTTPManipulationOptions,
-	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; rawPayload?: boolean; allowLocal?: boolean },
+	options?: { fetch?: typeof fetch; color?: boolean; quiet?: boolean; rawPayload?: boolean; allowLocal?: boolean; originIpOverride?: string },
 ) {
 	const fetchFn = options?.fetch || globalThis.fetch;
 	try {
@@ -209,6 +209,25 @@ export async function sendRequest(
 		if (!isValidTargetUrl(finalUrl, { allowLocal: options?.allowLocal })) {
 			console.error(`Blocked SSRF attempt to: ${redactUrl(finalUrl)}`);
 			return { status: 'BLOCKED', is_redirect: false, responseTime: 0, error: 'ssrf_blocked', bodyText: '' };
+		}
+
+		// Origin-IP bypass test: resolve the target hostname to a user-supplied origin
+		// IP. This is the WAF-bypass case where the operator knows the IP the WAF
+		// forwards to and wants to check whether that origin is reachable (and
+		// unprotected) directly. The request URL stays on the domain so the Host
+		// header and TLS SNI remain correct (both are derived from the URL, and `Host`
+		// is a forbidden request header that cannot be overridden); only the DNS
+		// lookup is steered to the IP via cf.resolveOverride below.
+		let overrideResolveIp: string | undefined;
+		if (options?.originIpOverride) {
+			const override = applyOriginIpOverride(finalUrl, options.originIpOverride);
+			// The IP is validated by applyOriginIpOverride (public ranges only); a null
+			// result means it was private/reserved/malformed — refuse rather than fetch.
+			if (!override) {
+				console.error('Blocked invalid or restricted origin IP override');
+				return { status: 'BLOCKED', is_redirect: false, responseTime: 0, error: 'invalid_origin_ip', bodyText: '' };
+			}
+			overrideResolveIp = override.resolveIp;
 		}
 
 		const controller = new AbortController();
@@ -252,12 +271,18 @@ export async function sendRequest(
 			const maxRedirects = MAX_REDIRECTS;
 
 			while (true) {
-				const fetchOptions: RequestInit = {
+				const fetchOptions: RequestInit & { cf?: Record<string, unknown> } = {
 					method: currentMethod,
 					redirect: 'manual',
 					headers: currentHeaders,
 					body: currentBody,
 					signal: controller.signal,
+					// On Cloudflare Workers, resolveOverride steers the DNS lookup to the
+					// chosen origin IP while the request URL — and therefore the Host
+					// header and TLS SNI — stay on the target domain. Set per hop because
+					// fetchOptions is rebuilt each redirect. Harmless where unsupported
+					// (ignored by non-Workers fetch and by the test mock).
+					...(overrideResolveIp ? { cf: { resolveOverride: overrideResolveIp } } : {}),
 				};
 
 				resp = await fetchFn(currentUrl, fetchOptions);
@@ -785,6 +810,13 @@ export interface CheckExecutionOptions {
 	isWorker?: boolean;
 	allowLocal?: boolean;
 	pageSize?: number;
+	/**
+	 * Origin-IP bypass test. When set to a public IP literal, every scan request
+	 * connects to that IP while still sending the target's hostname as the Host
+	 * header — the "I know the origin behind the WAF" bypass check. Validated as a
+	 * public IP before use (see applyOriginIpOverride / isValidOriginIp).
+	 */
+	originIpOverride?: string;
 	/**
 	 * Legitimate-User-Agent bypass test. `true` uses the curated list of
 	 * trusted identities; an array supplies custom ones; falsy disables it.

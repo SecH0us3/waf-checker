@@ -429,6 +429,18 @@
 					</div>
 				</div>
 
+				<!-- Origin IP Override -->
+				<div class="settings-section mb-3">
+					<div class="section-label">🎯 Origin IP Override</div>
+					<input type="text" id="originIp" class="form-control" autocomplete="off" spellcheck="false"
+						placeholder="e.g. 203.0.113.10 or 2001:db8::1" />
+					<small class="text-muted d-block mt-1">
+						Know the real server IP behind the WAF? We keep requesting the domain (so the
+						Host header and TLS stay correct) but resolve it to this IP, to test whether the
+						origin is exposed and reachable past the WAF. Public IPs only.
+					</small>
+				</div>
+
 				<!-- Custom Headers -->
 				<div class="settings-section mb-3">
 					<div class="section-label">📝 Custom Headers</div>

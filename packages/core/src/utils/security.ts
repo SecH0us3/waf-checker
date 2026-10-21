@@ -179,6 +179,71 @@ const match = hex.match(/^ac1[0-9a-f]/);
 }
 
 /**
+ * Validates a user-supplied *origin IP* for the "resolve this domain to this IP"
+ * bypass test. The whole point of that test is to connect straight to an origin
+ * server that normally sits behind a WAF, so the value must be a bare IP literal
+ * (v4, or v6 bracketed or not) and nothing else — no scheme, path, port,
+ * credentials or hostname. A hostname is refused on purpose: it would skip the
+ * literal-IP range checks and reopen an SSRF hole (DNS rebinding, internal name
+ * resolution). The IP itself is then run through `isValidTargetUrl`, so every
+ * private / loopback / link-local / reserved range it already blocks is blocked
+ * here too — a scan must never be steered at 127.0.0.1, 169.254.169.254, etc.
+ */
+export function isValidOriginIp(ip: string): boolean {
+	const trimmed = (ip || '').trim();
+	if (!trimmed) return false;
+	// A bare host only: reject anything carrying a scheme, path, query, fragment,
+	// credentials, whitespace or an explicit port.
+	if (/[\s/\\?#@]/.test(trimmed)) return false;
+
+	const isBracketed = trimmed.startsWith('[') && trimmed.endsWith(']');
+	const inner = isBracketed ? trimmed.slice(1, -1) : trimmed;
+	const looksIpv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(inner);
+	const looksIpv6 = inner.includes(':');
+	if (!looksIpv4 && !looksIpv6) return false;
+	if (looksIpv4 && inner.split('.').some((o) => Number(o) > 255)) return false;
+
+	const hostForUrl = looksIpv6 ? `[${inner}]` : inner;
+	// Reuse the single SSRF validator so the blocked-range list can never drift
+	// from the one the rest of the scanner enforces.
+	return isValidTargetUrl(`http://${hostForUrl}`);
+}
+
+/**
+ * Validates and normalizes the inputs for the origin-IP bypass test, where the
+ * target hostname is resolved to a known origin IP behind the WAF.
+ *
+ * The request URL itself is deliberately NOT rewritten to the IP: the Host header
+ * and TLS SNI are both derived from the URL (and `Host` is a forbidden request
+ * header that fetch silently drops), so pointing the URL at the IP would lose the
+ * vhost the test depends on. Instead the caller keeps the URL on the domain and
+ * steers only the DNS lookup via Cloudflare's `cf.resolveOverride`, which this
+ * returns as `resolveIp`. `hostHeader` is the target's own authority, returned
+ * for logging/reporting.
+ *
+ * Returns `null` when the IP is not a valid public origin (see `isValidOriginIp`)
+ * or the target URL is not http(s).
+ */
+export function applyOriginIpOverride(
+	targetUrl: string,
+	originIp: string,
+): { resolveIp: string; hostHeader: string } | null {
+	if (!isValidOriginIp(originIp)) return null;
+	let u: URL;
+	try {
+		u = new URL(targetUrl);
+	} catch {
+		return null;
+	}
+	if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+
+	const trimmed = originIp.trim();
+	// Normalize to the bare IP literal (resolveOverride takes no brackets).
+	const resolveIp = trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed;
+	return { resolveIp, hostHeader: u.host };
+}
+
+/**
  * Decides whether a redirect stays within the scanned target's scope.
  *
  * A scan must not silently follow a redirect off to a CDN, a partner domain or an

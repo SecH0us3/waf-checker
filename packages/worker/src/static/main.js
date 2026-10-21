@@ -641,6 +641,15 @@ async function fetchResults() {
 		customHeaders = headersEl.value;
 		safeStorage.setItem('wafchecker_customHeaders', customHeaders);
 	}
+
+	// Origin IP Override: connect to a known origin IP behind the WAF while still
+	// addressing the target by hostname. Empty means no override.
+	let originIp = '';
+	const originIpEl = document.getElementById('originIp');
+	if (originIpEl) {
+		originIp = originIpEl.value.trim();
+		safeStorage.setItem('wafchecker_originIp', originIp);
+	}
 	let page = 0;
 	let allResults = [];
 	let detectedWAFType = window.detectedWAF || null;
@@ -699,6 +708,7 @@ async function fetchResults() {
 				calibrateBaseline: calibrateBaseline ? '1' : '0',
 				concurrency: spoofUserAgent || spoofIpHeaders ? '2' : '4',
 				detectedWAF: detectedWAFType || '',
+				...(originIp ? { originIp } : {}),
 			});
 			const resp = await fetch(`/api/check?${params.toString()}`, {
 				method: 'POST',
@@ -707,6 +717,7 @@ async function fetchResults() {
 					payloadTemplate,
 					customHeaders,
 					detectedWAF: detectedWAFType,
+					...(originIp ? { originIp } : {}),
 					...(cachedBaseline ? { baseline: cachedBaseline } : {}),
 				}),
 				signal: currentAbortController.signal,
@@ -1554,6 +1565,13 @@ function restoreStateFromLocalStorage() {
 	if (customHeaders) {
 		const headersEl = document.getElementById('customHeaders');
 		if (headersEl) headersEl.value = customHeaders;
+	}
+
+	// Origin IP Override
+	const originIp = safeStorage.getItem('wafchecker_originIp');
+	if (originIp) {
+		const originIpEl = document.getElementById('originIp');
+		if (originIpEl) originIpEl.value = originIp;
 	}
 
 	// More Settings panel state
