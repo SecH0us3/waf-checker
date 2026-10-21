@@ -276,19 +276,18 @@ describe('isValidOriginIp (origin-IP bypass test)', () => {
 });
 
 describe('applyOriginIpOverride', () => {
-	it('rewrites the connect host to the IP while keeping the Host header on the domain', () => {
-		const out = applyOriginIpOverride('https://example.com/path?q=1', '8.8.8.8');
-		expect(out).not.toBeNull();
-		expect(out!.connectUrl).toBe('https://8.8.8.8/path?q=1');
-		expect(out!.hostHeader).toBe('example.com');
-		expect(out!.resolveIp).toBe('8.8.8.8');
+	it('returns the normalized resolve IP and the target authority (URL is not rewritten)', () => {
+		expect(applyOriginIpOverride('https://example.com/path?q=1', '8.8.8.8')).toEqual({
+			resolveIp: '8.8.8.8',
+			hostHeader: 'example.com',
+		});
 	});
 
-	it('preserves an explicit non-default port and brackets IPv6', () => {
-		const out = applyOriginIpOverride('http://example.com:8443/a', '2001:db8::1');
-		expect(out!.connectUrl).toBe('http://[2001:db8::1]:8443/a');
-		expect(out!.hostHeader).toBe('example.com:8443');
-		expect(out!.resolveIp).toBe('2001:db8::1');
+	it('keeps an explicit non-default port in the authority and unbrackets IPv6', () => {
+		expect(applyOriginIpOverride('http://example.com:8443/a', '2001:db8::1')).toEqual({
+			resolveIp: '2001:db8::1',
+			hostHeader: 'example.com:8443',
+		});
 	});
 
 	it('returns null for a restricted IP or a non-http(s) target', () => {

@@ -211,12 +211,13 @@ export async function sendRequest(
 			return { status: 'BLOCKED', is_redirect: false, responseTime: 0, error: 'ssrf_blocked', bodyText: '' };
 		}
 
-		// Origin-IP bypass test: connect straight to a user-supplied origin IP while
-		// still presenting the target's own hostname. This is the WAF-bypass case
-		// where the operator knows the IP the WAF forwards to and wants to check
-		// whether that origin is reachable (and unprotected) directly.
-		let connectUrl = finalUrl;
-		let overrideHostHeader: string | undefined;
+		// Origin-IP bypass test: resolve the target hostname to a user-supplied origin
+		// IP. This is the WAF-bypass case where the operator knows the IP the WAF
+		// forwards to and wants to check whether that origin is reachable (and
+		// unprotected) directly. The request URL stays on the domain so the Host
+		// header and TLS SNI remain correct (both are derived from the URL, and `Host`
+		// is a forbidden request header that cannot be overridden); only the DNS
+		// lookup is steered to the IP via cf.resolveOverride below.
 		let overrideResolveIp: string | undefined;
 		if (options?.originIpOverride) {
 			const override = applyOriginIpOverride(finalUrl, options.originIpOverride);
@@ -226,14 +227,6 @@ export async function sendRequest(
 				console.error('Blocked invalid or restricted origin IP override');
 				return { status: 'BLOCKED', is_redirect: false, responseTime: 0, error: 'invalid_origin_ip', bodyText: '' };
 			}
-			// Re-validate the rewritten connect URL through the SSRF guard: the IP now
-			// sits in the host position and must clear every blocked range again.
-			if (!isValidTargetUrl(override.connectUrl, { allowLocal: options?.allowLocal })) {
-				console.error(`Blocked SSRF origin IP override to: ${redactUrl(override.connectUrl)}`);
-				return { status: 'BLOCKED', is_redirect: false, responseTime: 0, error: 'ssrf_blocked', bodyText: '' };
-			}
-			connectUrl = override.connectUrl;
-			overrideHostHeader = override.hostHeader;
 			overrideResolveIp = override.resolveIp;
 		}
 
@@ -244,18 +237,10 @@ export async function sendRequest(
 
 		try {
 			// Manual redirect handling to prevent SSRF bypass
-			let currentUrl = connectUrl;
+			let currentUrl = finalUrl;
 			let currentMethod = method;
 			let currentHeaders = headers;
 			let currentBody: any = undefined;
-
-			// Present the target's real hostname to the origin even though we connect
-			// by IP, so virtual-host routing still resolves to the intended site.
-			if (overrideHostHeader) {
-				const newHeaders = new Headers(currentHeaders || {});
-				newHeaders.set('Host', overrideHostHeader);
-				currentHeaders = newHeaders;
-			}
 
 			if (method === 'POST' || method === 'PUT') {
 				if (payloadTemplate) {
@@ -286,21 +271,19 @@ export async function sendRequest(
 			const maxRedirects = MAX_REDIRECTS;
 
 			while (true) {
-				const fetchOptions: RequestInit = {
+				const fetchOptions: RequestInit & { cf?: Record<string, unknown> } = {
 					method: currentMethod,
 					redirect: 'manual',
 					headers: currentHeaders,
 					body: currentBody,
 					signal: controller.signal,
+					// On Cloudflare Workers, resolveOverride steers the DNS lookup to the
+					// chosen origin IP while the request URL — and therefore the Host
+					// header and TLS SNI — stay on the target domain. Set per hop because
+					// fetchOptions is rebuilt each redirect. Harmless where unsupported
+					// (ignored by non-Workers fetch and by the test mock).
+					...(overrideResolveIp ? { cf: { resolveOverride: overrideResolveIp } } : {}),
 				};
-
-				// On Cloudflare Workers, resolveOverride forces the DNS lookup to the
-				// chosen IP at the platform level, which also preserves the original
-				// SNI/Host when the request URL is left on the domain. Harmless where
-				// unsupported (ignored by non-Workers fetch and by the test mock).
-				if (overrideResolveIp) {
-					(fetchOptions as any).cf = { ...((fetchOptions as any).cf || {}), resolveOverride: overrideResolveIp };
-				}
 
 				resp = await fetchFn(currentUrl, fetchOptions);
 

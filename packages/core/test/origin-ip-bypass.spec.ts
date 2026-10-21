@@ -1,22 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { sendRequest, handleApiCheckFiltered } from '../src/check';
 
-function readHeader(options: any, name: string): string | undefined {
-	const h = options?.headers;
-	if (!h) return undefined;
-	if (typeof h.get === 'function') return h.get(name) ?? undefined;
-	const foundKey = Object.keys(h).find((k) => k.toLowerCase() === name.toLowerCase());
-	return foundKey ? h[foundKey] : undefined;
-}
-
 describe('Origin IP Override bypass test (sendRequest)', () => {
-	it('connects to the origin IP but presents the target hostname as the Host header', async () => {
+	it('keeps the request URL on the domain and steers DNS to the IP via cf.resolveOverride', async () => {
 		let seenUrl = '';
-		let seenHost: string | undefined;
 		let seenCf: any;
 		const mockFetch = vi.fn().mockImplementation(async (url: string, options: any) => {
 			seenUrl = url;
-			seenHost = readHeader(options, 'Host');
 			seenCf = options?.cf;
 			return { status: 200, headers: new Headers(), text: async () => 'ok' };
 		});
@@ -35,9 +25,9 @@ describe('Origin IP Override bypass test (sendRequest)', () => {
 		);
 
 		expect(res.status).toBe(200);
-		expect(seenUrl).toBe('https://8.8.8.8/path');
-		expect(seenHost).toBe('example.com');
-		// Worker platform hint is set so Cloudflare forces the DNS lookup to the IP.
+		// URL (and therefore Host + TLS SNI) stays on the target domain, never the IP.
+		expect(seenUrl).toBe('https://example.com/path');
+		// Only the DNS lookup is overridden, via the Cloudflare platform hint.
 		expect(seenCf?.resolveOverride).toBe('8.8.8.8');
 	});
 
@@ -60,14 +50,13 @@ describe('Origin IP Override bypass test (sendRequest)', () => {
 		expect(mockFetch).not.toHaveBeenCalled();
 	});
 
-	it('threads the override through the scan pipeline so every probe hits the IP', async () => {
-		const seenUrls = new Set<string>();
+	it('threads the override through the scan pipeline so every probe carries resolveOverride', async () => {
+		const seenHosts = new Set<string>();
+		let everyProbeHadOverride = true;
 		const mockFetch = vi.fn().mockImplementation(async (url: string, options: any) => {
-			seenUrls.add(new URL(url).hostname);
-			// Only the direct-to-origin host answers 200; the WAF-fronted domain would 403.
-			const host = readHeader(options, 'Host');
-			const status = host === 'example.com' ? 200 : 403;
-			return { status, headers: new Headers(), text: async () => '' };
+			seenHosts.add(new URL(url).hostname);
+			if (options?.cf?.resolveOverride !== '8.8.8.8') everyProbeHadOverride = false;
+			return { status: 200, headers: new Headers(), text: async () => '' };
 		});
 
 		const results = await handleApiCheckFiltered(
@@ -90,8 +79,8 @@ describe('Origin IP Override bypass test (sendRequest)', () => {
 		);
 
 		expect(results.length).toBeGreaterThan(0);
-		// All connections went to the origin IP, never the WAF-fronted hostname.
-		expect(seenUrls.has('8.8.8.8')).toBe(true);
-		expect(seenUrls.has('example.com')).toBe(false);
+		// The request URL always stays on the target domain; the IP rides in cf only.
+		expect([...seenHosts]).toEqual(['example.com']);
+		expect(everyProbeHadOverride).toBe(true);
 	});
 });

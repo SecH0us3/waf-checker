@@ -210,25 +210,24 @@ export function isValidOriginIp(ip: string): boolean {
 }
 
 /**
- * Builds the request shape for the origin-IP bypass test: connect to the
- * user-supplied origin IP while still presenting the target's own hostname, so
- * the origin's virtual-host routing and the target's reporting stay on the real
- * domain. This is the programmatic equivalent of `curl --resolve domain:port:ip`.
+ * Validates and normalizes the inputs for the origin-IP bypass test, where the
+ * target hostname is resolved to a known origin IP behind the WAF.
  *
- * Returns the IP-targeted connect URL plus the `Host` header to send, or `null`
- * when the IP is not a valid public origin (see `isValidOriginIp`) or the target
- * URL is not http(s). The caller MUST still run the returned `connectUrl` through
- * `isValidTargetUrl` before fetching — this function validates the IP, not the
- * fully-substituted URL.
+ * The request URL itself is deliberately NOT rewritten to the IP: the Host header
+ * and TLS SNI are both derived from the URL (and `Host` is a forbidden request
+ * header that fetch silently drops), so pointing the URL at the IP would lose the
+ * vhost the test depends on. Instead the caller keeps the URL on the domain and
+ * steers only the DNS lookup via Cloudflare's `cf.resolveOverride`, which this
+ * returns as `resolveIp`. `hostHeader` is the target's own authority, returned
+ * for logging/reporting.
  *
- * Note: over HTTPS the TLS certificate/SNI will be for the IP, not the domain, so
- * this test is most reliable against http:// origins (or origins that serve the
- * domain's cert on the IP).
+ * Returns `null` when the IP is not a valid public origin (see `isValidOriginIp`)
+ * or the target URL is not http(s).
  */
 export function applyOriginIpOverride(
 	targetUrl: string,
 	originIp: string,
-): { connectUrl: string; hostHeader: string; resolveIp: string } | null {
+): { resolveIp: string; hostHeader: string } | null {
 	if (!isValidOriginIp(originIp)) return null;
 	let u: URL;
 	try {
@@ -239,17 +238,9 @@ export function applyOriginIpOverride(
 	if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
 
 	const trimmed = originIp.trim();
-	const inner = trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed;
-	const isIpv6 = inner.includes(':');
-	const ipHost = isIpv6 ? `[${inner}]` : inner;
-
-	// Preserve the original authority (hostname + any explicit port) as the Host
-	// header, and reconstruct the URL by hand so the IPv6 brackets and the path /
-	// query / fragment are carried through verbatim.
-	const hostHeader = u.host;
-	const portPart = u.port ? `:${u.port}` : '';
-	const connectUrl = `${u.protocol}//${ipHost}${portPart}${u.pathname}${u.search}${u.hash}`;
-	return { connectUrl, hostHeader, resolveIp: inner };
+	// Normalize to the bare IP literal (resolveOverride takes no brackets).
+	const resolveIp = trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed;
+	return { resolveIp, hostHeader: u.host };
 }
 
 /**
