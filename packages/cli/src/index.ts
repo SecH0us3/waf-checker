@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { fetch as undiciFetch, ProxyAgent, Agent } from 'undici';
+import { lookup as dnsLookup } from 'node:dns';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
@@ -75,14 +76,32 @@ program.hook('preAction', () => {
 	}
 });
 
-// Origin-IP bypass test: force the target hostname to resolve to a known origin
+// Normalize an origin IP to a bare literal: isValidOriginIp accepts IPv6 in
+// bracketed (`[::1]`) or unbracketed form, but net/undici dial a bare address —
+// a bracketed string is not a valid connect address. Single normalization point
+// so the connector and core (cf.resolveOverride) never diverge on bracket rules.
+export function normalizeOriginIp(ip: string): string {
+	const t = ip.trim();
+	return t.startsWith('[') && t.endsWith(']') ? t.slice(1, -1) : t;
+}
+
+// Origin-IP bypass test: force the TARGET hostname to resolve to a known origin
 // IP behind the WAF. Node/undici has no Cloudflare `cf.resolveOverride`, so we
 // override DNS at the connector with a custom lookup. The URL — and therefore
 // the Host header and TLS SNI — stay on the domain; only the dialed address
 // changes. This is the `curl --resolve host:port:ip` behaviour.
-function originIpLookup(ip: string) {
+//
+// Only the target host is pinned to the IP; any other host (e.g. a redirect to a
+// sibling subdomain when --follow-redirects is on) resolves normally, so we never
+// misreport another vhost's response as served from this origin. `ip` must be a
+// bare literal (see normalizeOriginIp); `realLookup` is injectable for tests.
+export function originIpLookup(ip: string, targetHost: string, realLookup: typeof dnsLookup = dnsLookup) {
 	const family = ip.includes(':') ? 6 : 4;
-	return (_hostname: string, options: any, callback: any) => {
+	const target = targetHost.toLowerCase();
+	return (hostname: string, options: any, callback: any) => {
+		if (String(hostname).toLowerCase() !== target) {
+			return realLookup(hostname, options, callback);
+		}
 		if (options && options.all) {
 			callback(null, [{ address: ip, family }]);
 		} else {
@@ -92,13 +111,14 @@ function originIpLookup(ip: string) {
 }
 
 // Helper to get custom fetch with proxy or origin-IP override support.
-function getFetch(proxyUrl?: string, originIp?: string): typeof fetch {
+// `originIp` must already be a bare literal; `targetHost` scopes the override.
+function getFetch(proxyUrl?: string, originIp?: string, targetHost?: string): typeof fetch {
 	if (proxyUrl) {
 		const agent = new ProxyAgent(proxyUrl);
 		return ((url: any, init: any) => undiciFetch(url, { ...init, dispatcher: agent })) as any;
 	}
-	if (originIp) {
-		const agent = new Agent({ connect: { lookup: originIpLookup(originIp) } });
+	if (originIp && targetHost) {
+		const agent = new Agent({ connect: { lookup: originIpLookup(originIp, targetHost) } });
 		return ((url: any, init: any) => undiciFetch(url, { ...init, dispatcher: agent })) as any;
 	}
 	return globalThis.fetch;
@@ -297,7 +317,7 @@ checkCmd
 				process.exit(1);
 			}
 
-			const originIp = options.originIp ? String(options.originIp).trim() : undefined;
+			let originIp = options.originIp ? String(options.originIp).trim() : undefined;
 			if (originIp) {
 				if (!isValidOriginIp(originIp)) {
 					console.error(colors.red(`Error: --origin-ip "${originIp}" is not a valid public IP (private, loopback, link-local and reserved ranges are rejected).`));
@@ -307,9 +327,13 @@ checkCmd
 					console.error(colors.red('Error: --origin-ip cannot be combined with --proxy (the proxy performs its own DNS resolution).'));
 					process.exit(1);
 				}
+				// Normalize to a bare literal so the connector (and core) dial it correctly.
+				originIp = normalizeOriginIp(originIp);
 			}
 
-			const customFetch = getFetch(options.proxy, originIp);
+			// Scope the DNS override to the target host only.
+			const targetHost = originIp ? new URL(url.replace(/\{PAYLOAD\}/g, 'test-payload')).hostname : undefined;
+			const customFetch = getFetch(options.proxy, originIp, targetHost);
 			const methods = parseCommaList(options.methods) || ['GET'];
 			const categories = parseCommaList(options.categories);
 			const headers = parseCustomHeaders(options.customHeaders);

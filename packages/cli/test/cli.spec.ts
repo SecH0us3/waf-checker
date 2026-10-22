@@ -54,7 +54,7 @@ vi.mock('../src/report', async () => {
 });
 
 import * as fs from 'fs';
-import { program } from '../src/index';
+import { program, originIpLookup, normalizeOriginIp } from '../src/index';
 import * as core from '@waf-checker/core';
 import { writeReport } from '../src/report';
 
@@ -1077,5 +1077,43 @@ describe('CLI Argument Processing', () => {
 			).resolves.toBeDefined();
 			expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('K8S'));
 		});
+	});
+});
+
+describe('Origin IP override helpers', () => {
+	it('normalizeOriginIp strips IPv6 brackets and trims, leaving IPv4 untouched', () => {
+		expect(normalizeOriginIp('[2606:4700:4700::1111]')).toBe('2606:4700:4700::1111');
+		expect(normalizeOriginIp('  8.8.8.8 ')).toBe('8.8.8.8');
+		expect(normalizeOriginIp('2606:4700::1111')).toBe('2606:4700::1111');
+	});
+
+	it('originIpLookup resolves the target host to the override IPv4 with family 4', () => {
+		const lookup = originIpLookup('8.8.8.8', 'example.com');
+		const cb = vi.fn();
+		lookup('example.com', {}, cb);
+		expect(cb).toHaveBeenCalledWith(null, '8.8.8.8', 4);
+	});
+
+	it('originIpLookup resolves IPv6 with family 6 (bare literal, no brackets)', () => {
+		const lookup = originIpLookup('2606:4700:4700::1111', 'example.com');
+		const cb = vi.fn();
+		lookup('example.com', {}, cb);
+		expect(cb).toHaveBeenCalledWith(null, '2606:4700:4700::1111', 6);
+	});
+
+	it('originIpLookup honors the all:true shape used by the connector', () => {
+		const lookup = originIpLookup('8.8.8.8', 'example.com');
+		const cb = vi.fn();
+		lookup('EXAMPLE.COM', { all: true }, cb); // case-insensitive host match
+		expect(cb).toHaveBeenCalledWith(null, [{ address: '8.8.8.8', family: 4 }]);
+	});
+
+	it('originIpLookup delegates a NON-target host to real DNS instead of pinning it', () => {
+		const realLookup = vi.fn();
+		const lookup = originIpLookup('8.8.8.8', 'example.com', realLookup as any);
+		const cb = vi.fn();
+		lookup('api.example.com', { all: true }, cb); // sibling subdomain (e.g. redirect)
+		expect(realLookup).toHaveBeenCalledWith('api.example.com', { all: true }, cb);
+		expect(cb).not.toHaveBeenCalled(); // not force-resolved to the origin IP
 	});
 });
