@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { fetch as undiciFetch, ProxyAgent } from 'undici';
+import { fetch as undiciFetch, ProxyAgent, Agent } from 'undici';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
 	WAFDetector,
 	handleApiCheckFiltered,
 	isValidTargetUrl,
+	isValidOriginIp,
 	redactUrl,
 	PAYLOADS,
 	runReverseEngineeringAudit,
@@ -74,10 +75,30 @@ program.hook('preAction', () => {
 	}
 });
 
-// Helper to get custom fetch with proxy support
-function getFetch(proxyUrl?: string): typeof fetch {
+// Origin-IP bypass test: force the target hostname to resolve to a known origin
+// IP behind the WAF. Node/undici has no Cloudflare `cf.resolveOverride`, so we
+// override DNS at the connector with a custom lookup. The URL — and therefore
+// the Host header and TLS SNI — stay on the domain; only the dialed address
+// changes. This is the `curl --resolve host:port:ip` behaviour.
+function originIpLookup(ip: string) {
+	const family = ip.includes(':') ? 6 : 4;
+	return (_hostname: string, options: any, callback: any) => {
+		if (options && options.all) {
+			callback(null, [{ address: ip, family }]);
+		} else {
+			callback(null, ip, family);
+		}
+	};
+}
+
+// Helper to get custom fetch with proxy or origin-IP override support.
+function getFetch(proxyUrl?: string, originIp?: string): typeof fetch {
 	if (proxyUrl) {
 		const agent = new ProxyAgent(proxyUrl);
+		return ((url: any, init: any) => undiciFetch(url, { ...init, dispatcher: agent })) as any;
+	}
+	if (originIp) {
+		const agent = new Agent({ connect: { lookup: originIpLookup(originIp) } });
 		return ((url: any, init: any) => undiciFetch(url, { ...init, dispatcher: agent })) as any;
 	}
 	return globalThis.fetch;
@@ -265,6 +286,7 @@ checkCmd
 	.option('--compare <path>', 'Compare against a previous JSON report and show regressions/improvements (scan diff)')
 	.option('--fail-on-regression', 'Exit with exit code 1 if any payload blocked in the --compare report is no longer blocked', false)
 	.option('--allow-local', 'Allow testing localhost, 127.0.0.1, and private IP ranges (Docker/LAN)', false)
+	.option('--origin-ip <ip>', 'Resolve the target hostname to this known origin IP behind the WAF (Host header and TLS stay on the domain) to test whether the origin is reachable directly, past the WAF. Public IP only; not compatible with --proxy')
 	.addHelpText('after', detailedHelp)
 	.action(async (url: string, options: any) => {
 		const isQuiet = options.quiet || options.silent;
@@ -275,7 +297,19 @@ checkCmd
 				process.exit(1);
 			}
 
-			const customFetch = getFetch(options.proxy);
+			const originIp = options.originIp ? String(options.originIp).trim() : undefined;
+			if (originIp) {
+				if (!isValidOriginIp(originIp)) {
+					console.error(colors.red(`Error: --origin-ip "${originIp}" is not a valid public IP (private, loopback, link-local and reserved ranges are rejected).`));
+					process.exit(1);
+				}
+				if (options.proxy) {
+					console.error(colors.red('Error: --origin-ip cannot be combined with --proxy (the proxy performs its own DNS resolution).'));
+					process.exit(1);
+				}
+			}
+
+			const customFetch = getFetch(options.proxy, originIp);
 			const methods = parseCommaList(options.methods) || ['GET'];
 			const categories = parseCommaList(options.categories);
 			const headers = parseCustomHeaders(options.customHeaders);
@@ -318,6 +352,7 @@ checkCmd
 					calibrateBaseline: options.calibrateBaseline !== false,
 					concurrency,
 					pageSize: ALL_PAYLOADS_PAGE_SIZE,
+					originIpOverride: originIp,
 				}
 			);
 

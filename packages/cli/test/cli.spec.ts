@@ -191,6 +191,39 @@ describe('CLI Argument Processing', () => {
 			expect(exitCode).toBeNull();
 		});
 
+		it('passes a valid --origin-ip through as originIpOverride', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--origin-ip', '8.8.8.8'])
+			).resolves.toBeDefined();
+
+			const opts = (core.handleApiCheckFiltered as any).mock.calls.at(-1).at(-1);
+			expect(opts.originIpOverride).toBe('8.8.8.8');
+			expect(exitCode).toBeNull();
+		});
+
+		it('exits 1 for a private/restricted --origin-ip and never scans', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--origin-ip', '10.0.0.1'])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(core.handleApiCheckFiltered).not.toHaveBeenCalled();
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('not a valid public IP'));
+		});
+
+		it('exits 1 when --origin-ip is combined with --proxy', async () => {
+			await expect(
+				program.parseAsync([
+					'node', 'index.js', 'check', 'https://example.com',
+					'--origin-ip', '8.8.8.8', '--proxy', 'http://127.0.0.1:8080',
+				])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(core.handleApiCheckFiltered).not.toHaveBeenCalled();
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('cannot be combined with --proxy'));
+		});
+
 		it('should parse custom methods, categories, and detected WAF', async () => {
 			await expect(
 				program.parseAsync([
