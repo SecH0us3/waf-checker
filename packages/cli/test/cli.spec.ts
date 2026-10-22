@@ -54,7 +54,7 @@ vi.mock('../src/report', async () => {
 });
 
 import * as fs from 'fs';
-import { program } from '../src/index';
+import { program, originIpLookup, normalizeOriginIp } from '../src/index';
 import * as core from '@waf-checker/core';
 import { writeReport } from '../src/report';
 
@@ -189,6 +189,39 @@ describe('CLI Argument Processing', () => {
 				expect.any(Object)
 			);
 			expect(exitCode).toBeNull();
+		});
+
+		it('passes a valid --origin-ip through as originIpOverride', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--origin-ip', '8.8.8.8'])
+			).resolves.toBeDefined();
+
+			const opts = (core.handleApiCheckFiltered as any).mock.calls.at(-1).at(-1);
+			expect(opts.originIpOverride).toBe('8.8.8.8');
+			expect(exitCode).toBeNull();
+		});
+
+		it('exits 1 for a private/restricted --origin-ip and never scans', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--origin-ip', '10.0.0.1'])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(core.handleApiCheckFiltered).not.toHaveBeenCalled();
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('not a valid public IP'));
+		});
+
+		it('exits 1 when --origin-ip is combined with --proxy', async () => {
+			await expect(
+				program.parseAsync([
+					'node', 'index.js', 'check', 'https://example.com',
+					'--origin-ip', '8.8.8.8', '--proxy', 'http://127.0.0.1:8080',
+				])
+			).rejects.toThrow('process.exit(1)');
+
+			expect(exitCode).toBe(1);
+			expect(core.handleApiCheckFiltered).not.toHaveBeenCalled();
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('cannot be combined with --proxy'));
 		});
 
 		it('should parse custom methods, categories, and detected WAF', async () => {
@@ -1044,5 +1077,43 @@ describe('CLI Argument Processing', () => {
 			).resolves.toBeDefined();
 			expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('K8S'));
 		});
+	});
+});
+
+describe('Origin IP override helpers', () => {
+	it('normalizeOriginIp strips IPv6 brackets and trims, leaving IPv4 untouched', () => {
+		expect(normalizeOriginIp('[2606:4700:4700::1111]')).toBe('2606:4700:4700::1111');
+		expect(normalizeOriginIp('  8.8.8.8 ')).toBe('8.8.8.8');
+		expect(normalizeOriginIp('2606:4700::1111')).toBe('2606:4700::1111');
+	});
+
+	it('originIpLookup resolves the target host to the override IPv4 with family 4', () => {
+		const lookup = originIpLookup('8.8.8.8', 'example.com');
+		const cb = vi.fn();
+		lookup('example.com', {}, cb);
+		expect(cb).toHaveBeenCalledWith(null, '8.8.8.8', 4);
+	});
+
+	it('originIpLookup resolves IPv6 with family 6 (bare literal, no brackets)', () => {
+		const lookup = originIpLookup('2606:4700:4700::1111', 'example.com');
+		const cb = vi.fn();
+		lookup('example.com', {}, cb);
+		expect(cb).toHaveBeenCalledWith(null, '2606:4700:4700::1111', 6);
+	});
+
+	it('originIpLookup honors the all:true shape used by the connector', () => {
+		const lookup = originIpLookup('8.8.8.8', 'example.com');
+		const cb = vi.fn();
+		lookup('EXAMPLE.COM', { all: true }, cb); // case-insensitive host match
+		expect(cb).toHaveBeenCalledWith(null, [{ address: '8.8.8.8', family: 4 }]);
+	});
+
+	it('originIpLookup delegates a NON-target host to real DNS instead of pinning it', () => {
+		const realLookup = vi.fn();
+		const lookup = originIpLookup('8.8.8.8', 'example.com', realLookup as any);
+		const cb = vi.fn();
+		lookup('api.example.com', { all: true }, cb); // sibling subdomain (e.g. redirect)
+		expect(realLookup).toHaveBeenCalledWith('api.example.com', { all: true }, cb);
+		expect(cb).not.toHaveBeenCalled(); // not force-resolved to the origin IP
 	});
 });
