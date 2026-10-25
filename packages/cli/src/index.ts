@@ -329,7 +329,7 @@ checkCmd
 	.option('--allow-local', 'Allow testing localhost, 127.0.0.1, and private IP ranges (Docker/LAN)', false)
 	.option('--origin-ip <ip>', 'Resolve the target hostname to this known origin IP behind the WAF (Host header and TLS stay on the domain) to test whether the origin is reachable directly, past the WAF. Public IP only; not compatible with --proxy')
 	.option('-k, --insecure', 'Skip TLS certificate verification (like curl -k). Dangerous — disables protection against MITM; use only for trusted targets (e.g. with --origin-ip where the origin cert will not match the domain)', false)
-	.option('--limit <number>', 'Limit the scan to at most N payload tests, e.g. --limit 1 for a single request. With --limit, baseline calibration and the UA/IP bypass probes are disabled so exactly N requests are sent (one per test). Alias: --max-requests')
+	.option('--limit <number>', 'Limit the scan to at most N payload tests = N requests (one per test; +hops if --follow-redirects), e.g. --limit 1 for a single request. Disables baseline calibration and the UA/IP bypass probe replays to keep the count exact, which makes the protection score approximate — avoid combining with --threshold. Does not bound --auto-detect-waf/--reverse, which probe separately. Alias: --max-requests')
 	.option('--max-requests <number>', 'Alias for --limit')
 	.addHelpText('after', detailedHelp)
 	.action(async (url: string, options: any) => {
@@ -373,7 +373,13 @@ checkCmd
 				console.error(colors.yellow('⚠️  --insecure: TLS certificate verification is DISABLED for this scan.'));
 			}
 			if (requestLimit !== undefined && !isQuiet) {
-				console.error(colors.dim(`[i] --limit ${requestLimit}: baseline calibration and UA/IP bypass probes disabled for a predictable request count.`));
+				console.error(colors.dim(`[i] --limit ${requestLimit}: baseline calibration and UA/IP bypass probe replays disabled so the scan issues exactly ${requestLimit} request(s) (plus redirect hops if --follow-redirects).`));
+				if (options.autoDetectWaf || options.reverse || options.reverseEngineer) {
+					console.error(colors.dim('[i] note: --auto-detect-waf / --reverse perform their own probing that is not counted against --limit.'));
+				}
+				if (options.threshold !== undefined) {
+					console.error(colors.yellow('⚠️  --limit disables baseline calibration, so the protection score is approximate; --threshold gating on a limited run is unreliable.'));
+				}
 			}
 
 			// Scope the DNS override to the target host only.
@@ -416,10 +422,12 @@ checkCmd
 					color: useColor,
 					quiet: isQuiet,
 					allowLocal,
-					// With a request limit, suppress the follow-up probes and the baseline
-					// request so the run issues exactly `requestLimit` requests (one per
-					// test) — otherwise a single blocked item fans out into the whole
-					// UA/IP-header probe lists, blowing past the requested cap.
+					// Under a request limit, suppress every extra request so the count is
+					// exactly N (one per payload test): the UA/IP bypass probe replays (an
+					// unbounded per-blocked-item fan-out) and the one baseline calibration
+					// request. Dropping baseline means origin-side 403/406s can be miscounted
+					// as WAF blocks, so the protection score is approximate under --limit —
+					// surfaced by the --threshold warning above, not silently.
 					spoofUserAgents: requestLimit === undefined && options.spoofUserAgent !== false,
 					spoofIpHeaders: requestLimit === undefined && options.spoofIp !== false,
 					calibrateBaseline: requestLimit === undefined && options.calibrateBaseline !== false,
