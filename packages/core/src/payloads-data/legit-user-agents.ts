@@ -38,6 +38,31 @@ export const LEGIT_USER_AGENTS: LegitUserAgent[] = [
 	// Uptime / monitoring services
 	{ name: 'UptimeRobot', userAgent: 'Mozilla/5.0 (compatible; UptimeRobot/2.0; http://www.uptimerobot.com/)' },
 	{ name: 'Pingdom', userAgent: 'Pingdom.com_bot_version_1.4_(http://www.pingdom.com/)' },
+
+	// AI assistants / LLM crawlers & retrieval agents. Increasingly allow-listed
+	// (robots.txt, WAF managed rules, bot-management "verified bot" lists), so a
+	// WAF that trusts these UAs is a real bypass surface. Strings taken from each
+	// vendor's crawler docs where published, else widely-reported request logs —
+	// version/token is what matters, since vendors bump versions and advise
+	// matching on the token. NOTE: agentic coding tools (Claude Code, OpenAI
+	// Codex, Google Antigravity) and robots-only product tokens (Google-Extended)
+	// are intentionally excluded — they publish no stable crawler User-Agent.
+	{ name: 'GPTBot', userAgent: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.3; +https://openai.com/gptbot' },
+	{ name: 'ChatGPT-User', userAgent: 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot' },
+	{
+		name: 'OAI-SearchBot',
+		userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36; compatible; OAI-SearchBot/1.4; +https://openai.com/searchbot',
+	},
+	{ name: 'ClaudeBot', userAgent: 'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)' },
+	{ name: 'Claude-User', userAgent: 'Mozilla/5.0 (compatible; Claude-User/1.0; +Claude-User@anthropic.com)' },
+	{ name: 'PerplexityBot', userAgent: 'Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)' },
+	{ name: 'Perplexity-User', userAgent: 'Mozilla/5.0 (compatible; Perplexity-User/1.0; +https://perplexity.ai/perplexity-user)' },
+	{ name: 'Amazonbot', userAgent: 'Mozilla/5.0 (compatible; Amazonbot/0.1; +https://developer.amazon.com/support/amazonbot)' },
+	{ name: 'Meta-ExternalAgent', userAgent: 'meta-externalagent/1.1 (+https://developers.facebook.com/docs/sharing/webmasters/crawler)' },
+	{
+		name: 'Bytespider',
+		userAgent: 'Mozilla/5.0 (Linux; Android 5.0) AppleWebKit/537.36 (KHTML, like Gecko) Mobile Safari/537.36 (compatible; Bytespider; spider-feedback@bytedance.com)',
+	},
 ];
 
 /**

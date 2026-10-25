@@ -55,6 +55,38 @@ describe('resolveLegitUserAgents', () => {
 		const custom = [{ name: 'Custom', userAgent: 'Custom/1.0' }];
 		expect(resolveLegitUserAgents(custom)).toBe(custom);
 	});
+
+	it('includes the AI assistant / LLM crawler identities', () => {
+		const byName = new Map(LEGIT_USER_AGENTS.map((u) => [u.name, u.userAgent]));
+		for (const name of [
+			'GPTBot',
+			'ChatGPT-User',
+			'OAI-SearchBot',
+			'ClaudeBot',
+			'Claude-User',
+			'PerplexityBot',
+			'Perplexity-User',
+			'Amazonbot',
+			'Meta-ExternalAgent',
+			'Bytespider',
+		]) {
+			expect(byName.has(name)).toBe(true);
+			// The UA string must actually carry the bot's token (what sites match on);
+			// the identity name is that token, so it must appear in the UA value.
+			expect(byName.get(name)!.toLowerCase()).toContain(name.toLowerCase());
+		}
+	});
+
+	it('keeps every identity (name and UA string) unique and non-empty', () => {
+		const names = LEGIT_USER_AGENTS.map((u) => u.name);
+		const uas = LEGIT_USER_AGENTS.map((u) => u.userAgent);
+		expect(new Set(names).size).toBe(names.length);
+		expect(new Set(uas).size).toBe(uas.length);
+		for (const u of LEGIT_USER_AGENTS) {
+			expect(u.name.length).toBeGreaterThan(0);
+			expect(u.userAgent.length).toBeGreaterThan(0);
+		}
+	});
 });
 
 describe('legitimate User-Agent bypass test', () => {
