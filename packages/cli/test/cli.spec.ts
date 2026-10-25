@@ -224,17 +224,24 @@ describe('CLI Argument Processing', () => {
 			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('cannot be combined with --proxy'));
 		});
 
-		it('--limit caps the scan via pageSize and disables probes/baseline for a predictable count', async () => {
+		it('--limit caps via pageSize and disables baseline + UA/IP probes for an exact request count', async () => {
 			await expect(
 				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--limit', '1'])
 			).resolves.toBeDefined();
 			const opts = (core.handleApiCheckFiltered as any).mock.calls.at(-1).at(-1);
 			expect(opts.pageSize).toBe(1);
-			// So N tests == N requests: no UA/IP replay fan-out, no baseline request.
+			// Every extra request is suppressed so N tests == N requests.
 			expect(opts.spoofUserAgents).toBe(false);
 			expect(opts.spoofIpHeaders).toBe(false);
 			expect(opts.calibrateBaseline).toBe(false);
 			expect(exitCode).toBeNull();
+		});
+
+		it('warns when --limit is combined with --threshold (approximate score)', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--limit', '1', '--threshold', '90'])
+			).resolves.toBeDefined();
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('--threshold gating on a limited run is unreliable'));
 		});
 
 		it('without --limit, probes and baseline stay enabled by default', async () => {
