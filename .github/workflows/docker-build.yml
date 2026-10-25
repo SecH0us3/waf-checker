@@ -10,6 +10,9 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Emulated arm64 (QEMU) is much slower than native; bound it so a stuck build
+    # fails fast instead of drifting toward the 6h runner ceiling.
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -56,8 +59,8 @@ jobs:
           file: ./Dockerfile
           load: true
           tags: waf-checker-cli:scan
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=amd64-scan
+          cache-to: type=gha,mode=max,scope=amd64-scan
 
       - name: Scan Docker image with Trivy
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -69,13 +72,23 @@ jobs:
           vuln-type: 'os,library'
           severity: 'HIGH,CRITICAL'
 
-      - name: Push Docker image
-        if: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
+      # Build a multi-architecture image (Intel/AMD + ARM64) and push it on main /
+      # tags. The step runs on every event — including pull requests — but only
+      # pushes on main/tags; on a PR it still builds both platforms, so an arm64
+      # build break is caught at PR time rather than after merge. QEMU (set up
+      # above) emulates arm64. The Trivy scan above runs on the amd64 image it
+      # loaded locally (buildx cannot --load a multi-platform image); the OS and
+      # library packages are identical across arches, so one scan covers both.
+      - name: Build and push Docker image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: ./Dockerfile
-          push: true
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          # Own cache scope so the emulated arm64 layers are written back and reused
+          # across runs (separate from the amd64-only scan cache above).
+          cache-from: type=gha,scope=multiarch
+          cache-to: type=gha,mode=max,scope=multiarch
