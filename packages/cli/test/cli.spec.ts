@@ -54,7 +54,7 @@ vi.mock('../src/report', async () => {
 });
 
 import * as fs from 'fs';
-import { program, originIpLookup, normalizeOriginIp, getFetch } from '../src/index';
+import { program, originIpLookup, normalizeOriginIp, getFetch, generateCompletion, collectCommandMeta, COMPLETION_SHELLS } from '../src/index';
 import * as core from '@waf-checker/core';
 import { writeReport } from '../src/report';
 
@@ -1196,5 +1196,84 @@ describe('Origin IP override helpers', () => {
 		lookup('api.example.com', { all: true }, cb); // sibling subdomain (e.g. redirect)
 		expect(realLookup).toHaveBeenCalledWith('api.example.com', { all: true }, cb);
 		expect(cb).not.toHaveBeenCalled(); // not force-resolved to the origin IP
+	});
+});
+
+describe('shell completion', () => {
+	let exitCode: number | null = null;
+	let consoleErrorSpy: any;
+	beforeEach(() => {
+		exitCode = null;
+		vi.spyOn(process, 'exit').mockImplementation((code?: number) => {
+			exitCode = code ?? 0;
+			throw new Error(`process.exit(${exitCode})`);
+		});
+		consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+	});
+	afterEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it('collectCommandMeta captures subcommands and their long options', () => {
+		const meta = collectCommandMeta();
+		const names = meta.commands.map((c) => c.name);
+		expect(names).toEqual(expect.arrayContaining(['detect', 'check', 'batch', 'patch', 'completion']));
+		const check = meta.commands.find((c) => c.name === 'check')!;
+		expect(check.options).toEqual(expect.arrayContaining(['--insecure', '--limit', '--origin-ip', '--help']));
+		expect(meta.globalOptions).toEqual(expect.arrayContaining(['--help', '--version']));
+	});
+
+	it('generates a bash completion that registers the function and lists commands/flags', () => {
+		const out = generateCompletion('bash');
+		expect(out).toContain('complete -F _waf_checker waf-checker');
+		expect(out).toMatch(/check\) opts="[^"]*--insecure[^"]*"/);
+		expect(out).toContain('detect)');
+	});
+
+	it('generates a zsh completion with a #compdef header and compdef registration', () => {
+		const out = generateCompletion('zsh');
+		expect(out.startsWith('#compdef waf-checker')).toBe(true);
+		expect(out).toContain('compdef _waf_checker waf-checker');
+		expect(out).toContain('check) compadd');
+	});
+
+	it('generates fish completion lines for commands and flags', () => {
+		const out = generateCompletion('fish');
+		expect(out).toContain('complete -c waf-checker -n __fish_use_subcommand -a check');
+		expect(out).toContain("complete -c waf-checker -n '__fish_seen_subcommand_from check' -l insecure");
+	});
+
+	it('every supported shell produces a non-empty script', () => {
+		for (const sh of COMPLETION_SHELLS) {
+			expect(generateCompletion(sh).length).toBeGreaterThan(50);
+		}
+	});
+
+	it('`completion bash` writes the script to stdout', async () => {
+		const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+		try {
+			await expect(program.parseAsync(['node', 'index.js', 'completion', 'bash'])).resolves.toBeDefined();
+			const out = writeSpy.mock.calls.map((c: any[]) => String(c[0])).join('');
+			expect(out).toContain('complete -F _waf_checker waf-checker');
+		} finally {
+			writeSpy.mockRestore();
+		}
+		expect(exitCode).toBeNull();
+	});
+
+	it('`completion <bad shell>` exits 1', async () => {
+		await expect(
+			program.parseAsync(['node', 'index.js', 'completion', 'notashell'])
+		).rejects.toThrow('process.exit(1)');
+		expect(exitCode).toBe(1);
+		expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('supported shell'));
+	});
+});
+
+describe('version', () => {
+	it('reports a real semver version resolved at runtime (not the old hardcoded 1.4.0)', () => {
+		const v = program.version();
+		expect(v).toMatch(/^\d+\.\d+\.\d+/);
+		expect(v).not.toBe('1.4.0');
 	});
 });
