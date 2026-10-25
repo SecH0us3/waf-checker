@@ -54,7 +54,7 @@ vi.mock('../src/report', async () => {
 });
 
 import * as fs from 'fs';
-import { program, originIpLookup, normalizeOriginIp } from '../src/index';
+import { program, originIpLookup, normalizeOriginIp, getFetch } from '../src/index';
 import * as core from '@waf-checker/core';
 import { writeReport } from '../src/report';
 
@@ -222,6 +222,63 @@ describe('CLI Argument Processing', () => {
 			expect(exitCode).toBe(1);
 			expect(core.handleApiCheckFiltered).not.toHaveBeenCalled();
 			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('cannot be combined with --proxy'));
+		});
+
+		it('--limit caps the scan via pageSize and disables probes/baseline for a predictable count', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--limit', '1'])
+			).resolves.toBeDefined();
+			const opts = (core.handleApiCheckFiltered as any).mock.calls.at(-1).at(-1);
+			expect(opts.pageSize).toBe(1);
+			// So N tests == N requests: no UA/IP replay fan-out, no baseline request.
+			expect(opts.spoofUserAgents).toBe(false);
+			expect(opts.spoofIpHeaders).toBe(false);
+			expect(opts.calibrateBaseline).toBe(false);
+			expect(exitCode).toBeNull();
+		});
+
+		it('without --limit, probes and baseline stay enabled by default', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com'])
+			).resolves.toBeDefined();
+			const opts = (core.handleApiCheckFiltered as any).mock.calls.at(-1).at(-1);
+			expect(opts.spoofUserAgents).toBe(true);
+			expect(opts.spoofIpHeaders).toBe(true);
+			expect(opts.calibrateBaseline).toBe(true);
+		});
+
+		it('rejects a fractional or garbage-suffixed --limit', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--limit', '1abc'])
+			).rejects.toThrow('process.exit(1)');
+			expect(exitCode).toBe(1);
+			expect(core.handleApiCheckFiltered).not.toHaveBeenCalled();
+		});
+
+		it('--max-requests is an alias for --limit', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--max-requests', '5'])
+			).resolves.toBeDefined();
+			const opts = (core.handleApiCheckFiltered as any).mock.calls.at(-1).at(-1);
+			expect(opts.pageSize).toBe(5);
+		});
+
+		it('exits 1 for a non-positive or non-numeric --limit and never scans', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--limit', '0'])
+			).rejects.toThrow('process.exit(1)');
+			expect(exitCode).toBe(1);
+			expect(core.handleApiCheckFiltered).not.toHaveBeenCalled();
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('must be a positive integer'));
+		});
+
+		it('--insecure warns that TLS verification is disabled but still scans', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'check', 'https://example.com', '--insecure'])
+			).resolves.toBeDefined();
+			expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('TLS certificate verification is DISABLED'));
+			expect(core.handleApiCheckFiltered).toHaveBeenCalled();
+			expect(exitCode).toBeNull();
 		});
 
 		it('should parse custom methods, categories, and detected WAF', async () => {
@@ -1085,6 +1142,23 @@ describe('Origin IP override helpers', () => {
 		expect(normalizeOriginIp('[2606:4700:4700::1111]')).toBe('2606:4700:4700::1111');
 		expect(normalizeOriginIp('  8.8.8.8 ')).toBe('8.8.8.8');
 		expect(normalizeOriginIp('2606:4700::1111')).toBe('2606:4700::1111');
+	});
+
+	it('getFetch returns the global fetch when no options are given', () => {
+		expect(getFetch()).toBe(globalThis.fetch);
+		expect(getFetch({})).toBe(globalThis.fetch);
+	});
+
+	it('getFetch returns a custom dispatcher-bound fetch for --insecure', () => {
+		const f = getFetch({ insecure: true });
+		expect(typeof f).toBe('function');
+		expect(f).not.toBe(globalThis.fetch);
+	});
+
+	it('getFetch returns a custom fetch when an origin-IP override is set', () => {
+		const f = getFetch({ originIp: '8.8.8.8', targetHost: 'example.com' });
+		expect(typeof f).toBe('function');
+		expect(f).not.toBe(globalThis.fetch);
 	});
 
 	it('originIpLookup resolves the target host to the override IPv4 with family 4', () => {

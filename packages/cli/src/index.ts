@@ -110,16 +110,37 @@ export function originIpLookup(ip: string, targetHost: string, realLookup: typeo
 	};
 }
 
-// Helper to get custom fetch with proxy or origin-IP override support.
-// `originIp` must already be a bare literal; `targetHost` scopes the override.
-function getFetch(proxyUrl?: string, originIp?: string, targetHost?: string): typeof fetch {
-	if (proxyUrl) {
-		const agent = new ProxyAgent(proxyUrl);
-		return ((url: any, init: any) => undiciFetch(url, { ...init, dispatcher: agent })) as any;
+export interface FetchOptions {
+	proxy?: string;
+	/** Bare origin IP literal (see normalizeOriginIp); requires targetHost. */
+	originIp?: string;
+	/** Hostname the origin-IP override is scoped to. */
+	targetHost?: string;
+	/** Skip TLS certificate verification (curl -k). Dangerous; opt-in only. */
+	insecure?: boolean;
+}
+
+// Helper to get a custom fetch with proxy, origin-IP override and/or insecure-TLS
+// support. All connector tweaks compose onto the same undici dispatcher so they
+// can be combined (e.g. --origin-ip together with --insecure).
+export function getFetch(opts: FetchOptions = {}): typeof fetch {
+	const { proxy, originIp, targetHost, insecure } = opts;
+	const bind = (dispatcher: any): typeof fetch =>
+		((url: any, init: any) => undiciFetch(url, { ...init, dispatcher })) as any;
+	// Single source of truth for the insecure-TLS decision, applied to whichever
+	// dispatcher we build below (undici uses `requestTls` for a proxy's end-server
+	// TLS and `connect` for a direct connection).
+	const tlsOpts = insecure ? { rejectUnauthorized: false } : undefined;
+
+	if (proxy) {
+		return bind(new ProxyAgent(tlsOpts ? { uri: proxy, requestTls: tlsOpts } : proxy));
 	}
-	if (originIp && targetHost) {
-		const agent = new Agent({ connect: { lookup: originIpLookup(originIp, targetHost) } });
-		return ((url: any, init: any) => undiciFetch(url, { ...init, dispatcher: agent })) as any;
+
+	const connect: Record<string, any> = { ...(tlsOpts ?? {}) };
+	if (originIp && targetHost) connect.lookup = originIpLookup(originIp, targetHost);
+
+	if (Object.keys(connect).length > 0) {
+		return bind(new Agent({ connect }));
 	}
 	return globalThis.fetch;
 }
@@ -229,7 +250,7 @@ program
 				process.exit(1);
 			}
 
-			const customFetch = getFetch(options.proxy);
+			const customFetch = getFetch({ proxy: options.proxy });
 			const detection = await WAFDetector.activeDetection(url, { fetch: customFetch });
 
 			if (options.json) {
@@ -307,6 +328,9 @@ checkCmd
 	.option('--fail-on-regression', 'Exit with exit code 1 if any payload blocked in the --compare report is no longer blocked', false)
 	.option('--allow-local', 'Allow testing localhost, 127.0.0.1, and private IP ranges (Docker/LAN)', false)
 	.option('--origin-ip <ip>', 'Resolve the target hostname to this known origin IP behind the WAF (Host header and TLS stay on the domain) to test whether the origin is reachable directly, past the WAF. Public IP only; not compatible with --proxy')
+	.option('-k, --insecure', 'Skip TLS certificate verification (like curl -k). Dangerous — disables protection against MITM; use only for trusted targets (e.g. with --origin-ip where the origin cert will not match the domain)', false)
+	.option('--limit <number>', 'Limit the scan to at most N payload tests, e.g. --limit 1 for a single request. With --limit, baseline calibration and the UA/IP bypass probes are disabled so exactly N requests are sent (one per test). Alias: --max-requests')
+	.option('--max-requests <number>', 'Alias for --limit')
 	.addHelpText('after', detailedHelp)
 	.action(async (url: string, options: any) => {
 		const isQuiet = options.quiet || options.silent;
@@ -331,9 +355,30 @@ checkCmd
 				originIp = normalizeOriginIp(originIp);
 			}
 
+			// Request limit: cap the number of payload tests executed (page 0 holds the
+			// whole plan otherwise). --max-requests is an alias for --limit.
+			const limitRaw = options.limit ?? options.maxRequests;
+			let requestLimit: number | undefined = undefined;
+			if (limitRaw !== undefined) {
+				const s = String(limitRaw).trim();
+				const n = Number(s);
+				if (!/^\d+$/.test(s) || !Number.isInteger(n) || n < 1) {
+					console.error(colors.red(`Error: --limit/--max-requests must be a positive integer (received: ${limitRaw}).`));
+					process.exit(1);
+				}
+				requestLimit = n;
+			}
+
+			if (options.insecure && !isQuiet) {
+				console.error(colors.yellow('⚠️  --insecure: TLS certificate verification is DISABLED for this scan.'));
+			}
+			if (requestLimit !== undefined && !isQuiet) {
+				console.error(colors.dim(`[i] --limit ${requestLimit}: baseline calibration and UA/IP bypass probes disabled for a predictable request count.`));
+			}
+
 			// Scope the DNS override to the target host only.
 			const targetHost = originIp ? new URL(url.replace(/\{PAYLOAD\}/g, 'test-payload')).hostname : undefined;
-			const customFetch = getFetch(options.proxy, originIp, targetHost);
+			const customFetch = getFetch({ proxy: options.proxy, originIp, targetHost, insecure: Boolean(options.insecure) });
 			const methods = parseCommaList(options.methods) || ['GET'];
 			const categories = parseCommaList(options.categories);
 			const headers = parseCustomHeaders(options.customHeaders);
@@ -371,11 +416,15 @@ checkCmd
 					color: useColor,
 					quiet: isQuiet,
 					allowLocal,
-					spoofUserAgents: options.spoofUserAgent !== false,
-					spoofIpHeaders: options.spoofIp !== false,
-					calibrateBaseline: options.calibrateBaseline !== false,
+					// With a request limit, suppress the follow-up probes and the baseline
+					// request so the run issues exactly `requestLimit` requests (one per
+					// test) — otherwise a single blocked item fans out into the whole
+					// UA/IP-header probe lists, blowing past the requested cap.
+					spoofUserAgents: requestLimit === undefined && options.spoofUserAgent !== false,
+					spoofIpHeaders: requestLimit === undefined && options.spoofIp !== false,
+					calibrateBaseline: requestLimit === undefined && options.calibrateBaseline !== false,
 					concurrency,
-					pageSize: ALL_PAYLOADS_PAGE_SIZE,
+					pageSize: requestLimit ?? ALL_PAYLOADS_PAGE_SIZE,
 					originIpOverride: originIp,
 				}
 			);
@@ -669,7 +718,7 @@ batchCmd
 				process.exit(1);
 			}
 
-			const customFetch = getFetch(options.proxy);
+			const customFetch = getFetch({ proxy: options.proxy });
 			const concurrency = parseInt(options.concurrency, 10) || 3;
 			const methods = parseCommaList(options.methods) || ['GET'];
 			const categories = parseCommaList(options.categories);
