@@ -54,7 +54,7 @@ vi.mock('../src/report', async () => {
 });
 
 import * as fs from 'fs';
-import { program, originIpLookup, normalizeOriginIp, getFetch, generateCompletion, collectCommandMeta, COMPLETION_SHELLS } from '../src/index';
+import { program, originIpLookup, normalizeOriginIp, getFetch, generateCompletion, collectCommandMeta, COMPLETION_SHELLS, fishSingleQuoteEscape } from '../src/index';
 import * as core from '@waf-checker/core';
 import { writeReport } from '../src/report';
 
@@ -1241,6 +1241,15 @@ describe('shell completion', () => {
 		const out = generateCompletion('fish');
 		expect(out).toContain('complete -c waf-checker -n __fish_use_subcommand -a check');
 		expect(out).toContain("complete -c waf-checker -n '__fish_seen_subcommand_from check' -l insecure");
+	});
+
+	it('fishSingleQuoteEscape escapes backslashes before quotes (complete sanitization)', () => {
+		// Backslash must be doubled first, otherwise escaping the quote introduces
+		// an unescaped backslash (the js/incomplete-sanitization pattern).
+		expect(fishSingleQuoteEscape("a'b")).toBe("a\\'b");
+		expect(fishSingleQuoteEscape('a\\b')).toBe('a\\\\b');
+		expect(fishSingleQuoteEscape("a\\'b")).toBe("a\\\\\\'b");
+		expect(fishSingleQuoteEscape('plain text')).toBe('plain text');
 	});
 
 	it('every supported shell produces a non-empty script', () => {

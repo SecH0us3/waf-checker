@@ -1080,6 +1080,16 @@ export function collectCommandMeta(prog: Command = program): { commands: Command
 	return { commands, globalOptions };
 }
 
+/**
+ * Escape a string for embedding inside a fish single-quoted literal. Fish only
+ * treats `\\` and `\'` as escapes inside single quotes, so backslashes must be
+ * escaped BEFORE quotes (escaping quotes first would leave the introduced
+ * backslashes unescaped — incomplete sanitization).
+ */
+export function fishSingleQuoteEscape(s: string): string {
+	return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
 export function generateCompletion(shell: CompletionShell, prog: Command = program): string {
 	const { commands, globalOptions } = collectCommandMeta(prog);
 	const names = commands.map((c) => c.name);
@@ -1158,7 +1168,7 @@ compdef _waf_checker waf-checker
 		lines.push(`complete -c waf-checker -n __fish_use_subcommand -l ${o.replace(/^--/, '')}`);
 	}
 	for (const c of commands) {
-		const desc = c.description.replace(/'/g, "\\'");
+		const desc = fishSingleQuoteEscape(c.description);
 		lines.push(`complete -c waf-checker -n __fish_use_subcommand -a ${c.name} -d '${desc}'`);
 		for (const o of c.options) {
 			lines.push(`complete -c waf-checker -n '__fish_seen_subcommand_from ${c.name}' -l ${o.replace(/^--/, '')}`);
