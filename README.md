@@ -127,7 +127,46 @@ The Worker needs the **Workers Paid** plan: scan and audit pages are sized for i
 
 ### 2. CLI Version (Node.js)
 
-To run security testing audits directly from your command line:
+#### Install it as a global `waf-checker` command (recommended)
+
+After `npm install && npm run build` at the repo root, link the CLI so it runs
+from **any directory** — no `cd` into the repo and no long `node .../dist` paths:
+
+```bash
+# Expose `waf-checker` on your PATH from the built workspace
+npm link --workspace @waf-checker/cli
+# …now, from anywhere:
+waf-checker --help
+waf-checker check https://example.com
+
+# Uninstall later with:
+npm rm -g @waf-checker/cli
+```
+
+The published package bundles its code, so you can also install a packed build
+globally without the repo: `npm pack --workspace @waf-checker/cli` then
+`npm i -g ./waf-checker-cli-*.tgz`.
+
+#### Shell completion (bash / zsh / fish)
+
+`waf-checker completion <shell>` prints a completion script (omit `<shell>` to
+auto-detect from `$SHELL`):
+
+```bash
+# bash
+waf-checker completion bash | sudo tee /etc/bash_completion.d/waf-checker
+# or, without root: echo 'source <(waf-checker completion bash)' >> ~/.bashrc
+
+# zsh (into a directory on your $fpath)
+waf-checker completion zsh > "${fpath[1]}/_waf-checker"
+
+# fish
+waf-checker completion fish > ~/.config/fish/completions/waf-checker.fish
+```
+
+#### Running without a global install
+
+You can always invoke the built entrypoint directly:
 
 ```bash
 # Print general CLI help and usage

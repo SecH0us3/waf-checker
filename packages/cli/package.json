@@ -2,17 +2,22 @@
   "name": "@waf-checker/cli",
   "version": "1.7.0",
   "type": "module",
-  "bin": "./dist/index.js",
+  "bin": {
+    "waf-checker": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc --noEmit && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:commander --external:undici",
     "test": "vitest run"
   },
   "dependencies": {
-    "@waf-checker/core": "*",
     "commander": "^15.0.0",
     "undici": "^8.12.2"
   },
   "devDependencies": {
+    "@waf-checker/core": "*",
     "@types/node": "^26.6.3",
     "typescript": "^7.0.2"
   }

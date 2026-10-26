@@ -26,6 +26,17 @@ import { writeReport, deduceFormat, ReportFormat } from './report';
 
 let useColor = true;
 
+// Resolve the CLI version from the package.json shipped alongside dist/ at
+// runtime (npm always includes package.json in the published package), so
+// `--version` never drifts from the real release. Falls back if unreadable.
+function resolveVersion(): string {
+	try {
+		return JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version || '0.0.0';
+	} catch {
+		return '0.0.0';
+	}
+}
+
 const colors = {
 	green: (text: string) => useColor ? `\x1b[32m${text}\x1b[0m` : text,
 	red: (text: string) => useColor ? `\x1b[31m${text}\x1b[0m` : text,
@@ -64,7 +75,7 @@ const program = new Command();
 program
 	.name('waf-checker')
 	.description('Automated WAF (Web Application Firewall) Security Auditing & Fingerprinting Tool')
-	.version('1.4.0')
+	.version(resolveVersion())
 	.showHelpAfterError()
 	.option('--no-color', 'Disable colored output')
 	.addHelpText('after', detailedHelp);
@@ -1032,6 +1043,164 @@ program
 		for (const c of categories) {
 			console.log(`  - ${c.name} ${colors.dim(`[${c.type}, ${c.payloads} payloads]`)}`);
 		}
+	});
+
+// ---------------------------------------------------------------------------
+// Shell completion
+//
+// Generated from the live commander metadata so the completions never drift
+// from the actual commands/flags. `completion [bash|zsh|fish]` prints a script
+// to eval/source; with no argument the current $SHELL is auto-detected.
+// ---------------------------------------------------------------------------
+
+export const COMPLETION_SHELLS = ['bash', 'zsh', 'fish'] as const;
+export type CompletionShell = (typeof COMPLETION_SHELLS)[number];
+
+interface CommandMeta {
+	name: string;
+	description: string;
+	options: string[]; // long flags, e.g. "--insecure"
+}
+
+/** Collect top-level subcommands and their long option flags from the program. */
+export function collectCommandMeta(prog: Command = program): { commands: CommandMeta[]; globalOptions: string[] } {
+	const commands: CommandMeta[] = (prog.commands as any[])
+		.filter((c) => c.name() && c.name() !== 'help')
+		.map((c) => {
+			const options = [
+				...new Set([...(c.options || []).map((o: any) => o.long).filter(Boolean), '--help']),
+			] as string[];
+			return { name: c.name(), description: (c.description?.() || '').split('\n')[0], options };
+		});
+	// commander already stores --version in prog.options when .version() is set,
+	// so dedupe to avoid offering it twice.
+	const globalOptions = [
+		...new Set([...(prog.options || []).map((o: any) => o.long).filter(Boolean), '--help', '--version']),
+	] as string[];
+	return { commands, globalOptions };
+}
+
+/**
+ * Escape a string for embedding inside a fish single-quoted literal. Fish only
+ * treats `\\` and `\'` as escapes inside single quotes, so backslashes must be
+ * escaped BEFORE quotes (escaping quotes first would leave the introduced
+ * backslashes unescaped — incomplete sanitization).
+ */
+export function fishSingleQuoteEscape(s: string): string {
+	return s.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+export function generateCompletion(shell: CompletionShell, prog: Command = program): string {
+	const { commands, globalOptions } = collectCommandMeta(prog);
+	const names = commands.map((c) => c.name);
+
+	if (shell === 'bash') {
+		const perCmd = commands
+			.map((c) => `        ${c.name}) opts="${c.options.join(' ')}" ;;`)
+			.join('\n');
+		return `# waf-checker bash completion. Add to your shell:
+#   waf-checker completion bash > /etc/bash_completion.d/waf-checker   # system-wide
+#   # or: echo 'source <(waf-checker completion bash)' >> ~/.bashrc
+_waf_checker() {
+    local cur cmd i
+    cur="\${COMP_WORDS[COMP_CWORD]}"
+    local commands="${names.join(' ')}"
+    cmd=""
+    for ((i=1; i<COMP_CWORD; i++)); do
+        case "\${COMP_WORDS[i]}" in
+            -*) ;;
+            *) cmd="\${COMP_WORDS[i]}"; break ;;
+        esac
+    done
+    if [ -z "$cmd" ]; then
+        COMPREPLY=( $(compgen -W "$commands ${globalOptions.join(' ')}" -- "$cur") )
+        return
+    fi
+    local opts=""
+    case "$cmd" in
+${perCmd}
+    esac
+    COMPREPLY=( $(compgen -W "$opts" -- "$cur") )
+}
+complete -F _waf_checker waf-checker
+`;
+	}
+
+	if (shell === 'zsh') {
+		const perCmd = commands
+			.map((c) => `            ${c.name}) compadd -- ${c.options.join(' ')} ;;`)
+			.join('\n');
+		return `#compdef waf-checker
+# waf-checker zsh completion. Add to your shell:
+#   waf-checker completion zsh > "\${fpath[1]}/_waf-checker"   # into an fpath dir
+#   # or: echo 'source <(waf-checker completion zsh)' >> ~/.zshrc
+_waf_checker() {
+    local -a commands
+    commands=(${names.join(' ')})
+    local cmd="" i
+    # Find the subcommand, skipping any leading global flags (e.g. --no-color).
+    for (( i=2; i < CURRENT; i++ )); do
+        case "\${words[i]}" in
+            -*) ;;
+            *) cmd="\${words[i]}"; break ;;
+        esac
+    done
+    if [[ -z $cmd ]]; then
+        compadd -- $commands ${globalOptions.join(' ')}
+        return
+    fi
+    case "$cmd" in
+${perCmd}
+    esac
+}
+compdef _waf_checker waf-checker
+`;
+	}
+
+	// fish
+	const lines: string[] = [
+		'# waf-checker fish completion. Add to your shell:',
+		'#   waf-checker completion fish > ~/.config/fish/completions/waf-checker.fish',
+		'complete -c waf-checker -f',
+	];
+	// Global options, offered before a subcommand is given (mirrors bash/zsh).
+	for (const o of globalOptions) {
+		lines.push(`complete -c waf-checker -n __fish_use_subcommand -l ${o.replace(/^--/, '')}`);
+	}
+	for (const c of commands) {
+		const desc = fishSingleQuoteEscape(c.description);
+		lines.push(`complete -c waf-checker -n __fish_use_subcommand -a ${c.name} -d '${desc}'`);
+		for (const o of c.options) {
+			lines.push(`complete -c waf-checker -n '__fish_seen_subcommand_from ${c.name}' -l ${o.replace(/^--/, '')}`);
+		}
+	}
+	return lines.join('\n') + '\n';
+}
+
+// Command: completion — print a shell completion script for bash/zsh/fish
+program
+	.command('completion [shell]')
+	.description('Print a shell completion script (bash, zsh, or fish). Omit <shell> to auto-detect from $SHELL')
+	.addHelpText('after', `
+Examples:
+  waf-checker completion bash > /etc/bash_completion.d/waf-checker
+  echo 'source <(waf-checker completion zsh)' >> ~/.zshrc
+  waf-checker completion fish > ~/.config/fish/completions/waf-checker.fish`)
+	.action((shell: string | undefined) => {
+		let target = (shell || '').toLowerCase();
+		if (!target) {
+			const envShell = (process.env.SHELL || '').split('/').pop() || '';
+			target = COMPLETION_SHELLS.includes(envShell as CompletionShell) ? envShell : '';
+		}
+		if (!COMPLETION_SHELLS.includes(target as CompletionShell)) {
+			console.error(
+				colors.red(
+					`Error: specify a supported shell: ${COMPLETION_SHELLS.join(', ')}${shell ? ` (received: ${shell})` : ' (could not auto-detect from $SHELL)'}.`,
+				),
+			);
+			process.exit(1);
+		}
+		process.stdout.write(generateCompletion(target as CompletionShell));
 	});
 
 export { program };
