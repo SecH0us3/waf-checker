@@ -803,6 +803,23 @@ export async function captureBaseline(
 	};
 }
 
+/**
+ * Per-payload ParamCheck variation counts, keyed by the scan options that shape
+ * them. The payload lists are module constants, so a count stays valid for the
+ * life of the process (a Worker isolate serves the later pages of a scan from
+ * it). Bounded so distinct option combinations cannot grow it without limit.
+ */
+const paramVariationCountCache = new Map<string, Map<string, Uint32Array>>();
+const PARAM_VARIATION_COUNT_CACHE_SIZE = 16;
+
+function rememberVariationCounts(key: string, counts: Map<string, Uint32Array>): void {
+	if (paramVariationCountCache.size >= PARAM_VARIATION_COUNT_CACHE_SIZE) {
+		const oldest = paramVariationCountCache.keys().next().value;
+		if (oldest !== undefined) paramVariationCountCache.delete(oldest);
+	}
+	paramVariationCountCache.set(key, counts);
+}
+
 export interface CheckExecutionOptions {
 	fetch?: typeof fetch;
 	color?: boolean;
@@ -1002,7 +1019,46 @@ export async function handleApiCheckWithEnvelope(
 		// Deduplicate
 		return [...new Set(payloadVariations)];
 	};
-	const plannedParamChecks = new Map<string, { payload: string; payloadVariations: string[] }[]>();
+	// Seeded by the payload: every page of a paged scan is a separate call,
+	// and Math.random would case a payload differently on each, changing how
+	// many variations survive deduplication and shifting page boundaries.
+	const paramPayload = (original: string) => (caseSensitiveTest ? randomUppercase(original, seededRandom(original)) : original);
+
+	// How many variations each ParamCheck payload expands into. Every page needs
+	// these counts (for the total, and to find where the page starts), but only
+	// the payloads on the page need their variations, so the counts are cached
+	// across pages and the variations are generated per page.
+	const planKey = JSON.stringify([
+		useEnhancedPayloads,
+		useAdvancedPayloads,
+		categories && categories.length ? categories : null,
+		falsePositiveTest,
+		caseSensitiveTest,
+		wafTypeForVariations ?? null,
+		useEncodingVariations,
+	]);
+	let variationCounts = paramVariationCountCache.get(planKey);
+	// A count list that no longer lines up with its payload list (payload data
+	// changed at runtime) is stale: recount rather than misplace page boundaries.
+	if (
+		variationCounts &&
+		payloadEntries.some(
+			([category, info]) =>
+				(info.type || 'ParamCheck') === 'ParamCheck' &&
+				variationCounts!.get(category)?.length !== (falsePositiveTest ? info.falsePayloads || [] : info.payloads || []).length,
+		)
+	) {
+		variationCounts = undefined;
+	}
+	if (!variationCounts) {
+		variationCounts = new Map();
+		for (const [category, info] of payloadEntries) {
+			if ((info.type || 'ParamCheck') !== 'ParamCheck') continue;
+			const payloads: string[] = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
+			variationCounts.set(category, Uint32Array.from(payloads, (original) => planParamVariations(paramPayload(original), category).length));
+		}
+		rememberVariationCounts(planKey, variationCounts);
+	}
 
 	// Calculate total items matching category/method filters
 	let totalItems = 0;
@@ -1010,16 +1066,8 @@ export async function handleApiCheckWithEnvelope(
 		const checkType = info.type || 'ParamCheck';
 		const payloads = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
 		if (checkType === 'ParamCheck') {
-			const planned = payloads.map((original: string) => {
-				// Seeded by the payload: every page of a paged scan is a separate call,
-				// and Math.random would case a payload differently on each, changing how
-				// many variations survive deduplication and shifting page boundaries.
-				const payload = caseSensitiveTest ? randomUppercase(original, seededRandom(original)) : original;
-				return { payload, payloadVariations: planParamVariations(payload, category) };
-			});
-			plannedParamChecks.set(category, planned);
-			for (const { payloadVariations } of planned) {
-				totalItems += payloadVariations.length * METHODS.length;
+			for (const count of variationCounts.get(category) || []) {
+				totalItems += count * METHODS.length;
 			}
 		} else if (checkType === 'FileCheck') {
 			totalItems += payloads.length;
@@ -1035,7 +1083,16 @@ export async function handleApiCheckWithEnvelope(
 		const checkType = info.type || 'ParamCheck';
 		const payloads = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
 		if (checkType === 'ParamCheck') {
-			for (const { payload, payloadVariations } of plannedParamChecks.get(category) || []) {
+			const counts = variationCounts.get(category);
+			for (let i = 0; i < payloads.length; i++) {
+				const itemsForPayload = (counts?.[i] ?? 0) * METHODS.length;
+				// Entirely before this page: skip it without generating its variations.
+				if (offset + itemsForPayload <= start) {
+					offset += itemsForPayload;
+					continue;
+				}
+				const payload = paramPayload(payloads[i]);
+				const payloadVariations = planParamVariations(payload, category);
 				for (const currentPayload of payloadVariations) {
 					for (const method of METHODS) {
 						if (offset >= end) {

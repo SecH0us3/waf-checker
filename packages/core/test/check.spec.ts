@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { sendRequest, handleApiCheckFiltered, MAX_REDIRECTS } from '../src/check';
+import { sendRequest, handleApiCheckFiltered, handleApiCheckWithEnvelope, MAX_REDIRECTS } from '../src/check';
 
 describe('check.ts', () => {
 	it('should send a basic request', async () => {
@@ -582,5 +582,51 @@ describe('sendRequest time and connection bounds', () => {
 		// Final result is the un-followed 302.
 		expect(result.status).toBe(302);
 		expect(result.is_redirect).toBe(true);
+	});
+});
+
+describe('paged ParamCheck scans', () => {
+	// Variation counts are cached across pages and variations are only generated
+	// for the page being scanned, so paging must still visit exactly the items a
+	// single page covering the whole scan does, in the same order.
+	const scanAll = async (pageSize: number, caseSensitive: boolean) => {
+		const fetch = vi.fn().mockResolvedValue({ status: 403, headers: new Headers() });
+		const items: string[] = [];
+		let total = -1;
+		for (let page = 0; ; page++) {
+			const env = await handleApiCheckWithEnvelope(
+				'http://example.com/api',
+				page,
+				['GET', 'POST'],
+				['SQL Injection', 'XSS', 'Path Traversal'],
+				undefined,
+				false,
+				undefined,
+				false,
+				caseSensitive,
+				false,
+				false,
+				false,
+				true,
+				'modsecurity',
+				undefined,
+				{ fetch: fetch as any, quiet: true, pageSize },
+			);
+			if (total === -1) total = env.total;
+			expect(env.total).toBe(total);
+			items.push(...env.results.map((r) => `${r.category}|${r.method}|${r.payload}|${(r as any).originalPayload}`));
+			if (!env.hasMore) break;
+		}
+		return { items, total };
+	};
+
+	it.each([false, true])('covers the same items as one big page (caseSensitive=%s)', async (caseSensitive) => {
+		const whole = await scanAll(100_000, caseSensitive);
+		expect(whole.items.length).toBe(whole.total);
+		for (const pageSize of [7, 50]) {
+			const paged = await scanAll(pageSize, caseSensitive);
+			expect(paged.total).toBe(whole.total);
+			expect(paged.items).toEqual(whole.items);
+		}
 	});
 });
