@@ -338,29 +338,31 @@ export async function sendRequest(
 			clearTimeout(timeoutId);
 		}
 
-		let logMsg: string;
-		if (options?.color) {
-			const whitePart = `\x1b[97mRequest to ${redactUrl(url)}\x1b[0m`;
-			const methodPart = `\x1b[33m${method}\x1b[0m`;
-			const payloadPart = `\x1b[36m${payload ?? '(none)'}\x1b[0m`;
-			const headersPart = `\x1b[90m${JSON.stringify(redactHeaders(headersObj))}\x1b[0m`;
-			
-			let statusPart = String(resp.status);
-			if (resp.status === 403) {
-				statusPart = `\x1b[32m403\x1b[0m`;
-			} else if (resp.status >= 200 && resp.status < 300) {
-				statusPart = `\x1b[31m${resp.status}\x1b[0m`;
-			} else if (resp.status >= 300 && resp.status < 400) {
-				statusPart = `\x1b[33m${resp.status}\x1b[0m`;
-			} else {
-				statusPart = `\x1b[31m${resp.status}\x1b[0m`;
-			}
-
-			logMsg = `${whitePart} with method ${methodPart} and payload ${payloadPart} and headers ${headersPart} returned status ${statusPart} in ${responseTime}ms`;
-		} else {
-			logMsg = `Request to ${redactUrl(url)} with method ${method} and payload ${payload ?? '(none)'} and headers ${JSON.stringify(redactHeaders(headersObj))} returned status ${resp.status} in ${responseTime}ms`;
-		}
+		// Built only when it is printed: redacting parses the URL and serializes
+		// the headers, for every request and every bypass probe.
 		if (!options?.quiet) {
+			let logMsg: string;
+			if (options?.color) {
+				const whitePart = `\x1b[97mRequest to ${redactUrl(url)}\x1b[0m`;
+				const methodPart = `\x1b[33m${method}\x1b[0m`;
+				const payloadPart = `\x1b[36m${payload ?? '(none)'}\x1b[0m`;
+				const headersPart = `\x1b[90m${JSON.stringify(redactHeaders(headersObj))}\x1b[0m`;
+
+				let statusPart = String(resp.status);
+				if (resp.status === 403) {
+					statusPart = `\x1b[32m403\x1b[0m`;
+				} else if (resp.status >= 200 && resp.status < 300) {
+					statusPart = `\x1b[31m${resp.status}\x1b[0m`;
+				} else if (resp.status >= 300 && resp.status < 400) {
+					statusPart = `\x1b[33m${resp.status}\x1b[0m`;
+				} else {
+					statusPart = `\x1b[31m${resp.status}\x1b[0m`;
+				}
+
+				logMsg = `${whitePart} with method ${methodPart} and payload ${payloadPart} and headers ${headersPart} returned status ${statusPart} in ${responseTime}ms`;
+			} else {
+				logMsg = `Request to ${redactUrl(url)} with method ${method} and payload ${payload ?? '(none)'} and headers ${JSON.stringify(redactHeaders(headersObj))} returned status ${resp.status} in ${responseTime}ms`;
+			}
 			console.log(logMsg);
 		}
 
