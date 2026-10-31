@@ -4,6 +4,7 @@
 #   scripts/perf/run.sh                 # all scenarios, median of N=5 runs
 #   N=3 scripts/perf/run.sh basic plan  # selected scenarios
 #   scripts/perf/run.sh golden          # check scan output is byte-identical to golden.json
+#   node scripts/perf/ui-bench.mjs 3000  # Web UI scan loop in headless Chromium (needs Playwright)
 #
 # Bundles packages/core/src with esbuild (the way the CLI ships it), then runs each
 # scenario in a fresh Node process so import cost and GC counts are per-run.
