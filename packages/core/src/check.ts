@@ -645,9 +645,11 @@ export function evaluateWAFVerdict(
 			isBlocked = true;
 			hasExplicitWafSignal = true;
 		} else if (
-			// General WAF block markers
-			/waf-block|blocked by[^\n]{0,100}waf|request blocked|access denied[^\n]{0,100}firewall|security incident|web application firewall/i.test(bodyText) ||
-			/powered by[^\n]{0,100}imperva|protected with[^\n]{0,100}bunkerweb/i.test(bodyText)
+			// General WAF block markers, as one alternation: one pass over the body
+			// instead of two.
+			/waf-block|blocked by[^\n]{0,100}waf|request blocked|access denied[^\n]{0,100}firewall|security incident|web application firewall|powered by[^\n]{0,100}imperva|protected with[^\n]{0,100}bunkerweb/i.test(
+				bodyText,
+			)
 		) {
 			isBlocked = true;
 			hasExplicitWafSignal = true;
