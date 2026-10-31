@@ -140,7 +140,7 @@ export function areBodiesStructurallySimilar(
 	return diff / maxLen <= 0.15;
 }
 
-const SOFT_BLOCK_PHRASES = [
+export const SOFT_BLOCK_PHRASES = [
 	'request rejected',
 	'malicious input',
 	'security violation',
@@ -151,12 +151,24 @@ const SOFT_BLOCK_PHRASES = [
 ];
 
 /**
+ * One word that every soft-block phrase (and the support-ID prefix below)
+ * contains. Collapsing whitespace never creates or joins letters, so a body
+ * whose lowercased text has none of these words cannot contain any phrase.
+ * Keep in sync with SOFT_BLOCK_PHRASES (a test checks it).
+ */
+export const SOFT_BLOCK_KEYWORD_RE = /rejected|malicious|violation|blocked|prohibited|firewall|support/;
+
+/**
  * Checks whether a 200 OK or 400 Bad Request body that diverged from a valid
  * baseline contains explicit custom WAF / security rejection indicators.
  */
 export function isSoftBlockBody(bodyText: string): boolean {
 	if (!bodyText) return false;
-	const normalized = collapseWhitespace(bodyText.slice(0, MAX_SIGNATURE_SCAN_CHARS).toLowerCase());
+	const lowered = bodyText.slice(0, MAX_SIGNATURE_SCAN_CHARS).toLowerCase();
+	// Most bodies contain no rejection phrase; reject them with one regex pass
+	// before collapsing whitespace and searching phrase by phrase.
+	if (!SOFT_BLOCK_KEYWORD_RE.test(lowered)) return false;
+	const normalized = collapseWhitespace(lowered);
 	if (normalized.length === 0) return false;
 
 	for (const phrase of SOFT_BLOCK_PHRASES) {
