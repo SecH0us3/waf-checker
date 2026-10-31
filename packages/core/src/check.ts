@@ -1,4 +1,4 @@
-import { PAYLOADS, ENHANCED_PAYLOADS } from './payloads';
+import { PAYLOADS, getEnhancedPayloads } from './payloads';
 import { WAFDetector, WAFDetectionResult } from './waf-detection';
 import { PayloadEncoder } from './encoding';
 import {
@@ -967,7 +967,7 @@ export async function handleApiCheckWithEnvelope(
 	}
 
 	// Choose payload source based on options
-	let payloadSource = useEnhancedPayloads ? ENHANCED_PAYLOADS : PAYLOADS;
+	let payloadSource = useEnhancedPayloads ? getEnhancedPayloads() : PAYLOADS;
 
 	// Add advanced payloads if requested
 	if (useAdvancedPayloads) {
