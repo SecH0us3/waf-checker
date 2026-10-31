@@ -700,13 +700,15 @@ export function evaluateWAFVerdict(
 		baselineNumStatus === 200 &&
 		(numStatus === 200 || numStatus === 400) &&
 		bodyText &&
+		// Cheap phrase check first: most bodies have no rejection phrase, so the
+		// structural signature (several regex passes) is only computed when needed.
+		isSoftBlockBody(bodyText) &&
 		!areBodiesStructurallySimilar(
 			computeBodySignature(bodyText),
 			bodyText.length,
 			baseline.bodySignature,
 			baseline.bodyLength,
-		) &&
-		isSoftBlockBody(bodyText)
+		)
 	) {
 		return { blocked: true, verdict: 'blocked', baselineNote: 'custom_block_page' };
 	}
