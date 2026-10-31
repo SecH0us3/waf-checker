@@ -1116,8 +1116,7 @@ export async function handleApiCheckWithEnvelope(
 								}
 							} else if (httpManipulation?.enableInspectionLimitPadding) {
 								const paddingSize = httpManipulation.paddingSize || '16kb';
-								const variations = HTTPManipulator.generatePaddingVariations('test', currentPayload, paddingSize);
-								finalPayload = variations.queryPadding;
+								finalPayload = HTTPManipulator.generateQueryPadding('test', currentPayload, paddingSize);
 							}
 
 							pageTasks.push(async () => {

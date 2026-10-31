@@ -27,7 +27,7 @@ async function fullScan(opts) {
 	for (;;) {
 		const env = await core.handleApiCheckWithEnvelope(
 			'https://example.com/', page, opts.methods, undefined, undefined, false, undefined, false, false,
-			!!opts.enhanced, !!opts.advanced, false, !!opts.encoding, opts.waf, undefined,
+			!!opts.enhanced, !!opts.advanced, false, !!opts.encoding, opts.waf, opts.manip,
 			{ fetch: opts.fetch, quiet: true, pageSize: opts.pageSize, concurrency: 4 },
 		);
 		n += env.results.length; total = env.total;
@@ -43,6 +43,7 @@ const scenarios = {
 	basic: () => fullScan({ methods: ['GET', 'POST'], fetch: mkFetch(403, 4096), pageSize: 50 }),
 	heavy3pages: () => fullScan({ methods: ['GET', 'POST'], fetch: mkFetch(403, 4096), pageSize: 50, enhanced: true, advanced: true, encoding: true, waf: 'cloudflare', maxPages: 3 }),
 	encpaged: () => fullScan({ methods: ['GET'], fetch: mkFetch(403, 4096), pageSize: 50, encoding: true, waf: 'modsecurity' }),
+	padding: () => fullScan({ methods: ['GET', 'POST'], fetch: mkFetch(403, 4096), pageSize: 50, manip: { enableInspectionLimitPadding: true, paddingSize: '128kb' } }),
 	bigbody: () => fullScan({ methods: ['GET'], fetch: mkFetch(200, 512 * 1024), pageSize: 50 }),
 	verdict: async () => {
 		const body = '<!doctype html><html><body>' + 'lorem ipsum dolor sit amet '.repeat(40000) + '</body></html>';
