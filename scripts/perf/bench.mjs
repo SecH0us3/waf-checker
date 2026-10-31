@@ -49,6 +49,12 @@ const scenarios = {
 	cliheavy: () => fullScan({ methods: ['GET'], fetch: mkFetch(403, 4096), pageSize: Number.MAX_SAFE_INTEGER, enhanced: true, advanced: true, encoding: true, waf: 'cloudflare' }),
 	spoof: () => fullScan({ methods: ['GET', 'POST'], fetch: mkFetch(403, 4096), pageSize: 50, waf: 'cloudflare', extra: { spoofUserAgents: true, spoofIpHeaders: true } }),
 	casefirst: () => fullScan({ methods: ['GET'], fetch: mkFetch(403, 4096), pageSize: 15, enhanced: true, advanced: true, encoding: true, waf: 'cloudflare', caseSensitive: true, maxPages: 1 }),
+	baseline200: () => {
+		// Calibrated scan (the UI default) against a site answering 200 with a 12 KB HTML page.
+		const page = '<!doctype html>\n<html><head><title>Shop</title></head><body>\n' + '<div class="item"><a href="/p/1234">Product   name</a> <span>19.99</span> 2024-05-01T10:00:00Z</div>\n'.repeat(120) + '</body></html>';
+		const fetch = async () => new Response(page, { status: 200, headers: { 'content-type': 'text/html' } });
+		return fullScan({ methods: ['GET', 'POST'], fetch, pageSize: 50, extra: { calibrateBaseline: true } });
+	},
 	padding: () => fullScan({ methods: ['GET', 'POST'], fetch: mkFetch(403, 4096), pageSize: 50, manip: { enableInspectionLimitPadding: true, paddingSize: '128kb' } }),
 	bigbody: () => fullScan({ methods: ['GET'], fetch: mkFetch(200, 512 * 1024), pageSize: 50 }),
 	verdict: async () => {
