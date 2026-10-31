@@ -619,15 +619,16 @@ export function evaluateWAFVerdict(
 	if (bodyText) {
 		// Captcha challenges in this response's body
 		if (
-			// Each URL regex runs only if the body contains its literal tail, which
-			// any match must include: a plain substring search rejects the common
-			// case far faster than a regex that has to try every 'http' position.
+			// Each URL regex runs only if the body contains a literal that any match
+			// must include: a plain substring search rejects the common case far
+			// faster than a regex that has to try every 'http' position. These scan
+			// response bodies for captcha markers; they do not validate URLs.
 			bodyText.includes('cf-turnstile') ||
 			(bodyText.includes('challenges.cloudflare.com/turnstile/') &&
 				/https?:\/\/challenges\.cloudflare\.com\/turnstile\//.test(bodyText)) ||
 			(bodyText.includes('google.com/recaptcha/') && /https?:\/\/(?:www\.)?google\.com\/recaptcha\//.test(bodyText)) ||
 			bodyText.includes('g-recaptcha') ||
-			(bodyText.includes('hcaptcha.com/') && /https?:\/\/(?:www\.)?hcaptcha\.com\//.test(bodyText)) ||
+			(bodyText.includes('hcaptcha') && /https?:\/\/(?:www\.)?hcaptcha\.com\//.test(bodyText)) ||
 			bodyText.includes('h-captcha')
 		) {
 			isBlocked = true;
