@@ -619,22 +619,28 @@ export function evaluateWAFVerdict(
 	if (bodyText) {
 		// Captcha challenges in this response's body
 		if (
+			// Each URL regex runs only if the body contains its literal tail, which
+			// any match must include: a plain substring search rejects the common
+			// case far faster than a regex that has to try every 'http' position.
 			bodyText.includes('cf-turnstile') ||
-			/https?:\/\/challenges\.cloudflare\.com\/turnstile\//.test(bodyText) ||
-			/https?:\/\/(?:www\.)?google\.com\/recaptcha\//.test(bodyText) ||
+			(bodyText.includes('challenges.cloudflare.com/turnstile/') &&
+				/https?:\/\/challenges\.cloudflare\.com\/turnstile\//.test(bodyText)) ||
+			(bodyText.includes('google.com/recaptcha/') && /https?:\/\/(?:www\.)?google\.com\/recaptcha\//.test(bodyText)) ||
 			bodyText.includes('g-recaptcha') ||
-			/https?:\/\/(?:www\.)?hcaptcha\.com\//.test(bodyText) ||
+			(bodyText.includes('hcaptcha.com/') && /https?:\/\/(?:www\.)?hcaptcha\.com\//.test(bodyText)) ||
 			bodyText.includes('h-captcha')
 		) {
 			isBlocked = true;
 			hasExplicitWafSignal = true;
 		} else if (
-			// Imperva / Incapsula block markers anchored to vendor context or fuller block page phrasing
-			((detection?.wafType === 'Imperva' ||
+			// Imperva / Incapsula block markers anchored to vendor context or fuller block page phrasing.
+			// Both alternatives need 'incident id', so test it first: a body without
+			// it is rejected in one pass instead of three.
+			/incident id/i.test(bodyText) &&
+			(detection?.wafType === 'Imperva' ||
 				detection?.wafType === 'Incapsula' ||
-				/incapsula|imperva/i.test(bodyText)) &&
-				/incident id/i.test(bodyText)) ||
-			/request unsuccessful\. incapsula incident id/i.test(bodyText)
+				/incapsula|imperva/i.test(bodyText) ||
+				/request unsuccessful\. incapsula incident id/i.test(bodyText))
 		) {
 			isBlocked = true;
 			hasExplicitWafSignal = true;
