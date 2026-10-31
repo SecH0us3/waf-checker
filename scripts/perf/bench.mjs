@@ -28,7 +28,7 @@ async function fullScan(opts) {
 	const sampler = setInterval(() => { peak = Math.max(peak, process.memoryUsage().heapUsed); }, 5);
 	for (;;) {
 		const env = await core.handleApiCheckWithEnvelope(
-			'https://example.com/', page, opts.methods, undefined, undefined, false, undefined, false, false,
+			'https://example.com/', page, opts.methods, undefined, undefined, false, undefined, false, !!opts.caseSensitive,
 			!!opts.enhanced, !!opts.advanced, false, !!opts.encoding, opts.waf, opts.manip,
 			{ fetch: opts.fetch, quiet: true, pageSize: opts.pageSize, concurrency: 4, ...opts.extra },
 		);
@@ -48,6 +48,7 @@ const scenarios = {
 	encpaged: () => fullScan({ methods: ['GET'], fetch: mkFetch(403, 4096), pageSize: 50, encoding: true, waf: 'modsecurity' }),
 	cliheavy: () => fullScan({ methods: ['GET'], fetch: mkFetch(403, 4096), pageSize: Number.MAX_SAFE_INTEGER, enhanced: true, advanced: true, encoding: true, waf: 'cloudflare' }),
 	spoof: () => fullScan({ methods: ['GET', 'POST'], fetch: mkFetch(403, 4096), pageSize: 50, waf: 'cloudflare', extra: { spoofUserAgents: true, spoofIpHeaders: true } }),
+	casefirst: () => fullScan({ methods: ['GET'], fetch: mkFetch(403, 4096), pageSize: 15, enhanced: true, advanced: true, encoding: true, waf: 'cloudflare', caseSensitive: true, maxPages: 1 }),
 	padding: () => fullScan({ methods: ['GET', 'POST'], fetch: mkFetch(403, 4096), pageSize: 50, manip: { enableInspectionLimitPadding: true, paddingSize: '128kb' } }),
 	bigbody: () => fullScan({ methods: ['GET'], fetch: mkFetch(200, 512 * 1024), pageSize: 50 }),
 	verdict: async () => {
