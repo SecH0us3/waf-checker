@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { generateWAFSpecificPayloads, generateHTTPManipulationPayloads, generateEncodedPayloads } from '../src/advanced-payloads';
+import {
+	generateWAFSpecificPayloads,
+	generateHTTPManipulationPayloads,
+	generateEncodedPayloads,
+	firstWAFSpecificVariant,
+	ADVANCED_PAYLOADS,
+} from '../src/advanced-payloads';
+import { PAYLOADS } from '../src/payloads';
 
 describe('advanced-payloads', () => {
 	describe('generateEncodedPayloads', () => {
@@ -133,6 +140,31 @@ describe('advanced-payloads', () => {
 			// @ts-ignore
 			const res = generateHTTPManipulationPayloads('test', 'unknown');
 			expect(res.length).toBe(1); // default switch fallback doesn't add variations
+		});
+	});
+
+	describe('firstWAFSpecificVariant', () => {
+		// sendRequest sends this variant; it must be exactly the first bypass
+		// variation of the full list, which it computes lazily.
+		const wafTypes = [
+			'cloudflare', 'aws', 'AWS WAF', 'modsecurity', 'akamai', 'azure front door', 'palo alto', 'sophos utm',
+			'imperva', 'incapsula', 'f5 big-ip', 'cloud armor', 'signal sciences', 'naxsi', 'haproxy', 'datapower',
+			'reblaze', 'dotdefender', 'qrator', 'unknown-waf',
+		];
+		const payloads = [
+			...new Set(
+				Object.values({ ...PAYLOADS, ...ADVANCED_PAYLOADS }).flatMap((c) => [...c.payloads, ...(c.falsePayloads || [])]),
+			),
+			'',
+			'plain',
+			'a b',
+		];
+
+		it.each(wafTypes)('equals generateWAFSpecificPayloads(...)[1] for %s', (waf) => {
+			for (const payload of payloads) {
+				const all = generateWAFSpecificPayloads(waf, payload);
+				expect(firstWAFSpecificVariant(waf, payload)).toBe(all.length > 1 ? all[1] : payload);
+			}
 		});
 	});
 });

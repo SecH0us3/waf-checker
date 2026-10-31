@@ -3,6 +3,7 @@ import { WAFDetector, WAFDetectionResult } from './waf-detection';
 import { PayloadEncoder } from './encoding';
 import {
 	generateWAFSpecificPayloads,
+	firstWAFSpecificVariant,
 	generateHTTPManipulationPayloads,
 	ADVANCED_PAYLOADS,
 	generateEncodedPayloads,
@@ -181,13 +182,8 @@ export async function sendRequest(
 		const startTime = Date.now();
 
 		// Apply WAF-specific payload modifications if WAF is detected
-		let finalPayload = payload;
-		if (detectedWAF && payload) {
-			const wafSpecificPayloads = generateWAFSpecificPayloads(detectedWAF, payload);
-			if (wafSpecificPayloads.length > 1) {
-				finalPayload = wafSpecificPayloads[1]; // Use first bypass variation
-			}
-		}
+		// Use the first bypass variation for the detected WAF.
+		const finalPayload = detectedWAF && payload ? firstWAFSpecificVariant(detectedWAF, payload) : payload;
 
 		// Build the final URL: if it contains {PAYLOAD}, substitute directly;
 		// otherwise append as a query parameter using ? or &
