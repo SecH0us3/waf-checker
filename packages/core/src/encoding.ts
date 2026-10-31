@@ -36,9 +36,8 @@ const OVERLONG_UTF8 = charTable(OVERLONG_TARGETS, (code) => {
 });
 const OVERLONG_TARGET_RE = /[\/\\.'"<>&;:|() ]/g;
 
-// Printable ASCII -> full-width form (U+FF01-U+FF5E); space -> ideographic space U+3000 (NFKC -> ' ').
-const FULL_WIDTH: Record<string, string> = { ' ': '\u3000' };
-for (let code = 0x21; code <= 0x7e; code++) FULL_WIDTH[String.fromCharCode(code)] = String.fromCharCode(code + 0xfee0);
+// Code units per String.fromCharCode.apply call: well under engines' argument limits.
+const FROM_CHAR_CODE_CHUNK = 4096;
 
 const HTML_ENTITIES_DEC: Record<string, string> = {
 	'"': '&#34;',
@@ -215,7 +214,20 @@ export class PayloadEncoder {
 	 * Example: '<script>' -> '＜ｓｃｒｉｐｔ＞'
 	 */
 	static fullWidthEncode(payload: string): string {
-		return payload.replace(/[\x20-\x7e]/g, (ch) => FULL_WIDTH[ch]);
+		// Nearly every character is replaced, so map UTF-16 code units in a typed
+		// array and decode them in chunks rather than calling back per character.
+		// Surrogates (and so astral characters) pass through untouched.
+		const n = payload.length;
+		const units = new Uint16Array(n);
+		for (let i = 0; i < n; i++) {
+			const code = payload.charCodeAt(i);
+			units[i] = code >= 0x21 && code <= 0x7e ? code + 0xfee0 : code === 0x20 ? 0x3000 : code;
+		}
+		let out = '';
+		for (let i = 0; i < n; i += FROM_CHAR_CODE_CHUNK) {
+			out += String.fromCharCode.apply(null, units.subarray(i, i + FROM_CHAR_CODE_CHUNK) as unknown as number[]);
+		}
+		return out;
 	}
 
 	/**
