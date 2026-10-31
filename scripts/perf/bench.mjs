@@ -51,6 +51,13 @@ const scenarios = {
 		for (let i = 0; i < 300; i++) core.evaluateWAFVerdict(200, body, undefined, h, 'q', base);
 		return { iterations: 300, bodyKB: Math.round(body.length / 1024) };
 	},
+	signature: async () => {
+		// Baseline fingerprinting of typical (8-16 KB) HTML responses.
+		const body = '<!doctype html>\n<html>\n  <head><title>Shop</title></head>\n  <body>\n' + '    <div class="item">\n      <a href="/p/1234">Product   name</a>\t<span>  19.99 </span>\n    </div>\n'.repeat(120) + '  </body>\n</html>\n';
+		let n = 0;
+		for (let i = 0; i < 3000; i++) n += core.computeBodySignature(body).length + (core.isSoftBlockBody(body) ? 1 : 0);
+		return { iterations: 3000, bodyKB: Math.round(body.length / 1024), n };
+	},
 	plan: async () => {
 		let n = 0;
 		for (let i = 0; i < 5; i++) for (const [cat, c] of Object.entries(core.PAYLOADS)) for (const p of c.payloads) { n += core.PayloadEncoder.generateBypassVariations(p, cat).length; n += core.generateWAFSpecificPayloads('modsecurity', p).length; }

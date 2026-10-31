@@ -30,41 +30,36 @@ export interface BaselineProfile {
 
 const MAX_SIGNATURE_SCAN_CHARS = 8192;
 
+/**
+ * Collapses each run of ASCII whitespace (space, \t \n \v \f \r) into one
+ * space and drops leading and trailing whitespace.
+ */
 function collapseWhitespace(input: string): string {
-	let out = '';
-	let prevSpace = true;
-	for (let i = 0; i < input.length; i++) {
-		const code = input.charCodeAt(i);
-		const isSpace = code === 32 || (code >= 9 && code <= 13);
-		if (isSpace) {
-			if (!prevSpace) {
-				out += ' ';
-				prevSpace = true;
-			}
-		} else {
-			out += input[i];
-			prevSpace = false;
-		}
-	}
-	return out.endsWith(' ') ? out.slice(0, -1) : out;
+	const out = input.replace(/[\t-\r ]+/g, ' ');
+	const from = out.startsWith(' ') ? 1 : 0;
+	const to = out.length > from && out.endsWith(' ') ? out.length - 1 : out.length;
+	return from === 0 && to === out.length ? out : out.slice(from, to);
 }
 
+/**
+ * Replaces every '<' and '>' with a space and drops whatever lies between a '<'
+ * and the next '>'. Linear: copies runs of text as slices, not char by char.
+ */
 function stripHtmlTagsLinear(input: string): string {
-	let out = '';
+	const parts: string[] = [];
 	let inTag = false;
+	let runStart = 0;
 	for (let i = 0; i < input.length; i++) {
-		const ch = input[i];
-		if (ch === '<') {
-			inTag = true;
-			out += ' ';
-		} else if (ch === '>') {
-			inTag = false;
-			out += ' ';
-		} else if (!inTag) {
-			out += ch;
+		const code = input.charCodeAt(i);
+		if (code === 60 /* < */ || code === 62 /* > */) {
+			if (!inTag) parts.push(input.slice(runStart, i));
+			parts.push(' ');
+			inTag = code === 60;
+			runStart = i + 1;
 		}
 	}
-	return out;
+	if (!inTag) parts.push(input.slice(runStart));
+	return parts.join('');
 }
 
 /**

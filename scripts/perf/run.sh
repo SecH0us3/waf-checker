@@ -20,7 +20,7 @@ if [ "$1" = golden ]; then
 fi
 
 N=${N:-5}
-for s in ${@:-import basic encpaged heavy3pages bigbody verdict plan}; do
+for s in ${@:-import basic encpaged heavy3pages bigbody verdict signature plan}; do
 	for i in $(seq "$N"); do node --expose-gc "$DIR/bench.mjs" "$s" 2>/dev/null; done | node -e '
 		const rows = require("fs").readFileSync(0, "utf8").trim().split("\n").map(JSON.parse);
 		const med = (k) => { const v = rows.map((r) => r[k]).sort((a, b) => a - b); return v[v.length >> 1]; };
