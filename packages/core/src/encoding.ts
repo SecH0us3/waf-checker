@@ -14,6 +14,87 @@ export interface EncodingOptions {
 	fullWidth?: boolean;
 }
 
+const HTML_ENTITIES_DEC: Record<string, string> = {
+	'"': '&#34;',
+	"'": '&#39;',
+	'<': '&#60;',
+	'>': '&#62;',
+	'&': '&#38;',
+	'=': '&#61;',
+	' ': '&#32;',
+};
+
+const HTML_ENTITIES_HEX: Record<string, string> = {
+	'"': '&#x22;',
+	"'": '&#x27;',
+	'<': '&#x3C;',
+	'>': '&#x3E;',
+	'&': '&#x26;',
+	'=': '&#x3D;',
+	' ': '&#x20;',
+};
+
+/** Keywords recased by mixedCaseEncode, mapped to their alternating-case form (UNION -> uNiOn). */
+const MIXED_CASE_KEYWORDS = new Map(
+	[
+		'UNION',
+		'SELECT',
+		'FROM',
+		'WHERE',
+		'INSERT',
+		'UPDATE',
+		'DELETE',
+		'DROP',
+		'CREATE',
+		'ALTER',
+		'EXEC',
+		'EXECUTE',
+		'AND',
+		'OR',
+		'SLEEP',
+		'BENCHMARK',
+		'WAITFOR',
+		'CONCAT',
+		'SCRIPT',
+		'ALERT',
+		'PROMPT',
+		'CONFIRM',
+		'JAVASCRIPT',
+		'VBSCRIPT',
+		'IFRAME',
+		'IMG',
+		'SVG',
+		'ONLOAD',
+		'ONERROR',
+		'ONCLICK',
+		'ONTOGGLE',
+		'ONSTART',
+		'ONFOCUS',
+		'ONMOUSEOVER',
+	].map((keyword): [string, string] => [
+		keyword,
+		keyword
+			.split('')
+			.map((char, index) => (index % 2 === 0 ? char.toLowerCase() : char.toUpperCase()))
+			.join(''),
+	]),
+);
+
+// One pass over the payload for all keywords. Each keyword is a whole word, so
+// matching them together recases exactly the words that one replace per keyword did.
+const MIXED_CASE_KEYWORD_RE = new RegExp(`\\b(?:${[...MIXED_CASE_KEYWORDS.keys()].join('|')})\\b`, 'gi');
+
+/** XSS event handlers recased by xssObfuscation, with a matcher and alternating-case form each. */
+const XSS_EVENT_HANDLERS = ['onload', 'onerror', 'onclick', 'onmouseover', 'onfocus'].map((handler) => ({
+	handler,
+	re: new RegExp(handler, 'gi'),
+	upper: handler.toUpperCase(),
+	alternating: handler
+		.split('')
+		.map((c, i) => (i % 2 ? c.toUpperCase() : c.toLowerCase()))
+		.join(''),
+}));
+
 export class PayloadEncoder {
 	/**
 	 * Double URL encode payload
@@ -39,16 +120,7 @@ export class PayloadEncoder {
 	 * Example: ' -> &#39; or &#x27;
 	 */
 	static htmlEntityEncode(payload: string, useHex = false): string {
-		const entityMap: { [key: string]: string } = {
-			'"': useHex ? '&#x22;' : '&#34;',
-			"'": useHex ? '&#x27;' : '&#39;',
-			'<': useHex ? '&#x3C;' : '&#60;',
-			'>': useHex ? '&#x3E;' : '&#62;',
-			'&': useHex ? '&#x26;' : '&#38;',
-			'=': useHex ? '&#x3D;' : '&#61;',
-			' ': useHex ? '&#x20;' : '&#32;',
-		};
-
+		const entityMap = useHex ? HTML_ENTITIES_HEX : HTML_ENTITIES_DEC;
 		return payload.replace(/["'<>&= ]/g, (char) => entityMap[char] || char);
 	}
 
@@ -57,57 +129,10 @@ export class PayloadEncoder {
 	 * Example: UNION SELECT -> uNiOn SeLeCt
 	 */
 	static mixedCaseEncode(payload: string): string {
-		const keywords = [
-			'UNION',
-			'SELECT',
-			'FROM',
-			'WHERE',
-			'INSERT',
-			'UPDATE',
-			'DELETE',
-			'DROP',
-			'CREATE',
-			'ALTER',
-			'EXEC',
-			'EXECUTE',
-			'AND',
-			'OR',
-			'SLEEP',
-			'BENCHMARK',
-			'WAITFOR',
-			'CONCAT',
-			'SCRIPT',
-			'ALERT',
-			'PROMPT',
-			'CONFIRM',
-			'JAVASCRIPT',
-			'VBSCRIPT',
-			'IFRAME',
-			'IMG',
-			'SVG',
-			'ONLOAD',
-			'ONERROR',
-			'ONCLICK',
-			'ONTOGGLE',
-			'ONSTART',
-			'ONFOCUS',
-			'ONMOUSEOVER',
-		];
-
-		let result = payload;
-		keywords.forEach((keyword) => {
-			const mixedCase = keyword
-				.split('')
-				.map((char, index) => (index % 2 === 0 ? char.toLowerCase() : char.toUpperCase()))
-				.join('');
-
-			// Word-boundary anchored so short keywords (OR/AND) don't recase
-			// substrings of unrelated, case-sensitive tokens such as
-			// 'constructor' (-> 'constructoR') or 'command' (-> 'commaNd').
-			result = result.replace(new RegExp(`\\b${keyword}\\b`, 'gi'), mixedCase);
-		});
-
-		return result;
+		// Word-boundary anchored so short keywords (OR/AND) don't recase
+		// substrings of unrelated, case-sensitive tokens such as
+		// 'constructor' (-> 'constructoR') or 'command' (-> 'commaNd').
+		return payload.replace(MIXED_CASE_KEYWORD_RE, (word) => MIXED_CASE_KEYWORDS.get(word.toUpperCase()) ?? word);
 	}
 
 	/**
@@ -310,22 +335,14 @@ export class PayloadEncoder {
 		obfuscated.push(payload.toUpperCase());
 
 		// Event handler variations
-		const eventHandlers = ['onload', 'onerror', 'onclick', 'onmouseover', 'onfocus'];
-		eventHandlers.forEach((handler) => {
-			if (payload.toLowerCase().includes(handler)) {
+		const lowerPayload = payload.toLowerCase();
+		for (const { handler, re, upper, alternating } of XSS_EVENT_HANDLERS) {
+			if (lowerPayload.includes(handler)) {
 				// Add variations with different cases
-				obfuscated.push(payload.replace(new RegExp(handler, 'gi'), handler.toUpperCase()));
-				obfuscated.push(
-					payload.replace(
-						new RegExp(handler, 'gi'),
-						handler
-							.split('')
-							.map((c, i) => (i % 2 ? c.toUpperCase() : c.toLowerCase()))
-							.join(''),
-					),
-				);
+				obfuscated.push(payload.replace(re, upper));
+				obfuscated.push(payload.replace(re, alternating));
 			}
-		});
+		}
 
 		// Script tag variations
 		if (payload.includes('<script>')) {
