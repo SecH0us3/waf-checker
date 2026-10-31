@@ -1779,7 +1779,11 @@ body[data-theme='dark'] .vp-empty-sub code {
 		to { opacity: 1; transform: none; }
 	}
 
-	.results-table-modern tbody tr {
+	/* Only the first screenful of rows fades in: rows beyond it are off-screen
+	   when the table appears, and animating every row of a large table (each
+	   re-render and every sort re-inserts them all) kept thousands of
+	   animations running at once. */
+	.results-table-modern tbody tr:nth-child(-n + 30) {
 		animation: vpFadeInUp 0.32s ease both;
 	}
 
