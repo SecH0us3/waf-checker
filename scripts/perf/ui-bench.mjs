@@ -62,9 +62,19 @@ for (let run = 0; run < RUNS; run++) {
 		await fetchResults();
 		const ms = performance.now() - t0;
 		await new Promise((r) => setTimeout(r, 0));
-		return { ms: Math.round(ms), rows: document.querySelectorAll('#resultsTable tbody tr').length, heapMB: +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) };
+		// Interactions on the finished table, each timed through a forced layout.
+		// sort*ScriptMs is the synchronous part alone, before the browser restyles.
+		let scriptPart = 0;
+		const timed = (f) => { const t = performance.now(); f(); scriptPart = Math.round(performance.now() - t); document.body.offsetHeight; return Math.round(performance.now() - t); };
+		const sortNumMs = timed(() => sortResultsTable(2, 'num'));
+		const sortNumScriptMs = scriptPart;
+		const sortTextMs = timed(() => sortResultsTable(0, 'text'));
+		const sortTextScriptMs = scriptPart;
+		const filterMs = timed(() => { document.querySelector('.status-filter-checkbox[data-status="403"]').checked = false; filterResultsTableByStatus(); });
+		const searchMs = timed(() => { document.getElementById('resultsSearch').value = 'post'; filterResultsTableByStatus(); });
+		return { ms: Math.round(ms), rows: document.querySelectorAll('#resultsTable tbody tr').length, heapMB: +(performance.memory.usedJSHeapSize / 1048576).toFixed(1), sortNumMs, sortNumScriptMs, sortTextMs, sortTextScriptMs, filterMs, searchMs };
 	}, [TOTAL, LATENCY]);
-	const after = await metric();
+	const after = await metric(); // includes the interactions below the scan
 	const d = (k) => Math.round((after[k] - before[k]) * 1000);
 	rows.push({ ...out, scriptMs: d('ScriptDuration'), layoutMs: d('LayoutDuration'), styleMs: d('RecalcStyleDuration'), taskMs: d('TaskDuration') });
 	await page.close();
