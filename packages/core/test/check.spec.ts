@@ -304,14 +304,12 @@ describe('check.ts', () => {
 				return Promise.resolve({
 					status: 301,
 					headers: new Headers({ location: 'https://www.example.com/.env' }),
-					clone: () => ({ text: async () => '' }),
 					text: async () => '',
 				});
 			}
 			return Promise.resolve({
 				status: 200,
 				headers: new Headers(),
-				clone: () => ({ text: async () => 'DB_PASSWORD=hunter2' }),
 				text: async () => 'DB_PASSWORD=hunter2',
 			});
 		});
@@ -340,7 +338,6 @@ describe('check.ts', () => {
 			return Promise.resolve({
 				status: 302,
 				headers: new Headers({ location: 'https://cdn.othervendor.net/.env' }),
-				clone: () => ({ text: async () => '' }),
 				text: async () => '',
 			});
 		});
@@ -510,7 +507,7 @@ describe('sendRequest time and connection bounds', () => {
 			const mockFetch = vi.fn().mockImplementation(async (_url: string, options: any) => {
 				const signal: AbortSignal = options.signal;
 				const never = () => new Promise<string>((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))));
-				return { status: 200, headers: new Headers(), clone: () => ({ text: never }) };
+				return { status: 200, headers: new Headers(), text: never };
 			});
 
 			const pending = sendRequest('http://example.com/api', 'GET', undefined, undefined, undefined, false, false, undefined, undefined, {
@@ -543,7 +540,7 @@ describe('sendRequest time and connection bounds', () => {
 		mockFetch.mockResolvedValueOnce({
 			status: 200,
 			headers: new Headers(),
-			clone: () => ({ text: () => Promise.resolve('reached final target') }),
+			text: () => Promise.resolve('reached final target'),
 		});
 
 		const result = await sendRequest('http://example.com/step-0', 'GET', undefined, undefined, undefined, true, false, undefined, undefined, {
@@ -566,7 +563,7 @@ describe('sendRequest time and connection bounds', () => {
 				status: 302,
 				headers: new Headers({ Location: `http://example.com/loop-${hop}` }),
 				body: { cancel },
-				clone: () => ({ text: () => Promise.resolve('looping redirect') }),
+				text: () => Promise.resolve('looping redirect'),
 			});
 		});
 

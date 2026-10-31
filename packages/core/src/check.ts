@@ -332,8 +332,11 @@ export async function sendRequest(
 			// Read the body while the timeout is still armed: the abort signal also
 			// ends a body that trickles in, so the whole request, body included, stays
 			// within the 10s budget callers rely on (e.g. the scheduled run's deadline).
+			// Read the response itself, not a clone: clone() tees the stream, and the
+			// unread branch would buffer a second copy of the whole body. Callers only
+			// use bodyText and the response's status and headers.
 			try {
-				bodyText = await resp.clone().text();
+				bodyText = await resp.text();
 			} catch {}
 		} finally {
 			clearTimeout(timeoutId);
