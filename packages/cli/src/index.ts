@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { fetch as undiciFetch, ProxyAgent, Agent } from 'undici';
+import { createRequire } from 'node:module';
 import { lookup as dnsLookup } from 'node:dns';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -131,27 +131,39 @@ export interface FetchOptions {
 	insecure?: boolean;
 }
 
+// undici is only needed for a custom dispatcher (--proxy, --origin-ip,
+// --insecure), and importing it costs ~100 ms — most of the CLI's startup, paid
+// by every run including --help, --version and shell completion. Load it
+// synchronously on first use instead, so getFetch behaves exactly as before.
+const nodeRequire = createRequire(import.meta.url);
+let undiciModule: typeof import('undici') | undefined;
+function undici(): typeof import('undici') {
+	return (undiciModule ??= nodeRequire('undici') as typeof import('undici'));
+}
+
 // Helper to get a custom fetch with proxy, origin-IP override and/or insecure-TLS
 // support. All connector tweaks compose onto the same undici dispatcher so they
 // can be combined (e.g. --origin-ip together with --insecure).
 export function getFetch(opts: FetchOptions = {}): typeof fetch {
 	const { proxy, originIp, targetHost, insecure } = opts;
-	const bind = (dispatcher: any): typeof fetch =>
-		((url: any, init: any) => undiciFetch(url, { ...init, dispatcher })) as any;
+	const bind = (dispatcher: any): typeof fetch => {
+		const undiciFetch = undici().fetch;
+		return ((url: any, init: any) => undiciFetch(url, { ...init, dispatcher })) as any;
+	};
 	// Single source of truth for the insecure-TLS decision, applied to whichever
 	// dispatcher we build below (undici uses `requestTls` for a proxy's end-server
 	// TLS and `connect` for a direct connection).
 	const tlsOpts = insecure ? { rejectUnauthorized: false } : undefined;
 
 	if (proxy) {
-		return bind(new ProxyAgent(tlsOpts ? { uri: proxy, requestTls: tlsOpts } : proxy));
+		return bind(new (undici().ProxyAgent)(tlsOpts ? { uri: proxy, requestTls: tlsOpts } : proxy));
 	}
 
 	const connect: Record<string, any> = { ...(tlsOpts ?? {}) };
 	if (originIp && targetHost) connect.lookup = originIpLookup(originIp, targetHost);
 
 	if (Object.keys(connect).length > 0) {
-		return bind(new Agent({ connect }));
+		return bind(new (undici().Agent)({ connect }));
 	}
 	return globalThis.fetch;
 }
