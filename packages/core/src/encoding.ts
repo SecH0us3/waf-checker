@@ -14,6 +14,32 @@ export interface EncodingOptions {
 	fullWidth?: boolean;
 }
 
+/** Builds a char -> replacement table for the given characters. */
+function charTable(chars: string[], encode: (code: number) => string): Record<string, string> {
+	const table: Record<string, string> = {};
+	for (const ch of chars) table[ch] = encode(ch.charCodeAt(0));
+	return table;
+}
+
+// Per-character replacements for the escape encoders, computed once instead of
+// formatting each character's code point again on every call.
+const ESCAPED_CHARS = ["'", '"', '<', '>', '&'];
+const UNICODE_ESCAPES = charTable(ESCAPED_CHARS, (code) => `\\u${code.toString(16).padStart(4, '0')}`);
+const HEX_ESCAPES = charTable(ESCAPED_CHARS, (code) => `0x${code.toString(16)}`);
+const OCTAL_ESCAPES = charTable(ESCAPED_CHARS, (code) => `\\${code.toString(8).padStart(3, '0')}`);
+
+// Security-relevant ASCII characters and their illegal 2-byte overlong UTF-8 form ('/' -> %C0%AF).
+const OVERLONG_TARGETS = ['/', '\\', '.', "'", '"', '<', '>', '&', ';', ':', '|', '(', ')', ' '];
+const OVERLONG_UTF8 = charTable(OVERLONG_TARGETS, (code) => {
+	const hex = (b: number) => `%${b.toString(16).toUpperCase().padStart(2, '0')}`;
+	return hex(0xc0 | (code >> 6)) + hex(0x80 | (code & 0x3f));
+});
+const OVERLONG_TARGET_RE = /[\/\\.'"<>&;:|() ]/g;
+
+// Printable ASCII -> full-width form (U+FF01-U+FF5E); space -> ideographic space U+3000 (NFKC -> ' ').
+const FULL_WIDTH: Record<string, string> = { ' ': '\u3000' };
+for (let code = 0x21; code <= 0x7e; code++) FULL_WIDTH[String.fromCharCode(code)] = String.fromCharCode(code + 0xfee0);
+
 const HTML_ENTITIES_DEC: Record<string, string> = {
 	'"': '&#34;',
 	"'": '&#39;',
@@ -109,10 +135,7 @@ export class PayloadEncoder {
 	 * Example: ' -> \u0027
 	 */
 	static unicodeEncode(payload: string): string {
-		return payload.replace(/['"<>&]/g, (char) => {
-			const unicode = char.charCodeAt(0).toString(16).padStart(4, '0');
-			return `\\u${unicode}`;
-		});
+		return payload.replace(/['"<>&]/g, (char) => UNICODE_ESCAPES[char]);
 	}
 
 	/**
@@ -147,10 +170,7 @@ export class PayloadEncoder {
 	 * Example: ' -> 0x27
 	 */
 	static hexEncode(payload: string): string {
-		return payload.replace(/['"<>&]/g, (char) => {
-			const hex = char.charCodeAt(0).toString(16);
-			return `0x${hex}`;
-		});
+		return payload.replace(/['"<>&]/g, (char) => HEX_ESCAPES[char]);
 	}
 
 	/**
@@ -158,10 +178,7 @@ export class PayloadEncoder {
 	 * Example: ' -> \047
 	 */
 	static octalEncode(payload: string): string {
-		return payload.replace(/['"<>&]/g, (char) => {
-			const octal = char.charCodeAt(0).toString(8);
-			return `\\${octal.padStart(3, '0')}`;
-		});
+		return payload.replace(/['"<>&]/g, (char) => OCTAL_ESCAPES[char]);
 	}
 
 	/**
@@ -182,20 +199,7 @@ export class PayloadEncoder {
 	 * Example: '../' -> %C0%AE%C0%AE%C0%AF
 	 */
 	static overlongUtf8Encode(payload: string): string {
-		const targets = new Set(['/', '\\', '.', "'", '"', '<', '>', '&', ';', ':', '|', '(', ')', ' ']);
-		let out = '';
-		for (const ch of payload) {
-			const code = ch.charCodeAt(0);
-			if (code < 0x80 && targets.has(ch)) {
-				const b1 = 0xc0 | (code >> 6);
-				const b2 = 0x80 | (code & 0x3f);
-				const hex = (b: number) => `%${b.toString(16).toUpperCase().padStart(2, '0')}`;
-				out += hex(b1) + hex(b2);
-			} else {
-				out += ch;
-			}
-		}
-		return out;
+		return payload.replace(OVERLONG_TARGET_RE, (ch) => OVERLONG_UTF8[ch]);
 	}
 
 	/**
@@ -211,18 +215,7 @@ export class PayloadEncoder {
 	 * Example: '<script>' -> '＜ｓｃｒｉｐｔ＞'
 	 */
 	static fullWidthEncode(payload: string): string {
-		let out = '';
-		for (const ch of payload) {
-			const code = ch.charCodeAt(0);
-			if (code >= 0x21 && code <= 0x7e) {
-				out += String.fromCharCode(code + 0xfee0);
-			} else if (ch === ' ') {
-				out += '　'; // ideographic space (NFKC -> ' ')
-			} else {
-				out += ch;
-			}
-		}
-		return out;
+		return payload.replace(/[\x20-\x7e]/g, (ch) => FULL_WIDTH[ch]);
 	}
 
 	/**
