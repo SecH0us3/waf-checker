@@ -24,6 +24,8 @@ function mkFetch(status, bodySize) {
 
 async function fullScan(opts) {
 	let page = 0, total = 0, n = 0, peak = 0;
+	// Sample the heap during the scan too, not only between pages.
+	const sampler = setInterval(() => { peak = Math.max(peak, process.memoryUsage().heapUsed); }, 5);
 	for (;;) {
 		const env = await core.handleApiCheckWithEnvelope(
 			'https://example.com/', page, opts.methods, undefined, undefined, false, undefined, false, false,
@@ -35,6 +37,7 @@ async function fullScan(opts) {
 		if (!env.hasMore || (opts.maxPages && page + 1 >= opts.maxPages)) break;
 		page++;
 	}
+	clearInterval(sampler);
 	return { pages: page + 1, items: n, total, peakHeapMB: +(peak / 1048576).toFixed(1) };
 }
 
@@ -43,6 +46,7 @@ const scenarios = {
 	basic: () => fullScan({ methods: ['GET', 'POST'], fetch: mkFetch(403, 4096), pageSize: 50 }),
 	heavy3pages: () => fullScan({ methods: ['GET', 'POST'], fetch: mkFetch(403, 4096), pageSize: 50, enhanced: true, advanced: true, encoding: true, waf: 'cloudflare', maxPages: 3 }),
 	encpaged: () => fullScan({ methods: ['GET'], fetch: mkFetch(403, 4096), pageSize: 50, encoding: true, waf: 'modsecurity' }),
+	cliheavy: () => fullScan({ methods: ['GET'], fetch: mkFetch(403, 4096), pageSize: Number.MAX_SAFE_INTEGER, enhanced: true, advanced: true, encoding: true, waf: 'cloudflare' }),
 	padding: () => fullScan({ methods: ['GET', 'POST'], fetch: mkFetch(403, 4096), pageSize: 50, manip: { enableInspectionLimitPadding: true, paddingSize: '128kb' } }),
 	bigbody: () => fullScan({ methods: ['GET'], fetch: mkFetch(200, 512 * 1024), pageSize: 50 }),
 	verdict: async () => {
