@@ -4,6 +4,8 @@ import {
 	areBodiesStructurallySimilar,
 	isSoftBlockBody,
 	BaselineProfile,
+	SOFT_BLOCK_PHRASES,
+	SOFT_BLOCK_KEYWORD_RE,
 } from '../src/baseline';
 import {
 	evaluateWAFVerdict,
@@ -70,6 +72,14 @@ describe('Baseline Calibration & Structural Diffing (baseline.ts)', () => {
 			expect(isSoftBlockBody('<html><body><h1>Request Rejected</h1><p>Your support ID is: 1234567890</p></body></html>')).toBe(true);
 			expect(isSoftBlockBody('{"error": "Blocked by security policy", "code": "SEC_VIOLATION"}')).toBe(true);
 			expect(isSoftBlockBody('Malicious input detected by application firewall')).toBe(true);
+		});
+
+		it('keyword pre-filter covers every soft-block phrase', () => {
+			// isSoftBlockBody returns false early when no keyword is present, so
+			// every phrase it searches for must contain one.
+			for (const phrase of [...SOFT_BLOCK_PHRASES, 'your support id is']) {
+				expect(SOFT_BLOCK_KEYWORD_RE.test(phrase), phrase).toBe(true);
+			}
 		});
 
 		it('does not flag normal application pages or generic 404/validation messages', () => {

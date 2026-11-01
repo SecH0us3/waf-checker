@@ -1,8 +1,9 @@
-import { PAYLOADS, ENHANCED_PAYLOADS } from './payloads';
+import { PAYLOADS, getEnhancedPayloads } from './payloads';
 import { WAFDetector, WAFDetectionResult } from './waf-detection';
 import { PayloadEncoder } from './encoding';
 import {
 	generateWAFSpecificPayloads,
+	firstWAFSpecificVariant,
 	generateHTTPManipulationPayloads,
 	ADVANCED_PAYLOADS,
 	generateEncodedPayloads,
@@ -181,13 +182,8 @@ export async function sendRequest(
 		const startTime = Date.now();
 
 		// Apply WAF-specific payload modifications if WAF is detected
-		let finalPayload = payload;
-		if (detectedWAF && payload) {
-			const wafSpecificPayloads = generateWAFSpecificPayloads(detectedWAF, payload);
-			if (wafSpecificPayloads.length > 1) {
-				finalPayload = wafSpecificPayloads[1]; // Use first bypass variation
-			}
-		}
+		// Use the first bypass variation for the detected WAF.
+		const finalPayload = detectedWAF && payload ? firstWAFSpecificVariant(detectedWAF, payload) : payload;
 
 		// Build the final URL: if it contains {PAYLOAD}, substitute directly;
 		// otherwise append as a query parameter using ? or &
@@ -332,36 +328,41 @@ export async function sendRequest(
 			// Read the body while the timeout is still armed: the abort signal also
 			// ends a body that trickles in, so the whole request, body included, stays
 			// within the 10s budget callers rely on (e.g. the scheduled run's deadline).
+			// Read the response itself, not a clone: clone() tees the stream, and the
+			// unread branch would buffer a second copy of the whole body. Callers only
+			// use bodyText and the response's status and headers.
 			try {
-				bodyText = await resp.clone().text();
+				bodyText = await resp.text();
 			} catch {}
 		} finally {
 			clearTimeout(timeoutId);
 		}
 
-		let logMsg: string;
-		if (options?.color) {
-			const whitePart = `\x1b[97mRequest to ${redactUrl(url)}\x1b[0m`;
-			const methodPart = `\x1b[33m${method}\x1b[0m`;
-			const payloadPart = `\x1b[36m${payload ?? '(none)'}\x1b[0m`;
-			const headersPart = `\x1b[90m${JSON.stringify(redactHeaders(headersObj))}\x1b[0m`;
-			
-			let statusPart = String(resp.status);
-			if (resp.status === 403) {
-				statusPart = `\x1b[32m403\x1b[0m`;
-			} else if (resp.status >= 200 && resp.status < 300) {
-				statusPart = `\x1b[31m${resp.status}\x1b[0m`;
-			} else if (resp.status >= 300 && resp.status < 400) {
-				statusPart = `\x1b[33m${resp.status}\x1b[0m`;
-			} else {
-				statusPart = `\x1b[31m${resp.status}\x1b[0m`;
-			}
-
-			logMsg = `${whitePart} with method ${methodPart} and payload ${payloadPart} and headers ${headersPart} returned status ${statusPart} in ${responseTime}ms`;
-		} else {
-			logMsg = `Request to ${redactUrl(url)} with method ${method} and payload ${payload ?? '(none)'} and headers ${JSON.stringify(redactHeaders(headersObj))} returned status ${resp.status} in ${responseTime}ms`;
-		}
+		// Built only when it is printed: redacting parses the URL and serializes
+		// the headers, for every request and every bypass probe.
 		if (!options?.quiet) {
+			let logMsg: string;
+			if (options?.color) {
+				const whitePart = `\x1b[97mRequest to ${redactUrl(url)}\x1b[0m`;
+				const methodPart = `\x1b[33m${method}\x1b[0m`;
+				const payloadPart = `\x1b[36m${payload ?? '(none)'}\x1b[0m`;
+				const headersPart = `\x1b[90m${JSON.stringify(redactHeaders(headersObj))}\x1b[0m`;
+
+				let statusPart = String(resp.status);
+				if (resp.status === 403) {
+					statusPart = `\x1b[32m403\x1b[0m`;
+				} else if (resp.status >= 200 && resp.status < 300) {
+					statusPart = `\x1b[31m${resp.status}\x1b[0m`;
+				} else if (resp.status >= 300 && resp.status < 400) {
+					statusPart = `\x1b[33m${resp.status}\x1b[0m`;
+				} else {
+					statusPart = `\x1b[31m${resp.status}\x1b[0m`;
+				}
+
+				logMsg = `${whitePart} with method ${methodPart} and payload ${payloadPart} and headers ${headersPart} returned status ${statusPart} in ${responseTime}ms`;
+			} else {
+				logMsg = `Request to ${redactUrl(url)} with method ${method} and payload ${payload ?? '(none)'} and headers ${JSON.stringify(redactHeaders(headersObj))} returned status ${resp.status} in ${responseTime}ms`;
+			}
 			console.log(logMsg);
 		}
 
@@ -616,29 +617,38 @@ export function evaluateWAFVerdict(
 	if (bodyText) {
 		// Captcha challenges in this response's body
 		if (
+			// Each URL regex runs only if the body contains a literal that any match
+			// must include: a plain substring search rejects the common case far
+			// faster than a regex that has to try every 'http' position. These scan
+			// response bodies for captcha markers; they do not validate URLs.
 			bodyText.includes('cf-turnstile') ||
-			/https?:\/\/challenges\.cloudflare\.com\/turnstile\//.test(bodyText) ||
-			/https?:\/\/(?:www\.)?google\.com\/recaptcha\//.test(bodyText) ||
+			(bodyText.includes('challenges.cloudflare.com/turnstile/') &&
+				/https?:\/\/challenges\.cloudflare\.com\/turnstile\//.test(bodyText)) ||
+			(bodyText.includes('google.com/recaptcha/') && /https?:\/\/(?:www\.)?google\.com\/recaptcha\//.test(bodyText)) ||
 			bodyText.includes('g-recaptcha') ||
-			/https?:\/\/(?:www\.)?hcaptcha\.com\//.test(bodyText) ||
+			(bodyText.includes('hcaptcha') && /https?:\/\/(?:www\.)?hcaptcha\.com\//.test(bodyText)) ||
 			bodyText.includes('h-captcha')
 		) {
 			isBlocked = true;
 			hasExplicitWafSignal = true;
 		} else if (
-			// Imperva / Incapsula block markers anchored to vendor context or fuller block page phrasing
-			((detection?.wafType === 'Imperva' ||
+			// Imperva / Incapsula block markers anchored to vendor context or fuller block page phrasing.
+			// Both alternatives need 'incident id', so test it first: a body without
+			// it is rejected in one pass instead of three.
+			/incident id/i.test(bodyText) &&
+			(detection?.wafType === 'Imperva' ||
 				detection?.wafType === 'Incapsula' ||
-				/incapsula|imperva/i.test(bodyText)) &&
-				/incident id/i.test(bodyText)) ||
-			/request unsuccessful\. incapsula incident id/i.test(bodyText)
+				/incapsula|imperva/i.test(bodyText) ||
+				/request unsuccessful\. incapsula incident id/i.test(bodyText))
 		) {
 			isBlocked = true;
 			hasExplicitWafSignal = true;
 		} else if (
-			// General WAF block markers
-			/waf-block|blocked by[^\n]{0,100}waf|request blocked|access denied[^\n]{0,100}firewall|security incident|web application firewall/i.test(bodyText) ||
-			/powered by[^\n]{0,100}imperva|protected with[^\n]{0,100}bunkerweb/i.test(bodyText)
+			// General WAF block markers, as one alternation: one pass over the body
+			// instead of two.
+			/waf-block|blocked by[^\n]{0,100}waf|request blocked|access denied[^\n]{0,100}firewall|security incident|web application firewall|powered by[^\n]{0,100}imperva|protected with[^\n]{0,100}bunkerweb/i.test(
+				bodyText,
+			)
 		) {
 			isBlocked = true;
 			hasExplicitWafSignal = true;
@@ -690,13 +700,15 @@ export function evaluateWAFVerdict(
 		baselineNumStatus === 200 &&
 		(numStatus === 200 || numStatus === 400) &&
 		bodyText &&
+		// Cheap phrase check first: most bodies have no rejection phrase, so the
+		// structural signature (several regex passes) is only computed when needed.
+		isSoftBlockBody(bodyText) &&
 		!areBodiesStructurallySimilar(
 			computeBodySignature(bodyText),
 			bodyText.length,
 			baseline.bodySignature,
 			baseline.bodyLength,
-		) &&
-		isSoftBlockBody(bodyText)
+		)
 	) {
 		return { blocked: true, verdict: 'blocked', baselineNote: 'custom_block_page' };
 	}
@@ -801,6 +813,23 @@ export async function captureBaseline(
 		wafBlockedOnBenign,
 		isOriginBlocked,
 	};
+}
+
+/**
+ * Per-payload ParamCheck variation counts, keyed by the scan options that shape
+ * them. The payload lists are module constants, so a count stays valid for the
+ * life of the process (a Worker isolate serves the later pages of a scan from
+ * it). Bounded so distinct option combinations cannot grow it without limit.
+ */
+const paramVariationCountCache = new Map<string, Map<string, Uint32Array>>();
+const PARAM_VARIATION_COUNT_CACHE_SIZE = 16;
+
+function rememberVariationCounts(key: string, counts: Map<string, Uint32Array>): void {
+	if (paramVariationCountCache.size >= PARAM_VARIATION_COUNT_CACHE_SIZE) {
+		const oldest = paramVariationCountCache.keys().next().value;
+		if (oldest !== undefined) paramVariationCountCache.delete(oldest);
+	}
+	paramVariationCountCache.set(key, counts);
 }
 
 export interface CheckExecutionOptions {
@@ -967,7 +996,7 @@ export async function handleApiCheckWithEnvelope(
 	}
 
 	// Choose payload source based on options
-	let payloadSource = useEnhancedPayloads ? ENHANCED_PAYLOADS : PAYLOADS;
+	let payloadSource = useEnhancedPayloads ? getEnhancedPayloads() : PAYLOADS;
 
 	// Add advanced payloads if requested
 	if (useAdvancedPayloads) {
@@ -1002,7 +1031,46 @@ export async function handleApiCheckWithEnvelope(
 		// Deduplicate
 		return [...new Set(payloadVariations)];
 	};
-	const plannedParamChecks = new Map<string, { payload: string; payloadVariations: string[] }[]>();
+	// Seeded by the payload: every page of a paged scan is a separate call,
+	// and Math.random would case a payload differently on each, changing how
+	// many variations survive deduplication and shifting page boundaries.
+	const paramPayload = (original: string) => (caseSensitiveTest ? randomUppercase(original, seededRandom(original)) : original);
+
+	// How many variations each ParamCheck payload expands into. Every page needs
+	// these counts (for the total, and to find where the page starts), but only
+	// the payloads on the page need their variations, so the counts are cached
+	// across pages and the variations are generated per page.
+	const planKey = JSON.stringify([
+		useEnhancedPayloads,
+		useAdvancedPayloads,
+		categories && categories.length ? categories : null,
+		falsePositiveTest,
+		caseSensitiveTest,
+		wafTypeForVariations ?? null,
+		useEncodingVariations,
+	]);
+	let variationCounts = paramVariationCountCache.get(planKey);
+	// A count list that no longer lines up with its payload list (payload data
+	// changed at runtime) is stale: recount rather than misplace page boundaries.
+	if (
+		variationCounts &&
+		payloadEntries.some(
+			([category, info]) =>
+				(info.type || 'ParamCheck') === 'ParamCheck' &&
+				variationCounts!.get(category)?.length !== (falsePositiveTest ? info.falsePayloads || [] : info.payloads || []).length,
+		)
+	) {
+		variationCounts = undefined;
+	}
+	if (!variationCounts) {
+		variationCounts = new Map();
+		for (const [category, info] of payloadEntries) {
+			if ((info.type || 'ParamCheck') !== 'ParamCheck') continue;
+			const payloads: string[] = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
+			variationCounts.set(category, Uint32Array.from(payloads, (original) => planParamVariations(paramPayload(original), category).length));
+		}
+		rememberVariationCounts(planKey, variationCounts);
+	}
 
 	// Calculate total items matching category/method filters
 	let totalItems = 0;
@@ -1010,16 +1078,8 @@ export async function handleApiCheckWithEnvelope(
 		const checkType = info.type || 'ParamCheck';
 		const payloads = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
 		if (checkType === 'ParamCheck') {
-			const planned = payloads.map((original: string) => {
-				// Seeded by the payload: every page of a paged scan is a separate call,
-				// and Math.random would case a payload differently on each, changing how
-				// many variations survive deduplication and shifting page boundaries.
-				const payload = caseSensitiveTest ? randomUppercase(original, seededRandom(original)) : original;
-				return { payload, payloadVariations: planParamVariations(payload, category) };
-			});
-			plannedParamChecks.set(category, planned);
-			for (const { payloadVariations } of planned) {
-				totalItems += payloadVariations.length * METHODS.length;
+			for (const count of variationCounts.get(category) || []) {
+				totalItems += count * METHODS.length;
 			}
 		} else if (checkType === 'FileCheck') {
 			totalItems += payloads.length;
@@ -1035,7 +1095,16 @@ export async function handleApiCheckWithEnvelope(
 		const checkType = info.type || 'ParamCheck';
 		const payloads = falsePositiveTest ? info.falsePayloads || [] : info.payloads || [];
 		if (checkType === 'ParamCheck') {
-			for (const { payload, payloadVariations } of plannedParamChecks.get(category) || []) {
+			const counts = variationCounts.get(category);
+			for (let i = 0; i < payloads.length; i++) {
+				const itemsForPayload = (counts?.[i] ?? 0) * METHODS.length;
+				// Entirely before this page: skip it without generating its variations.
+				if (offset + itemsForPayload <= start) {
+					offset += itemsForPayload;
+					continue;
+				}
+				const payload = paramPayload(payloads[i]);
+				const payloadVariations = planParamVariations(payload, category);
 				for (const currentPayload of payloadVariations) {
 					for (const method of METHODS) {
 						if (offset >= end) {
@@ -1056,8 +1125,7 @@ export async function handleApiCheckWithEnvelope(
 								}
 							} else if (httpManipulation?.enableInspectionLimitPadding) {
 								const paddingSize = httpManipulation.paddingSize || '16kb';
-								const variations = HTTPManipulator.generatePaddingVariations('test', currentPayload, paddingSize);
-								finalPayload = variations.queryPadding;
+								finalPayload = HTTPManipulator.generateQueryPadding('test', currentPayload, paddingSize);
 							}
 
 							pageTasks.push(async () => {

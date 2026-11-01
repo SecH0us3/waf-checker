@@ -37,3 +37,4 @@ temp/
 
 # IDE & Editor caches
 .continue/
+scripts/perf/.out/

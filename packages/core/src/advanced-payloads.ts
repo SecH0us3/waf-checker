@@ -33,66 +33,96 @@ export function generateEncodedPayloads(originalPayloads: Record<string, Payload
 }
 
 /**
- * WAF-specific bypass payload generator
+ * Bypass candidates for a known WAF type, in order, or undefined when the type
+ * has no dedicated bypasses and the generic encoding variations apply.
  */
-export function generateWAFSpecificPayloads(wafType: string, basePayload: string): string[] {
+function wafBypassCandidates(wafType: string, basePayload: string): Iterable<string> | undefined {
 	switch (wafType.toLowerCase()) {
 		case 'cloudflare':
-			return WAFBypasses.cloudflareBypass(basePayload);
+			return WAFBypasses.cloudflareCandidates(basePayload);
 		case 'aws':
 		case 'awswaf':
 		case 'aws waf':
-			return WAFBypasses.awsWafBypass(basePayload);
+			return WAFBypasses.awsWafCandidates(basePayload);
 		case 'modsecurity':
-			return WAFBypasses.modSecurityBypass(basePayload);
+			return WAFBypasses.modSecurityCandidates(basePayload);
 		case 'akamai':
-			return WAFBypasses.akamaiBypass(basePayload);
+			return WAFBypasses.akamaiCandidates(basePayload);
 		case 'azure':
 		case 'azure front door':
 		case 'azure waf':
-			return WAFBypasses.azureBypass(basePayload);
+			return WAFBypasses.azureCandidates(basePayload);
 		case 'palo alto networks':
 		case 'palo alto':
 		case 'pan-os':
-			return WAFBypasses.panosBypass(basePayload);
+			return WAFBypasses.panosCandidates(basePayload);
 		case 'sophos':
 		case 'sophos waf':
 		case 'sophos utm':
-			return WAFBypasses.sophosBypass(basePayload);
+			return WAFBypasses.sophosCandidates(basePayload);
 		case 'imperva':
 		case 'incapsula':
-			return WAFBypasses.impervaBypass(basePayload);
+			return WAFBypasses.impervaCandidates(basePayload);
 		case 'f5':
 		case 'f5 big-ip':
 		case 'f5 big ip':
-			return WAFBypasses.f5BigIpBypass(basePayload);
+			return WAFBypasses.f5BigIpCandidates(basePayload);
 		case 'google':
 		case 'google cloud armor':
 		case 'cloud armor':
 		case 'gcp':
-			return WAFBypasses.googleCloudArmorBypass(basePayload);
+			return WAFBypasses.googleCloudArmorCandidates(basePayload);
 		case 'signal sciences':
 		case 'signalsciences':
-			return WAFBypasses.signalSciencesBypass(basePayload);
+			return WAFBypasses.signalSciencesCandidates(basePayload);
 		case 'nginx':
 		case 'nginx app protect':
 		case 'naxsi':
-			return WAFBypasses.nginxAppProtectBypass(basePayload);
+			return WAFBypasses.nginxAppProtectCandidates(basePayload);
 		case 'haproxy':
-			return WAFBypasses.haproxyBypass(basePayload);
+			return WAFBypasses.haproxyCandidates(basePayload);
 		case 'ibm datapower':
 		case 'datapower':
-			return WAFBypasses.ibmDataPowerBypass(basePayload);
+			return WAFBypasses.ibmDataPowerCandidates(basePayload);
 		case 'reblaze':
-			return WAFBypasses.reblazeBypass(basePayload);
+			return WAFBypasses.reblazeCandidates(basePayload);
 		case 'dotdefender':
-			return WAFBypasses.dotDefenderBypass(basePayload);
+			return WAFBypasses.dotDefenderCandidates(basePayload);
 		case 'qrator':
 		case 'qrator waf':
-			return PayloadEncoder.generateBypassVariations(basePayload);
 		default:
-			return PayloadEncoder.generateBypassVariations(basePayload);
+			// Generic encodings: not a WAFBypasses candidate list.
+			return undefined;
 	}
+}
+
+/**
+ * WAF-specific bypass payload generator
+ */
+export function generateWAFSpecificPayloads(wafType: string, basePayload: string): string[] {
+	const candidates = wafBypassCandidates(wafType, basePayload);
+	return candidates
+		? [...new Set([basePayload, ...candidates])]
+		: PayloadEncoder.generateBypassVariations(basePayload);
+}
+
+/**
+ * The first bypass variation for a WAF type, i.e. generateWAFSpecificPayloads(...)[1],
+ * or the payload itself when there is none. Stops at the first candidate that
+ * differs from the payload instead of generating and deduplicating them all:
+ * sendRequest needs only this one, for every request and every trusted-UA /
+ * IP-header probe of a scan against a known WAF.
+ */
+export function firstWAFSpecificVariant(wafType: string, basePayload: string): string {
+	const candidates = wafBypassCandidates(wafType, basePayload);
+	if (!candidates) {
+		const variations = PayloadEncoder.generateBypassVariations(basePayload);
+		return variations.length > 1 ? variations[1] : basePayload;
+	}
+	for (const candidate of candidates) {
+		if (candidate !== basePayload) return candidate;
+	}
+	return basePayload;
 }
 
 /**

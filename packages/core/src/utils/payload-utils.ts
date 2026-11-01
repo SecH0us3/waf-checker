@@ -61,21 +61,23 @@ export function seededRandom(seed: string): () => number {
  * Helper function to randomly uppercase characters in a string
  */
 export function randomUppercase(str: string, random: () => number = Math.random): string {
-	let result = '';
-	for (let i = 0; i < str.length; i++) {
-		const char = str[i];
+	// Flip the case of each ASCII letter with probability 1/2. `random` is called
+	// once per ASCII letter and for nothing else, in order, so a seeded generator
+	// yields the same casing as before. Works on code units in a typed array
+	// rather than matching a regex and appending per character.
+	const n = str.length;
+	const units = new Uint16Array(n);
+	for (let i = 0; i < n; i++) {
+		const code = str.charCodeAt(i);
+		const isLetter = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
 		// Randomly uppercase 50% of alphabetic characters
-		if (char.match(/[a-zA-Z]/) && random() > 0.5) {
-			if (char === char.toLowerCase()) {
-				result += char.toUpperCase();
-			} else {
-				result += char.toLowerCase();
-			}
-		} else {
-			result += char;
-		}
+		units[i] = isLetter && random() > 0.5 ? code ^ 0x20 : code;
 	}
-	return result;
+	let out = '';
+	for (let i = 0; i < n; i += 4096) {
+		out += String.fromCharCode.apply(null, units.subarray(i, i + 4096) as unknown as number[]);
+	}
+	return out;
 }
 
 /**

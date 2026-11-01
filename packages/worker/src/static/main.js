@@ -536,6 +536,10 @@ function showResultsSkeleton() {
 	el.innerHTML = `<div class="results-skeleton" aria-hidden="true"><div class="sk sk-head"></div>${rows}</div>`;
 }
 
+// Throttling of the results table re-render while a scan is still paging.
+const PROGRESSIVE_RENDER_MIN_INTERVAL_MS = 250;
+const PROGRESSIVE_RENDER_COST_FACTOR = 3;
+
 async function fetchResults() {
 	const btn = document.getElementById('checkBtn');
 	if (!btn) return;
@@ -657,6 +661,8 @@ async function fetchResults() {
 	let cachedBaseline = null;
 	// Set once the up-front detection has answered, whatever it found.
 	let upfrontDetectionDone = false;
+	// Earliest time (performance.now()) the next progressive render may run.
+	let nextRenderAt = 0;
 
 	// Auto-detect WAF first if enabled
 	if (autoDetectWAF && !detectedWAFType) {
@@ -744,10 +750,26 @@ async function fetchResults() {
 			}
 			const results = await resp.json();
 			if (!results || !results.length) break;
-			allResults = allResults.concat(results);
+			for (const r of results) allResults.push(r);
 			btn.innerHTML = `<span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span> Scanning (${allResults.length} done)...`;
-			document.getElementById('results').innerHTML = renderReport(allResults, falsePositiveTest);
-			highlightCategoryCheckboxesByResults(allResults, falsePositiveTest);
+			// Each progressive render rebuilds the whole growing table, so rendering
+			// after every page made the main thread's work quadratic in the result
+			// count. Render at most every PROGRESSIVE_RENDER_MIN_INTERVAL_MS, and wait
+			// at least PROGRESSIVE_RENDER_COST_FACTOR times what the last render cost
+			// (style and layout included) before the next one. The final render after
+			// the loop always shows every result.
+			if (performance.now() >= nextRenderAt) {
+				const renderStart = performance.now();
+				nextRenderAt = Infinity; // until this render's cost is known
+				document.getElementById('results').innerHTML = renderReport(allResults, falsePositiveTest);
+				highlightCategoryCheckboxesByResults(allResults, falsePositiveTest);
+				requestAnimationFrame(() =>
+					setTimeout(() => {
+						const now = performance.now();
+						nextRenderAt = now + Math.max(PROGRESSIVE_RENDER_MIN_INTERVAL_MS, (now - renderStart) * PROGRESSIVE_RENDER_COST_FACTOR);
+					}, 0),
+				);
+			}
 			page++;
 		}
 

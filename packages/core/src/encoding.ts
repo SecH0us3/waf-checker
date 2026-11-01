@@ -14,6 +14,112 @@ export interface EncodingOptions {
 	fullWidth?: boolean;
 }
 
+/** Builds a char -> replacement table for the given characters. */
+function charTable(chars: string[], encode: (code: number) => string): Record<string, string> {
+	const table: Record<string, string> = {};
+	for (const ch of chars) table[ch] = encode(ch.charCodeAt(0));
+	return table;
+}
+
+// Per-character replacements for the escape encoders, computed once instead of
+// formatting each character's code point again on every call.
+const ESCAPED_CHARS = ["'", '"', '<', '>', '&'];
+const UNICODE_ESCAPES = charTable(ESCAPED_CHARS, (code) => `\\u${code.toString(16).padStart(4, '0')}`);
+const HEX_ESCAPES = charTable(ESCAPED_CHARS, (code) => `0x${code.toString(16)}`);
+const OCTAL_ESCAPES = charTable(ESCAPED_CHARS, (code) => `\\${code.toString(8).padStart(3, '0')}`);
+
+// Security-relevant ASCII characters and their illegal 2-byte overlong UTF-8 form ('/' -> %C0%AF).
+const OVERLONG_TARGETS = ['/', '\\', '.', "'", '"', '<', '>', '&', ';', ':', '|', '(', ')', ' '];
+const OVERLONG_UTF8 = charTable(OVERLONG_TARGETS, (code) => {
+	const hex = (b: number) => `%${b.toString(16).toUpperCase().padStart(2, '0')}`;
+	return hex(0xc0 | (code >> 6)) + hex(0x80 | (code & 0x3f));
+});
+const OVERLONG_TARGET_RE = /[\/\\.'"<>&;:|() ]/g;
+
+// Code units per String.fromCharCode.apply call: well under engines' argument limits.
+const FROM_CHAR_CODE_CHUNK = 4096;
+
+const HTML_ENTITIES_DEC: Record<string, string> = {
+	'"': '&#34;',
+	"'": '&#39;',
+	'<': '&#60;',
+	'>': '&#62;',
+	'&': '&#38;',
+	'=': '&#61;',
+	' ': '&#32;',
+};
+
+const HTML_ENTITIES_HEX: Record<string, string> = {
+	'"': '&#x22;',
+	"'": '&#x27;',
+	'<': '&#x3C;',
+	'>': '&#x3E;',
+	'&': '&#x26;',
+	'=': '&#x3D;',
+	' ': '&#x20;',
+};
+
+/** Keywords recased by mixedCaseEncode, mapped to their alternating-case form (UNION -> uNiOn). */
+const MIXED_CASE_KEYWORDS = new Map(
+	[
+		'UNION',
+		'SELECT',
+		'FROM',
+		'WHERE',
+		'INSERT',
+		'UPDATE',
+		'DELETE',
+		'DROP',
+		'CREATE',
+		'ALTER',
+		'EXEC',
+		'EXECUTE',
+		'AND',
+		'OR',
+		'SLEEP',
+		'BENCHMARK',
+		'WAITFOR',
+		'CONCAT',
+		'SCRIPT',
+		'ALERT',
+		'PROMPT',
+		'CONFIRM',
+		'JAVASCRIPT',
+		'VBSCRIPT',
+		'IFRAME',
+		'IMG',
+		'SVG',
+		'ONLOAD',
+		'ONERROR',
+		'ONCLICK',
+		'ONTOGGLE',
+		'ONSTART',
+		'ONFOCUS',
+		'ONMOUSEOVER',
+	].map((keyword): [string, string] => [
+		keyword,
+		keyword
+			.split('')
+			.map((char, index) => (index % 2 === 0 ? char.toLowerCase() : char.toUpperCase()))
+			.join(''),
+	]),
+);
+
+// One pass over the payload for all keywords. Each keyword is a whole word, so
+// matching them together recases exactly the words that one replace per keyword did.
+const MIXED_CASE_KEYWORD_RE = new RegExp(`\\b(?:${[...MIXED_CASE_KEYWORDS.keys()].join('|')})\\b`, 'gi');
+
+/** XSS event handlers recased by xssObfuscation, with a matcher and alternating-case form each. */
+const XSS_EVENT_HANDLERS = ['onload', 'onerror', 'onclick', 'onmouseover', 'onfocus'].map((handler) => ({
+	handler,
+	re: new RegExp(handler, 'gi'),
+	upper: handler.toUpperCase(),
+	alternating: handler
+		.split('')
+		.map((c, i) => (i % 2 ? c.toUpperCase() : c.toLowerCase()))
+		.join(''),
+}));
+
 export class PayloadEncoder {
 	/**
 	 * Double URL encode payload
@@ -28,10 +134,7 @@ export class PayloadEncoder {
 	 * Example: ' -> \u0027
 	 */
 	static unicodeEncode(payload: string): string {
-		return payload.replace(/['"<>&]/g, (char) => {
-			const unicode = char.charCodeAt(0).toString(16).padStart(4, '0');
-			return `\\u${unicode}`;
-		});
+		return payload.replace(/['"<>&]/g, (char) => UNICODE_ESCAPES[char]);
 	}
 
 	/**
@@ -39,16 +142,7 @@ export class PayloadEncoder {
 	 * Example: ' -> &#39; or &#x27;
 	 */
 	static htmlEntityEncode(payload: string, useHex = false): string {
-		const entityMap: { [key: string]: string } = {
-			'"': useHex ? '&#x22;' : '&#34;',
-			"'": useHex ? '&#x27;' : '&#39;',
-			'<': useHex ? '&#x3C;' : '&#60;',
-			'>': useHex ? '&#x3E;' : '&#62;',
-			'&': useHex ? '&#x26;' : '&#38;',
-			'=': useHex ? '&#x3D;' : '&#61;',
-			' ': useHex ? '&#x20;' : '&#32;',
-		};
-
+		const entityMap = useHex ? HTML_ENTITIES_HEX : HTML_ENTITIES_DEC;
 		return payload.replace(/["'<>&= ]/g, (char) => entityMap[char] || char);
 	}
 
@@ -57,57 +151,10 @@ export class PayloadEncoder {
 	 * Example: UNION SELECT -> uNiOn SeLeCt
 	 */
 	static mixedCaseEncode(payload: string): string {
-		const keywords = [
-			'UNION',
-			'SELECT',
-			'FROM',
-			'WHERE',
-			'INSERT',
-			'UPDATE',
-			'DELETE',
-			'DROP',
-			'CREATE',
-			'ALTER',
-			'EXEC',
-			'EXECUTE',
-			'AND',
-			'OR',
-			'SLEEP',
-			'BENCHMARK',
-			'WAITFOR',
-			'CONCAT',
-			'SCRIPT',
-			'ALERT',
-			'PROMPT',
-			'CONFIRM',
-			'JAVASCRIPT',
-			'VBSCRIPT',
-			'IFRAME',
-			'IMG',
-			'SVG',
-			'ONLOAD',
-			'ONERROR',
-			'ONCLICK',
-			'ONTOGGLE',
-			'ONSTART',
-			'ONFOCUS',
-			'ONMOUSEOVER',
-		];
-
-		let result = payload;
-		keywords.forEach((keyword) => {
-			const mixedCase = keyword
-				.split('')
-				.map((char, index) => (index % 2 === 0 ? char.toLowerCase() : char.toUpperCase()))
-				.join('');
-
-			// Word-boundary anchored so short keywords (OR/AND) don't recase
-			// substrings of unrelated, case-sensitive tokens such as
-			// 'constructor' (-> 'constructoR') or 'command' (-> 'commaNd').
-			result = result.replace(new RegExp(`\\b${keyword}\\b`, 'gi'), mixedCase);
-		});
-
-		return result;
+		// Word-boundary anchored so short keywords (OR/AND) don't recase
+		// substrings of unrelated, case-sensitive tokens such as
+		// 'constructor' (-> 'constructoR') or 'command' (-> 'commaNd').
+		return payload.replace(MIXED_CASE_KEYWORD_RE, (word) => MIXED_CASE_KEYWORDS.get(word.toUpperCase()) ?? word);
 	}
 
 	/**
@@ -122,10 +169,7 @@ export class PayloadEncoder {
 	 * Example: ' -> 0x27
 	 */
 	static hexEncode(payload: string): string {
-		return payload.replace(/['"<>&]/g, (char) => {
-			const hex = char.charCodeAt(0).toString(16);
-			return `0x${hex}`;
-		});
+		return payload.replace(/['"<>&]/g, (char) => HEX_ESCAPES[char]);
 	}
 
 	/**
@@ -133,10 +177,7 @@ export class PayloadEncoder {
 	 * Example: ' -> \047
 	 */
 	static octalEncode(payload: string): string {
-		return payload.replace(/['"<>&]/g, (char) => {
-			const octal = char.charCodeAt(0).toString(8);
-			return `\\${octal.padStart(3, '0')}`;
-		});
+		return payload.replace(/['"<>&]/g, (char) => OCTAL_ESCAPES[char]);
 	}
 
 	/**
@@ -157,20 +198,7 @@ export class PayloadEncoder {
 	 * Example: '../' -> %C0%AE%C0%AE%C0%AF
 	 */
 	static overlongUtf8Encode(payload: string): string {
-		const targets = new Set(['/', '\\', '.', "'", '"', '<', '>', '&', ';', ':', '|', '(', ')', ' ']);
-		let out = '';
-		for (const ch of payload) {
-			const code = ch.charCodeAt(0);
-			if (code < 0x80 && targets.has(ch)) {
-				const b1 = 0xc0 | (code >> 6);
-				const b2 = 0x80 | (code & 0x3f);
-				const hex = (b: number) => `%${b.toString(16).toUpperCase().padStart(2, '0')}`;
-				out += hex(b1) + hex(b2);
-			} else {
-				out += ch;
-			}
-		}
-		return out;
+		return payload.replace(OVERLONG_TARGET_RE, (ch) => OVERLONG_UTF8[ch]);
 	}
 
 	/**
@@ -186,16 +214,18 @@ export class PayloadEncoder {
 	 * Example: '<script>' -> '＜ｓｃｒｉｐｔ＞'
 	 */
 	static fullWidthEncode(payload: string): string {
+		// Nearly every character is replaced, so map UTF-16 code units in a typed
+		// array and decode them in chunks rather than calling back per character.
+		// Surrogates (and so astral characters) pass through untouched.
+		const n = payload.length;
+		const units = new Uint16Array(n);
+		for (let i = 0; i < n; i++) {
+			const code = payload.charCodeAt(i);
+			units[i] = code >= 0x21 && code <= 0x7e ? code + 0xfee0 : code === 0x20 ? 0x3000 : code;
+		}
 		let out = '';
-		for (const ch of payload) {
-			const code = ch.charCodeAt(0);
-			if (code >= 0x21 && code <= 0x7e) {
-				out += String.fromCharCode(code + 0xfee0);
-			} else if (ch === ' ') {
-				out += '　'; // ideographic space (NFKC -> ' ')
-			} else {
-				out += ch;
-			}
+		for (let i = 0; i < n; i += FROM_CHAR_CODE_CHUNK) {
+			out += String.fromCharCode.apply(null, units.subarray(i, i + FROM_CHAR_CODE_CHUNK) as unknown as number[]);
 		}
 		return out;
 	}
@@ -310,22 +340,14 @@ export class PayloadEncoder {
 		obfuscated.push(payload.toUpperCase());
 
 		// Event handler variations
-		const eventHandlers = ['onload', 'onerror', 'onclick', 'onmouseover', 'onfocus'];
-		eventHandlers.forEach((handler) => {
-			if (payload.toLowerCase().includes(handler)) {
+		const lowerPayload = payload.toLowerCase();
+		for (const { handler, re, upper, alternating } of XSS_EVENT_HANDLERS) {
+			if (lowerPayload.includes(handler)) {
 				// Add variations with different cases
-				obfuscated.push(payload.replace(new RegExp(handler, 'gi'), handler.toUpperCase()));
-				obfuscated.push(
-					payload.replace(
-						new RegExp(handler, 'gi'),
-						handler
-							.split('')
-							.map((c, i) => (i % 2 ? c.toUpperCase() : c.toLowerCase()))
-							.join(''),
-					),
-				);
+				obfuscated.push(payload.replace(re, upper));
+				obfuscated.push(payload.replace(re, alternating));
 			}
-		});
+		}
 
 		// Script tag variations
 		if (payload.includes('<script>')) {
@@ -398,325 +420,367 @@ export class PayloadEncoder {
 /**
  * WAF-specific bypass utilities
  */
+/**
+ * A WAF bypass list: the payload itself first, then each candidate once, in
+ * the order generated (what `[...new Set([payload, ...candidates])]` gives).
+ */
+function withPayloadFirst(payload: string, candidates: Iterable<string>): string[] {
+	return [...new Set([payload, ...candidates])];
+}
+
 export class WAFBypasses {
 	/**
 	 * Cloudflare specific bypasses
 	 */
 	static cloudflareBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.cloudflareCandidates(payload));
+	}
 
+	/** Bypass candidates of cloudflareBypass, in order and before deduplication. */
+	static *cloudflareCandidates(payload: string): Generator<string> {
 		// Cloudflare often filters on specific patterns
-		bypasses.push(payload.replace(/'/g, '\\u0027'));
-		bypasses.push(payload.replace(/"/g, '\\u0022'));
-		bypasses.push(payload.replace(/</g, '\\u003c'));
-		bypasses.push(payload.replace(/>/g, '\\u003e'));
+		yield payload.replace(/'/g, '\\u0027');
+		yield payload.replace(/"/g, '\\u0022');
+		yield payload.replace(/</g, '\\u003c');
+		yield payload.replace(/>/g, '\\u003e');
 
 		// Use alternative space characters
-		bypasses.push(payload.replace(/\s/g, '\\u00A0')); // Non-breaking space
-		bypasses.push(payload.replace(/\s/g, '\\u2000')); // En quad
+		yield payload.replace(/\s/g, '\\u00A0'); // Non-breaking space
+		yield payload.replace(/\s/g, '\\u2000'); // En quad
 
 		// Unicode variations for quotes
-		bypasses.push(payload.replace(/'/g, '\uFF07'));
-		bypasses.push(payload.replace(/"/g, '\uFF02'));
+		yield payload.replace(/'/g, '\uFF07');
+		yield payload.replace(/"/g, '\uFF02');
 
 		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
 		// Note: Bypasses with comments/escapes are for WAF signature testing, not backend execution.
 		if (/__proto__/i.test(payload)) {
-			bypasses.push(payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__'));
-			bypasses.push(payload.replace(/__proto__/gi, '\\u005f\\u005fproto\\u005f\\u005f'));
-			bypasses.push(payload.replace(/__proto__/gi, '__pro__proto__to__'));
+			yield payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__');
+			yield payload.replace(/__proto__/gi, '\\u005f\\u005fproto\\u005f\\u005f');
+			yield payload.replace(/__proto__/gi, '__pro__proto__to__');
 		}
 		if (/constructor/i.test(payload)) {
-			bypasses.push(payload.replace(/constructor/gi, 'const\\u0072uctor'));
+			yield payload.replace(/constructor/gi, 'const\\u0072uctor');
 		}
-
-		return [...new Set(bypasses)];
 	}
 
 	/**
 	 * AWS WAF specific bypasses
 	 */
 	static awsWafBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.awsWafCandidates(payload));
+	}
 
+	/** Bypass candidates of awsWafBypass, in order and before deduplication. */
+	static *awsWafCandidates(payload: string): Generator<string> {
 		// AWS WAF character set bypasses
-		bypasses.push(payload.replace(/=/g, '\\u003D'));
-		bypasses.push(payload.replace(/&/g, '\\u0026'));
+		yield payload.replace(/=/g, '\\u003D');
+		yield payload.replace(/&/g, '\\u0026');
 
 		// Normalize unicode
-		bypasses.push(payload.normalize('NFD'));
-		bypasses.push(payload.normalize('NFKD'));
-		bypasses.push(payload.normalize('NFKC'));
+		yield payload.normalize('NFD');
+		yield payload.normalize('NFKD');
+		yield payload.normalize('NFKC');
 
 		// Full-width homoglyphs: survive signature matching, fold back to
 		// ASCII under the origin's NFKC normalization.
-		bypasses.push(PayloadEncoder.fullWidthEncode(payload));
+		yield PayloadEncoder.fullWidthEncode(payload);
 
 		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
 		if (/__proto__/i.test(payload)) {
-			bypasses.push(payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__'));
-			bypasses.push(payload.replace(/__proto__/gi, 'const\\u0072uctor[prot\\u006ftype]'));
+			yield payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__');
+			yield payload.replace(/__proto__/gi, 'const\\u0072uctor[prot\\u006ftype]');
 		}
 		if (/constructor/i.test(payload)) {
-			bypasses.push(payload.replace(/constructor/gi, 'const\\u0072uctor'));
+			yield payload.replace(/constructor/gi, 'const\\u0072uctor');
 		}
-
-		return [...new Set(bypasses)];
 	}
 
 	/**
 	 * ModSecurity bypasses
 	 */
 	static modSecurityBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.modSecurityCandidates(payload));
+	}
 
+	/** Bypass candidates of modSecurityBypass, in order and before deduplication. */
+	static *modSecurityCandidates(payload: string): Generator<string> {
 		// ModSecurity rule-specific evasions
-		bypasses.push(payload.replace(/union/gi, 'uni/**/on'));
-		bypasses.push(payload.replace(/select/gi, 'sel/**/ect'));
-		bypasses.push(payload.replace(/script/gi, 'scr/**/ipt'));
+		yield payload.replace(/union/gi, 'uni/**/on');
+		yield payload.replace(/select/gi, 'sel/**/ect');
+		yield payload.replace(/script/gi, 'scr/**/ipt');
 
 		// Case sensitivity exploits
-		bypasses.push(PayloadEncoder.randomCase(payload));
+		yield PayloadEncoder.randomCase(payload);
 
 		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
 		// Note: Bypasses with comments/escapes are for WAF signature testing, not backend execution.
 		if (/__proto__/i.test(payload)) {
-			bypasses.push(payload.replace(/__proto__/gi, '__pr/**/oto__'));
-			bypasses.push(payload.replace(/__proto__/gi, '__pr/*comment*/oto__'));
+			yield payload.replace(/__proto__/gi, '__pr/**/oto__');
+			yield payload.replace(/__proto__/gi, '__pr/*comment*/oto__');
 		}
 		if (/constructor/i.test(payload)) {
-			bypasses.push(payload.replace(/constructor/gi, 'const/**/ructor'));
+			yield payload.replace(/constructor/gi, 'const/**/ructor');
 		}
-
-		return [...new Set(bypasses)];
 	}
 
 	/**
 	 * Akamai specific bypasses
 	 */
 	static akamaiBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.akamaiCandidates(payload));
+	}
 
+	/** Bypass candidates of akamaiBypass, in order and before deduplication. */
+	static *akamaiCandidates(payload: string): Generator<string> {
 		// Akamai often filters on common SQL/XSS patterns
 		// Using hex encoding for specific chars
-		bypasses.push(payload.replace(/'/g, '%27'));
-		bypasses.push(payload.replace(/"/g, '%22'));
+		yield payload.replace(/'/g, '%27');
+		yield payload.replace(/"/g, '%22');
 
 		// Alternative separators
-		bypasses.push(payload.replace(/\s/g, '%09')); // Tab
-		bypasses.push(payload.replace(/\s/g, '%0b')); // Vertical Tab
-		bypasses.push(payload.replace(/\s/g, '%0c')); // Form Feed
+		yield payload.replace(/\s/g, '%09'); // Tab
+		yield payload.replace(/\s/g, '%0b'); // Vertical Tab
+		yield payload.replace(/\s/g, '%0c'); // Form Feed
 
 		// Akamai specific: double URL encode only special chars
-		bypasses.push(payload.replace(/['"<>&]/g, (char) => encodeURIComponent(encodeURIComponent(char))));
+		yield payload.replace(/['"<>&]/g, (char) => encodeURIComponent(encodeURIComponent(char)));
 
 		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
 		if (/__proto__/i.test(payload)) {
 			const protoEncoded = payload.replace(/__proto__/gi, '%255f%255fproto%255f%255f');
-			bypasses.push(protoEncoded);
+			yield protoEncoded;
 		}
 		if (/\[/.test(payload)) {
-			bypasses.push(payload.replace(/\[/g, '%255b').replace(/\]/g, '%255d'));
+			yield payload.replace(/\[/g, '%255b').replace(/\]/g, '%255d');
 			if (/__proto__/i.test(payload)) {
 				const protoEncoded = payload.replace(/__proto__/gi, '%255f%255fproto%255f%255f');
-				bypasses.push(protoEncoded.replace(/\[/g, '%255b').replace(/\]/g, '%255d'));
+				yield protoEncoded.replace(/\[/g, '%255b').replace(/\]/g, '%255d');
 			}
 		}
 		if (/constructor/i.test(payload)) {
 			const constructorEncoded = payload.replace(/constructor/gi, '%2563onstructor');
-			bypasses.push(constructorEncoded);
+			yield constructorEncoded;
 			if (/\[/.test(payload)) {
-				bypasses.push(constructorEncoded.replace(/\[/g, '%255b').replace(/\]/g, '%255d'));
+				yield constructorEncoded.replace(/\[/g, '%255b').replace(/\]/g, '%255d');
 			}
 		}
-
-		return [...new Set(bypasses)];
 	}
 
 	/**
 	 * Azure specific bypasses
 	 */
 	static azureBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.azureCandidates(payload));
+	}
 
+	/** Bypass candidates of azureBypass, in order and before deduplication. */
+	static *azureCandidates(payload: string): Generator<string> {
 		// Azure Front Door / App Gateway bypasses
 		// Mixed case and unicode
-		bypasses.push(PayloadEncoder.mixedCaseEncode(payload));
-		bypasses.push(PayloadEncoder.unicodeEncode(payload));
+		yield PayloadEncoder.mixedCaseEncode(payload);
+		yield PayloadEncoder.unicodeEncode(payload);
 
 		// Azure specific: replace spaces with multi-line comments
-		bypasses.push(payload.replace(/\s+/g, '/**/'));
+		yield payload.replace(/\s+/g, '/**/');
 
 		// Null byte injection (sometimes works on older Azure rules)
-		bypasses.push(payload + '%00');
+		yield payload + '%00';
 
 		// Prototype Pollution specific bypasses (Case-insensitive matching via /gi)
 		// Note: Bypasses with comments/escapes are for WAF signature testing, not backend execution.
 		if (/__proto__/i.test(payload)) {
-			bypasses.push(payload.replace(/__proto__/gi, '__PrOtO__'));
-			bypasses.push(payload.replace(/__proto__/gi, '__pr/**/oto__'));
+			yield payload.replace(/__proto__/gi, '__PrOtO__');
+			yield payload.replace(/__proto__/gi, '__pr/**/oto__');
 		}
 		if (/constructor/i.test(payload)) {
-			bypasses.push(payload.replace(/constructor/gi, 'CoNsTrUcToR'));
-			bypasses.push(payload.replace(/constructor/gi, 'const/**/ructor'));
+			yield payload.replace(/constructor/gi, 'CoNsTrUcToR');
+			yield payload.replace(/constructor/gi, 'const/**/ructor');
 		}
-
-		return [...new Set(bypasses)];
 	}
 
 	/**
 	 * Palo Alto Networks specific bypasses
 	 */
 	static panosBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.panosCandidates(payload));
+	}
 
+	/** Bypass candidates of panosBypass, in order and before deduplication. */
+	static *panosCandidates(payload: string): Generator<string> {
 		// PAN-OS path obfuscation and encoding variations
-		bypasses.push(payload.replace(/\//g, '//'));
-		bypasses.push(payload.replace(/\//g, '/./'));
-		bypasses.push(PayloadEncoder.randomCase(payload));
+		yield payload.replace(/\//g, '//');
+		yield payload.replace(/\//g, '/./');
+		yield PayloadEncoder.randomCase(payload);
 
 		// Use tab as space alternative
-		bypasses.push(payload.replace(/\s/g, '%09'));
-
-		return [...new Set(bypasses)];
+		yield payload.replace(/\s/g, '%09');
 	}
 
 	/**
 	 * Sophos WAF specific bypasses
 	 */
 	static sophosBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.sophosCandidates(payload));
+	}
 
+	/** Bypass candidates of sophosBypass, in order and before deduplication. */
+	static *sophosCandidates(payload: string): Generator<string> {
 		// Sophos WAF case-sensitivity and parameter pollution
-		bypasses.push(PayloadEncoder.randomCase(payload));
-		bypasses.push(PayloadEncoder.doubleUrlEncode(payload));
+		yield PayloadEncoder.randomCase(payload);
+		yield PayloadEncoder.doubleUrlEncode(payload);
 
 		// Add null byte (sometimes bypasses filters)
-		bypasses.push(payload + '%00');
-
-		return [...new Set(bypasses)];
+		yield payload + '%00';
 	}
 
 	/**
 	 * Imperva specific bypasses
 	 */
 	static impervaBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.impervaCandidates(payload));
+	}
+
+	/** Bypass candidates of impervaBypass, in order and before deduplication. */
+	static *impervaCandidates(payload: string): Generator<string> {
 		if (/__proto__/i.test(payload)) {
-			bypasses.push(payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__'));
-			bypasses.push(payload.replace(/__proto__/gi, '%5f%5fproto%5f%5f'));
+			yield payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__');
+			yield payload.replace(/__proto__/gi, '%5f%5fproto%5f%5f');
 		}
 		if (/constructor/i.test(payload)) {
-			bypasses.push(payload.replace(/constructor/gi, 'const\\u0072uctor'));
+			yield payload.replace(/constructor/gi, 'const\\u0072uctor');
 		}
-		return [...new Set(bypasses)];
 	}
 
 	/**
 	 * F5 BIG-IP specific bypasses
 	 */
 	static f5BigIpBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.f5BigIpCandidates(payload));
+	}
+
+	/** Bypass candidates of f5BigIpBypass, in order and before deduplication. */
+	static *f5BigIpCandidates(payload: string): Generator<string> {
 		if (/__proto__/i.test(payload)) {
-			bypasses.push(payload.replace(/__proto__/gi, '__PrOtO__'));
-			bypasses.push(payload.replace(/__proto__/gi, '__pr/**/oto__'));
+			yield payload.replace(/__proto__/gi, '__PrOtO__');
+			yield payload.replace(/__proto__/gi, '__pr/**/oto__');
 		}
 		if (/constructor/i.test(payload)) {
-			bypasses.push(payload.replace(/constructor/gi, 'CoNsTrUcToR'));
-			bypasses.push(payload.replace(/constructor/gi, 'const/**/ructor'));
+			yield payload.replace(/constructor/gi, 'CoNsTrUcToR');
+			yield payload.replace(/constructor/gi, 'const/**/ructor');
 		}
-		return [...new Set(bypasses)];
 	}
 
 	/**
 	 * Google Cloud Armor specific bypasses
 	 */
 	static googleCloudArmorBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.googleCloudArmorCandidates(payload));
+	}
+
+	/** Bypass candidates of googleCloudArmorBypass, in order and before deduplication. */
+	static *googleCloudArmorCandidates(payload: string): Generator<string> {
 		if (/__proto__/i.test(payload)) {
-			bypasses.push(payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__'));
-			bypasses.push(payload.replace(/__proto__/gi, '%255f%255fproto%255f%255f'));
+			yield payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__');
+			yield payload.replace(/__proto__/gi, '%255f%255fproto%255f%255f');
 		}
 		if (/constructor/i.test(payload)) {
-			bypasses.push(payload.replace(/constructor/gi, 'const\\u0072uctor'));
-			bypasses.push(payload.replace(/constructor/gi, '%2563onstructor'));
+			yield payload.replace(/constructor/gi, 'const\\u0072uctor');
+			yield payload.replace(/constructor/gi, '%2563onstructor');
 		}
-		return [...new Set(bypasses)];
 	}
 
 	/**
 	 * Signal Sciences specific bypasses
 	 */
 	static signalSciencesBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.signalSciencesCandidates(payload));
+	}
+
+	/** Bypass candidates of signalSciencesBypass, in order and before deduplication. */
+	static *signalSciencesCandidates(payload: string): Generator<string> {
 		// Signal Sciences often looks at normalized requests. 
 		// Adding junk parameters or changing HTTP methods often helps.
-		bypasses.push(payload.replace(/=/g, '%3D'));
-		bypasses.push(PayloadEncoder.hexEncode(payload));
+		yield payload.replace(/=/g, '%3D');
+		yield PayloadEncoder.hexEncode(payload);
 		if (/__proto__/i.test(payload)) {
-			bypasses.push(payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__'));
+			yield payload.replace(/__proto__/gi, '__pr\\u006f\\u0074o__');
 		}
-		return [...new Set(bypasses)];
 	}
 
 	/**
 	 * NGINX App Protect / NAXSI bypasses
 	 */
 	static nginxAppProtectBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.nginxAppProtectCandidates(payload));
+	}
+
+	/** Bypass candidates of nginxAppProtectBypass, in order and before deduplication. */
+	static *nginxAppProtectCandidates(payload: string): Generator<string> {
 		// NAXSI relies heavily on scoring based on specific characters
-		bypasses.push(payload.replace(/</g, '%3C').replace(/>/g, '%3E'));
-		bypasses.push(payload.replace(/'/g, '&#x27;'));
+		yield payload.replace(/</g, '%3C').replace(/>/g, '%3E');
+		yield payload.replace(/'/g, '&#x27;');
 		// Whitespace obfuscation
-		bypasses.push(payload.replace(/\s/g, '%09'));
-		return [...new Set(bypasses)];
+		yield payload.replace(/\s/g, '%09');
 	}
 
 	/**
 	 * HAProxy specific bypasses
 	 */
 	static haproxyBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.haproxyCandidates(payload));
+	}
+
+	/** Bypass candidates of haproxyBypass, in order and before deduplication. */
+	static *haproxyCandidates(payload: string): Generator<string> {
 		// HAProxy often blocks based on strict ACLs.
 		// HTTP request smuggling or header manipulation is common.
-		bypasses.push(PayloadEncoder.doubleUrlEncode(payload));
+		yield PayloadEncoder.doubleUrlEncode(payload);
 		// Case variations
-		bypasses.push(PayloadEncoder.randomCase(payload));
-		return [...new Set(bypasses)];
+		yield PayloadEncoder.randomCase(payload);
 	}
 
 	/**
 	 * IBM DataPower bypasses
 	 */
 	static ibmDataPowerBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.ibmDataPowerCandidates(payload));
+	}
+
+	/** Bypass candidates of ibmDataPowerBypass, in order and before deduplication. */
+	static *ibmDataPowerCandidates(payload: string): Generator<string> {
 		// XML/JSON wrapping and encoding can sometimes bypass DataPower
-		bypasses.push(PayloadEncoder.unicodeEncode(payload));
-		bypasses.push(payload.replace(/</g, '\\u003c'));
-		return [...new Set(bypasses)];
+		yield PayloadEncoder.unicodeEncode(payload);
+		yield payload.replace(/</g, '\\u003c');
 	}
 
 	/**
 	 * Reblaze bypasses
 	 */
 	static reblazeBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.reblazeCandidates(payload));
+	}
+
+	/** Bypass candidates of reblazeBypass, in order and before deduplication. */
+	static *reblazeCandidates(payload: string): Generator<string> {
 		// Reblaze blocks many basic injections.
 		// Mixing encoding types can help bypass its regex engines.
-		bypasses.push(PayloadEncoder.mixedCaseEncode(payload));
-		bypasses.push(payload + '%00'); // Null byte
-		return [...new Set(bypasses)];
+		yield PayloadEncoder.mixedCaseEncode(payload);
+		yield payload + '%00'; // Null byte
 	}
 
 	/**
 	 * DotDefender bypasses
 	 */
 	static dotDefenderBypass(payload: string): string[] {
-		const bypasses = [payload];
+		return withPayloadFirst(payload, WAFBypasses.dotDefenderCandidates(payload));
+	}
+
+	/** Bypass candidates of dotDefenderBypass, in order and before deduplication. */
+	static *dotDefenderCandidates(payload: string): Generator<string> {
 		// DotDefender is signature-based.
-		bypasses.push(payload.replace(/union/gi, 'uni/**/on'));
-		bypasses.push(payload.replace(/select/gi, 'sel/**/ect'));
-		bypasses.push(payload.replace(/script/gi, 'scr/**/ipt'));
-		return [...new Set(bypasses)];
+		yield payload.replace(/union/gi, 'uni/**/on');
+		yield payload.replace(/select/gi, 'sel/**/ect');
+		yield payload.replace(/script/gi, 'scr/**/ipt');
 	}
 }

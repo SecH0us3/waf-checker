@@ -23,6 +23,15 @@ export interface ManipulatedRequest {
 	description: string;
 }
 
+// The padding filler for the last requested size. A scan pads every request
+// to the same size, so this saves re-allocating up to 128 KB per request.
+let cachedJunk = '';
+
+function paddingJunk(byteCount: number): string {
+	if (cachedJunk.length !== byteCount) cachedJunk = 'x'.repeat(byteCount);
+	return cachedJunk;
+}
+
 export class HTTPManipulator {
 	/**
 	 * Convert padding size specification to byte count
@@ -46,17 +55,25 @@ export class HTTPManipulator {
 		bodyPaddingUrlEncoded: string;
 		bodyPaddingJson: string;
 	} {
-		const byteCount = this.getPaddingBytes(size);
-		const junk = 'x'.repeat(byteCount);
+		const junk = paddingJunk(this.getPaddingBytes(size));
+		const queryPadding = `junk=${junk}&${paramName}=${encodeURIComponent(payload)}`;
 		return {
-			queryPadding: `junk=${junk}&${paramName}=${encodeURIComponent(payload)}`,
-			bodyPaddingUrlEncoded: `junk=${junk}&${paramName}=${encodeURIComponent(payload)}`,
+			queryPadding,
+			bodyPaddingUrlEncoded: queryPadding,
 			bodyPaddingJson: JSON.stringify({
 				padding: junk,
 				[paramName]: payload,
 			}),
 		};
 	}
+	/**
+	 * Just the query-string padding of generatePaddingVariations, for callers that
+	 * send nothing else: skips building the JSON body (another copy of the junk).
+	 */
+	static generateQueryPadding(paramName: string, payload: string, size: '8kb' | '16kb' | '64kb' | '128kb' | number = '16kb'): string {
+		return `junk=${paddingJunk(this.getPaddingBytes(size))}&${paramName}=${encodeURIComponent(payload)}`;
+	}
+
 	/**
 	 * Get uncommon HTTP methods for testing
 	 */
