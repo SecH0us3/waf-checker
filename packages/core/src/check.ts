@@ -621,10 +621,19 @@ export function detectBotChallenge(
 		if (lower.includes('kpsdk') || lower.includes('kasada')) {
 			return { isChallenge: true, vendor: 'Kasada', mechanism: 'js' };
 		}
-		if (lower.includes('geo.captcha-delivery.com') || lower.includes('datadome')) {
+		if (
+			(lower.includes('geo.captcha-delivery.com') && /https?:\/\/geo\.captcha-delivery\.com\//.test(lower)) ||
+			lower.includes('datadome')
+		) {
 			return { isChallenge: true, vendor: 'DataDome', mechanism: 'captcha' };
 		}
-		if (lower.includes('px-captcha') || lower.includes('_pxappid') || lower.includes('captcha.px-cdn.net') || lower.includes('perimeterx') || lower.includes('press & hold')) {
+		if (
+			lower.includes('px-captcha') ||
+			lower.includes('_pxappid') ||
+			(lower.includes('captcha.px-cdn.net') && /https?:\/\/captcha\.px-cdn\.net\//.test(lower)) ||
+			lower.includes('perimeterx') ||
+			lower.includes('press & hold')
+		) {
 			return { isChallenge: true, vendor: 'HUMAN (PerimeterX)', mechanism: 'captcha' };
 		}
 
