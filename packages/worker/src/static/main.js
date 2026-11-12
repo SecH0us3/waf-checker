@@ -199,6 +199,23 @@ function renderReport(results, falsePositiveMode = false) {
 		}
 	}
 
+	// Bot-management challenge notice: some probes were met with an interactive
+	// CAPTCHA/JS interstitial rather than an outright deny. These count as protected
+	// against automation, but the mitigation is challenge-based and bypassable with a
+	// real browser or a CAPTCHA solver, so they warrant their own call-out.
+	if (!falsePositiveMode) {
+		const challengeResults = results.filter((r) => r.verdict === 'challenge');
+		if (challengeResults.length > 0) {
+			html += `<div class="alert alert-info d-flex align-items-start gap-2 mb-3" role="alert">
+      <span style="font-size:1.4rem;line-height:1;">🧩</span>
+      <div>
+        <strong>Bot-Management Challenge (${challengeResults.length} challenged)</strong>
+        <div class="small mt-1">${challengeResults.length} attack probe(s) were met with an interactive CAPTCHA/JS challenge instead of a hard block. Automated requests are stopped, but a real browser or a CAPTCHA solver may clear the challenge and reach the origin — do not treat these as a definitive block.</div>
+      </div>
+    </div>`;
+		}
+	}
+
 	// Legitimate User-Agent allow-list bypass alert. Distinct from the virtual-patch
 	// banner: a UA allow-list bypass isn't fixed by a payload regex rule, so it gets
 	// its own call-to-action (stop trusting the User-Agent header).
@@ -328,6 +345,13 @@ function renderReport(results, falsePositiveMode = false) {
 		} else if (r.baselineNote === 'custom_block_page') {
 			baselineBadge = `<span class="badge bg-success ms-2" title="Soft-block detected: status ${r.status} returned a WAF security block page">🛡️ Soft Block</span>`;
 		}
+		// Bot-management challenge: the request was stopped by an interactive
+		// CAPTCHA/JS interstitial (bypassable with a real browser/solver) rather than
+		// an outright deny. Surfaced as its own badge so it is not read as a hard block.
+		let challengeBadge = '';
+		if (r.verdict === 'challenge') {
+			challengeBadge = `<span class="badge bg-info text-dark ms-2" title="Bot-management challenge (CAPTCHA/JS interstitial): the automated request was stopped, but the mitigation is challenge-based and bypassable with a real browser or a CAPTCHA solver.">🧩 Challenge</span>`;
+		}
 		const rowClass = uaBadge || ipBadge ? ' class="ua-bypass-row"' : '';
 		html +=
 			`<tr data-status='${escapeHtml(String(r.status))}'${uaAttr}${ipAttr}${rowClass}>` +
@@ -335,7 +359,7 @@ function renderReport(results, falsePositiveMode = false) {
 			`<td class='text-center' data-label='Method'>${escapeHtml(String(r.method ?? ''))}</td>` +
 			`<td class='${status_class} text-center' data-label='Status'>${escapeHtml(String(r.status ?? ''))}</td>` +
 			`<td class='text-center' data-label='Response Time'>${escapeHtml(String(responseTime))}ms</td>` +
-			`<td data-label='Payload'><code class='${codeClass}'>${escapeHtml(r.payload)}</code>${patchBtn}${uaBadge}${ipBadge}${baselineBadge}</td>` +
+			`<td data-label='Payload'><code class='${codeClass}'>${escapeHtml(r.payload)}</code>${patchBtn}${uaBadge}${ipBadge}${challengeBadge}${baselineBadge}</td>` +
 			`</tr>`;
 	}
 	html += `</tbody></table>`;

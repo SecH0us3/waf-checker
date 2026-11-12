@@ -60,6 +60,10 @@ SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusio
 - Suggests specific bypass techniques based on detected WAF.
 - Can auto-switch to WAF-specific advanced payloads.
 
+### 🧩 Bot-Management Challenge Detection
+- Distinguishes an interactive **challenge** (CAPTCHA / JS interstitial) from an outright block: a challenge stops the automated request and counts toward protection, but the mitigation is challenge-based and bypassable with a real browser or a CAPTCHA solver, so it is surfaced under its own `challenge` verdict (CLI breakdown line, Web UI 🧩 badge, Markdown report row, and a `challenged` field in the report stats).
+- Detects the major bot-management vendors and CAPTCHA providers via response headers, `Set-Cookie` markers, and body fingerprints: **DataDome**, **HUMAN (PerimeterX)**, **Kasada**, **Vercel Firewall**, **Arkose Labs / FunCaptcha**, **Cloudflare Turnstile**, **reCAPTCHA**, **hCaptcha**, and **Friendly Captcha**.
+
 ### Advanced Payloads & Encoding
 - WAF Bypass Payloads — double encoding, unicode, mixed case, comment injection, polyglot payloads.
 - Enhanced Payloads — modern evasion techniques.
@@ -427,7 +431,7 @@ The Cloudflare Worker exposes a public REST API consumed by scanners and fuzzers
 - **Per-Result Verdict & Block Flags**:
   Every `AuditResultItem` includes:
   - `blocked: boolean` — Whether the WAF intervened before reaching the origin.
-  - `verdict: 'blocked' | 'passed' | 'exposed'` — Distinct outcome differentiating between leaks (`exposed`) and coverage gaps (`passed`).
+  - `verdict: 'blocked' | 'challenge' | 'passed' | 'exposed'` — Distinct outcome differentiating a hard block (`blocked`), a bot-management challenge (`challenge` — CAPTCHA/JS interstitial, counted as protected but bypassable), a resource leak (`exposed`), and a coverage gap (`passed`).
   - `error: string | null` — Explicit error category on network drop (e.g. `'timeout'`, `'dns'`, `'connection_reset'`).
 
 - **Self-Scan Refusal (HTTP 422)**:

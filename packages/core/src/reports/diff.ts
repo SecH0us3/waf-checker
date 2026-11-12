@@ -72,6 +72,9 @@ export function classifyScanStatus(item: AuditResultItem): ScanStatus {
 	if (item.baselineNote === 'origin_blocked') return 'inconclusive';
 
 	if (item.verdict === 'blocked') return 'blocked';
+	// A bot-management challenge is a protected outcome: group it with 'blocked' so
+	// a block⇄challenge shift is not flagged as a regression, while challenge→leak is.
+	if (item.verdict === 'challenge') return 'blocked';
 	if (item.verdict === 'exposed') return 'exposed';
 	if (item.verdict === 'passed') return 'passed';
 

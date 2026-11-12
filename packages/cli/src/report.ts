@@ -19,7 +19,7 @@ export interface CheckResult {
 	bypassTechnique?: string;
 	originalPayload?: string;
 	blocked?: boolean;
-	verdict?: 'blocked' | 'passed' | 'exposed';
+	verdict?: 'blocked' | 'challenge' | 'passed' | 'exposed';
 	baselineNote?: 'origin_blocked' | 'custom_block_page';
 	userAgentBypass?: any;
 	ipHeaderBypass?: any;

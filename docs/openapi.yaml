@@ -313,8 +313,11 @@ components:
           example: true
         verdict:
           type: string
-          enum: [blocked, passed, exposed]
-          description: Coarse outcome ('blocked' by WAF, 'passed' without leak, or 'exposed' resource leak)
+          enum: [blocked, challenge, passed, exposed]
+          description: >-
+            Coarse outcome: 'blocked' by WAF, 'challenge' (bot-management CAPTCHA/JS
+            interstitial — stopped but bypassable), 'passed' without leak, or
+            'exposed' resource leak
           example: blocked
         error:
           type: string

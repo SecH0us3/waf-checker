@@ -8,6 +8,7 @@ export function generateMarkdownReport(
 	virtualPatches?: VirtualPatchReport
 ): string {
 	let blocked = 0;
+	let challenged = 0;
 	let bypassed = 0;
 	let misses = 0;
 	let errors = 0;
@@ -18,6 +19,9 @@ export function generateMarkdownReport(
 		if (r.wafType && r.wafType !== 'Unknown') {
 			detectedWAF = r.wafType;
 		}
+		// A bot-management challenge is a subset of blocked (request stopped via a
+		// bypassable CAPTCHA/JS interstitial); track it so CI can surface it.
+		if (r.verdict === 'challenge') challenged++;
 		if ((r.status === 403 || r.status === '403' || r.status === 'BLOCKED' || r.blocked === true) && r.baselineNote !== 'origin_blocked') {
 			blocked++;
 		} else if ((r.status === 200 || r.status === '200') && r.blocked !== true) {
@@ -81,6 +85,9 @@ export function generateMarkdownReport(
 		`| :--- | :--- | :--- |`,
 		`| 🎯 **Total Tests** | \`${total}\` | \`100%\` |`,
 		`| 🛡️ **Blocked (Protected)** | \`${blocked}\` | \`${total > 0 ? Math.round((blocked / total) * 100) : 0}%\` |`,
+		...(challenged > 0
+			? [`| 🧩 **Challenged (CAPTCHA/JS)** | \`${challenged}\` | \`${total > 0 ? Math.round((challenged / total) * 100) : 0}%\` |`]
+			: []),
 		`| 🔴 **Critical Bypasses (200 OK)** | \`${bypassed}\` | \`${total > 0 ? Math.round((bypassed / total) * 100) : 0}%\` |`,
 		`| ⚠️ **WAF Misses (Unprotected 404)** | \`${misses}\` | \`${total > 0 ? Math.round((misses / total) * 100) : 0}%\` |`,
 		`| ❓ **Errors / Other** | \`${errors + other}\` | \`${total > 0 ? Math.round(((errors + other) / total) * 100) : 0}%\` |`,

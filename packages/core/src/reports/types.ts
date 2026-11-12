@@ -13,8 +13,8 @@ export interface AuditResultItem {
 	bypassTechnique?: string;
 	/** Did the WAF stop this request before it reached the origin? */
 	blocked?: boolean;
-	/** Coarse outcome: 'blocked' by WAF, 'passed' without leak (404/5xx), or 'exposed' with resource leak */
-	verdict?: 'blocked' | 'passed' | 'exposed';
+	/** Coarse outcome: 'blocked' by WAF, 'challenge' (bot-management CAPTCHA/JS interstitial), 'passed' without leak (404/5xx), or 'exposed' with resource leak */
+	verdict?: 'blocked' | 'challenge' | 'passed' | 'exposed';
 	/** Explanation when baseline calibration adjusted the verdict (e.g. 'origin_blocked' or 'custom_block_page') */
 	baselineNote?: 'origin_blocked' | 'custom_block_page';
 	/** Error category if request failed (e.g. 'timeout', 'network_error') */
@@ -95,6 +95,8 @@ import { ReverseEngineeringReport } from '../reverse-engineering/types';
 export interface AuditReportStats {
 	total: number;
 	blocked: number;
+	/** Subset of `blocked` that were stopped by an interactive challenge (CAPTCHA/JS) rather than an outright deny. */
+	challenged: number;
 	bypassed: number;
 	errors: number;
 	other: number;
@@ -108,6 +110,7 @@ export interface AuditReportStats {
 
 export function calculateAuditStats(results: AuditResultItem[], targetUrl?: string): AuditReportStats {
 	let blocked = 0;
+	let challenged = 0;
 	let bypassed = 0;
 	let errors = 0;
 	let other = 0;
@@ -117,7 +120,12 @@ export function calculateAuditStats(results: AuditResultItem[], targetUrl?: stri
 		if (r.wafType && r.wafType !== 'Unknown') {
 			detectedWAF = r.wafType;
 		}
-		if (r.blocked === true) {
+		if (r.verdict === 'challenge') {
+			// A challenge stops the automated request, so it counts toward protection,
+			// but is tracked separately as it is a bypassable (challenge-based) mitigation.
+			blocked++;
+			challenged++;
+		} else if (r.blocked === true) {
 			blocked++;
 		} else if (r.blocked === false && r.baselineNote === 'origin_blocked') {
 			other++;
@@ -138,6 +146,7 @@ export function calculateAuditStats(results: AuditResultItem[], targetUrl?: stri
 	return {
 		total,
 		blocked,
+		challenged,
 		bypassed,
 		errors,
 		other,

@@ -606,6 +606,67 @@ export const WAF_SIGNATURES: WAFSignature[] = [
 		bodyPatterns: [/_yunsuo_/i, /yunsuo\.com\.cn/i, /security_verify_/i],
 	},
 
+	// DataDome (bot management / CAPTCHA)
+	{
+		name: 'DataDome',
+		headers: {
+			'x-datadome': /.*/,
+			'x-dd-b': /.*/,
+		},
+		definitiveHeaders: {
+			'x-datadome': /.*/,
+		},
+		statusCodes: [403],
+		cookiePatterns: [/\bdatadome=/i],
+		bodyPatterns: [/geo\.captcha-delivery\.com/i, /datadome/i, /dd_cookie/i],
+	},
+
+	// HUMAN Security (formerly PerimeterX) — bot defender / CAPTCHA
+	{
+		name: 'HUMAN (PerimeterX)',
+		headers: {
+			'x-px': /.*/,
+		},
+		statusCodes: [403],
+		cookiePatterns: [/\b_px(?:hd|vid|de|2|3)?=/i],
+		bodyPatterns: [/px-captcha/i, /_pxAppId/i, /captcha\.px-cdn\.net/i, /perimeterx/i, /px\.captcha/i, /Press\s*&\s*Hold/i],
+	},
+
+	// Kasada (bot management / JS challenge)
+	{
+		name: 'Kasada',
+		headers: {
+			'x-kpsdk-ct': /.*/,
+			'x-kpsdk-cd': /.*/,
+			'x-kpsdk-r': /.*/,
+		},
+		definitiveHeaders: {
+			'x-kpsdk-ct': /.*/,
+		},
+		statusCodes: [429, 403],
+		bodyPatterns: [/kpsdk/i, /kasada/i],
+	},
+
+	// Vercel Firewall / Security Checkpoint
+	{
+		name: 'Vercel',
+		headers: {
+			'x-vercel-id': /.*/,
+			'x-vercel-mitigated': /.*/,
+		},
+		statusCodes: [403, 429],
+		cookiePatterns: [/\b_vcrcs=/i],
+		bodyPatterns: [/Vercel Security Checkpoint/i, /vercel-user-meta/i],
+	},
+
+	// Arkose Labs (FunCaptcha)
+	{
+		name: 'Arkose Labs',
+		headers: {},
+		statusCodes: [403],
+		bodyPatterns: [/arkoselabs/i, /funcaptcha/i, /fc-token/i],
+	},
+
 	// Generic detection patterns — require WAF-specific phrases,
 	// not just common HTTP words like "forbidden"
 	{
