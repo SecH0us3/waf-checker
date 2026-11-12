@@ -345,27 +345,30 @@ describe('WAF Verdict Evaluation', () => {
 			expect(evaluateWAFVerdict(403, bunkerwebBlock).verdict).toBe('blocked');
 		});
 
-		it('should mark captcha challenges as blocked with precise URL regexes and class markers', () => {
+		it('should mark captcha challenges as a challenge verdict (still counted as blocked) with precise URL regexes and class markers', () => {
+			// Captcha/JS interstitials are a distinct 'challenge' verdict, but they still
+			// stop the automated request so `blocked` stays true.
 			const cfTurnstile = '<html><script src="https://challenges.cloudflare.com/turnstile/v0/api.js"></script></html>';
-			expect(evaluateWAFVerdict(200, cfTurnstile).verdict).toBe('blocked');
+			expect(evaluateWAFVerdict(200, cfTurnstile).verdict).toBe('challenge');
+			expect(evaluateWAFVerdict(200, cfTurnstile).blocked).toBe(true);
 
 			const recaptcha = '<html><script src="https://www.google.com/recaptcha/api.js"></script></html>';
-			expect(evaluateWAFVerdict(200, recaptcha).verdict).toBe('blocked');
+			expect(evaluateWAFVerdict(200, recaptcha).verdict).toBe('challenge');
 
 			const hcaptcha = '<html><script src="https://hcaptcha.com/1/api.js"></script></html>';
-			expect(evaluateWAFVerdict(200, hcaptcha).verdict).toBe('blocked');
+			expect(evaluateWAFVerdict(200, hcaptcha).verdict).toBe('challenge');
 
 			const hcaptchaWww = '<html><script src="https://www.hcaptcha.com/1/api.js"></script></html>';
-			expect(evaluateWAFVerdict(200, hcaptchaWww).verdict).toBe('blocked');
+			expect(evaluateWAFVerdict(200, hcaptchaWww).verdict).toBe('challenge');
 
 			const cfClass = '<div class="cf-turnstile" data-sitekey="xxx"></div>';
-			expect(evaluateWAFVerdict(200, cfClass).verdict).toBe('blocked');
+			expect(evaluateWAFVerdict(200, cfClass).verdict).toBe('challenge');
 
 			const gClass = '<div class="g-recaptcha" data-sitekey="xxx"></div>';
-			expect(evaluateWAFVerdict(200, gClass).verdict).toBe('blocked');
+			expect(evaluateWAFVerdict(200, gClass).verdict).toBe('challenge');
 
 			const hClass = '<div class="h-captcha" data-sitekey="xxx"></div>';
-			expect(evaluateWAFVerdict(200, hClass).verdict).toBe('blocked');
+			expect(evaluateWAFVerdict(200, hClass).verdict).toBe('challenge');
 		});
 
 		it('should not mark benign mentions or spoofed domains as blocked', () => {

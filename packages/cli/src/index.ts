@@ -511,6 +511,11 @@ checkCmd
 			console.log(`Total tests executed: ${results.length}`);
 
 			const blocked = results.filter((r: any) => (r.status === 403 || r.status === 'BLOCKED' || r.blocked === true) && r.baselineNote !== 'origin_blocked');
+			// Challenges are a subset of `blocked`: the request was stopped by an
+			// interactive CAPTCHA/JS interstitial (bypassable with a real browser/solver)
+			// rather than an outright deny. Surfaced separately so operators know the
+			// mitigation is challenge-based.
+			const challenged = results.filter((r: any) => r.verdict === 'challenge');
 			const bypassed = results.filter((r: any) => (r.status === 200 || r.status === '200') && r.blocked !== true);
 			const originBlocked = results.filter((r: any) => r.baselineNote === 'origin_blocked');
 			const redirect = results.filter((r: any) => r.is_redirect);
@@ -525,6 +530,7 @@ checkCmd
 			const protectionScore = results.length ? Math.round((blocked.length / results.length) * 100) : 100;
 
 			console.log(`  🛡️ Blocked:   ${colors.green(`${blocked.length} (${protectionScore}%)`)}`);
+			if (challenged.length > 0) console.log(`  🧩 Challenged: ${colors.yellow(`${challenged.length} (bot-management CAPTCHA/JS interstitial — bypassable with a real browser/solver)`)}`);
 			console.log(`  🔓 Bypassed:  ${bypassed.length > 0 ? colors.red(`${bypassed.length} (${results.length ? Math.round(bypassed.length / results.length * 100) : 0}%)`) : colors.green('0 (0%)')}`);
 			if (originBlocked.length > 0) console.log(`  ⚠️ Origin 403: ${colors.yellow(`${originBlocked.length} (matches benign baseline 403/406)`)}`);
 			if (redirect.length > 0) console.log(`  🔄 Redirects: ${colors.yellow(String(redirect.length))}`);

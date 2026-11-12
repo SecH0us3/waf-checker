@@ -548,10 +548,118 @@ export function isPlausibleArtifactContent(bodyText: string, probedPayload?: str
 	return !isHtml || isHtmlTarget;
 }
 
+/** Outcome of {@link detectBotChallenge}: whether the response is an interactive
+ * bot-management / CAPTCHA challenge rather than a hard block or a clean pass. */
+export interface BotChallengeInfo {
+	/** True when the response is an interstitial challenge the client must solve. */
+	isChallenge: boolean;
+	/** Bot-management / CAPTCHA provider, when identifiable (e.g. 'DataDome', 'Cloudflare Turnstile'). */
+	vendor?: string;
+	/** Challenge mechanism: 'captcha' (visible puzzle) or 'js' (transparent JS/cookie challenge). */
+	mechanism?: 'captcha' | 'js';
+}
+
+const NOT_A_CHALLENGE: BotChallengeInfo = { isChallenge: false };
+
+/**
+ * Detects an interactive bot-management / CAPTCHA *challenge* response — distinct
+ * from a hard 403 block and from a clean pass. A challenge means the request was
+ * intercepted before reaching the origin and handed an interstitial (JS compute,
+ * cookie check, or a visible CAPTCHA) the automated client cannot solve, so the
+ * attack payload never ran. From a protection standpoint it counts as "stopped",
+ * but it is surfaced under its own verdict because the mitigation is challenge-based
+ * (bypassable with a real browser / solver) rather than an outright deny.
+ *
+ * Signals are keyed to vendor-specific response headers, Set-Cookie markers, and
+ * body fingerprints that only appear on challenge responses. Header/cookie signals
+ * are high-confidence; body CAPTCHA widgets can also appear on legitimate pages
+ * (login/contact forms), matching the long-standing behaviour of treating such
+ * bodies as an intervention rather than a clean origin leak.
+ */
+export function detectBotChallenge(
+	status: number | string,
+	bodyText: string = '',
+	headers?: Headers,
+	detection?: WAFDetectionResult,
+): BotChallengeInfo {
+	// 1. High-confidence response headers / cookies (only set on challenge paths).
+	if (headers) {
+		const cfMitigated = (headers.get('cf-mitigated') || '').toLowerCase();
+		if (cfMitigated === 'challenge') {
+			return { isChallenge: true, vendor: 'Cloudflare', mechanism: 'js' };
+		}
+		const vercelMitigated = (headers.get('x-vercel-mitigated') || '').toLowerCase();
+		if (vercelMitigated === 'challenge') {
+			return { isChallenge: true, vendor: 'Vercel', mechanism: 'js' };
+		}
+		if (headers.get('x-datadome') || headers.get('x-dd-b')) {
+			return { isChallenge: true, vendor: 'DataDome', mechanism: 'captcha' };
+		}
+		if (headers.get('x-kpsdk-ct') || headers.get('x-kpsdk-cd') || headers.get('x-kpsdk-r')) {
+			return { isChallenge: true, vendor: 'Kasada', mechanism: 'js' };
+		}
+		// Set-Cookie markers (Headers.get may fold duplicates; a substring scan is enough).
+		const setCookie = (headers.get('set-cookie') || '').toLowerCase();
+		if (setCookie) {
+			if (/\bdatadome=/.test(setCookie)) return { isChallenge: true, vendor: 'DataDome', mechanism: 'captcha' };
+			if (/\b_vcrcs=/.test(setCookie)) return { isChallenge: true, vendor: 'Vercel', mechanism: 'js' };
+			if (/\b_px(?:hd|vid|de|2|3)?=/.test(setCookie)) return { isChallenge: true, vendor: 'HUMAN (PerimeterX)', mechanism: 'captcha' };
+		}
+	}
+
+	// 2. Body fingerprints. Guard each regex with a cheap substring reject first.
+	if (bodyText) {
+		const lower = bodyText.toLowerCase();
+
+		// Transparent JS / cookie challenge interstitials.
+		if (lower.includes('cdn-cgi/challenge-platform') || lower.includes('cf_chl_opt') || lower.includes('<title>just a moment')) {
+			return { isChallenge: true, vendor: 'Cloudflare', mechanism: 'js' };
+		}
+		if (lower.includes('vercel security checkpoint')) {
+			return { isChallenge: true, vendor: 'Vercel', mechanism: 'js' };
+		}
+		if (lower.includes('kpsdk') || lower.includes('kasada')) {
+			return { isChallenge: true, vendor: 'Kasada', mechanism: 'js' };
+		}
+		if (lower.includes('geo.captcha-delivery.com') || lower.includes('datadome')) {
+			return { isChallenge: true, vendor: 'DataDome', mechanism: 'captcha' };
+		}
+		if (lower.includes('px-captcha') || lower.includes('_pxappid') || lower.includes('captcha.px-cdn.net') || lower.includes('perimeterx') || lower.includes('press & hold')) {
+			return { isChallenge: true, vendor: 'HUMAN (PerimeterX)', mechanism: 'captcha' };
+		}
+
+		// Visible CAPTCHA widgets (vendor-agnostic providers).
+		if (lower.includes('cf-turnstile') || (lower.includes('challenges.cloudflare.com/turnstile/') && /https?:\/\/challenges\.cloudflare\.com\/turnstile\//.test(lower))) {
+			return { isChallenge: true, vendor: 'Cloudflare Turnstile', mechanism: 'captcha' };
+		}
+		if (lower.includes('g-recaptcha') || (lower.includes('google.com/recaptcha/') && /https?:\/\/(?:www\.)?google\.com\/recaptcha\//.test(lower))) {
+			return { isChallenge: true, vendor: 'reCAPTCHA', mechanism: 'captcha' };
+		}
+		if (lower.includes('h-captcha') || (lower.includes('hcaptcha') && /https?:\/\/(?:www\.)?hcaptcha\.com\//.test(lower))) {
+			return { isChallenge: true, vendor: 'hCaptcha', mechanism: 'captcha' };
+		}
+		if (lower.includes('arkoselabs') || lower.includes('funcaptcha') || lower.includes('fc-token')) {
+			return { isChallenge: true, vendor: 'Arkose Labs', mechanism: 'captcha' };
+		}
+		if (lower.includes('frc-captcha') || lower.includes('friendlycaptcha')) {
+			return { isChallenge: true, vendor: 'Friendly Captcha', mechanism: 'captcha' };
+		}
+	}
+
+	// Avoid an unused-parameter lint while keeping the signature future-proof for
+	// detection-informed heuristics.
+	void status;
+	void detection;
+	return NOT_A_CHALLENGE;
+}
+
 /**
  * Evaluates whether a request response represents a WAF block and derives
  * a coarse verdict:
  * - 'blocked': WAF stopped the request before reaching origin.
+ * - 'challenge': WAF/bot-manager served an interactive challenge (CAPTCHA/JS) the
+ *   automated client cannot solve — the request was stopped, but via a bypassable
+ *   challenge rather than an outright deny.
  * - 'exposed': not blocked AND origin returned resource matching the probed artifact.
  * - 'passed': not blocked, but origin did not serve resource (404, 5xx, empty 2xx, or SPA HTML shell).
  */
@@ -562,7 +670,13 @@ export function evaluateWAFVerdict(
 	headers?: Headers,
 	probedPayload?: string,
 	baseline?: BaselineProfile,
-): { blocked: boolean; verdict: 'blocked' | 'passed' | 'exposed'; baselineNote?: 'origin_blocked' | 'custom_block_page' } {
+): { blocked: boolean; verdict: 'blocked' | 'challenge' | 'passed' | 'exposed'; baselineNote?: 'origin_blocked' | 'custom_block_page' } {
+	// A bot-management / CAPTCHA challenge is a distinct, higher-confidence outcome
+	// than a generic block; detect it up front so it wins over baseline heuristics.
+	const botChallenge = detectBotChallenge(status, bodyText, headers, detection);
+	if (botChallenge.isChallenge) {
+		return { blocked: true, verdict: 'challenge' };
+	}
 	let isBlocked = false;
 	let hasExplicitWafSignal = false;
 
