@@ -14,20 +14,42 @@ WAF Checker is a modular security testing tool designed as an NPM Workspaces mon
 - **Testing**: Vitest with `@cloudflare/vitest-pool-workers`
 
 ## Project Structure
-- `/packages/core/src/check.ts`: Main check execution logic.
-- `/packages/core/src/payloads.ts`: Base attack payloads and categories.
-- `/packages/core/src/advanced-payloads.ts`: Advanced evasion techniques and WAF-specific payloads.
-- `/packages/core/src/waf-detection.ts`: Fingerprinting logic for various WAF vendors.
-- `/packages/core/src/encoding.ts`: Utilities for payload obfuscation.
-- `/packages/core/src/utils/security.ts`: Security utilities, primarily SSRF protection.
-- `/packages/worker/src/api.ts`: Cloudflare Worker API router.
-- `/packages/worker/src/static/`: Frontend assets (served via `env.ASSETS`).
-- `/packages/cli/src/index.ts`: Standalone CLI executable.
+
+NPM Workspaces monorepo (`packages/*`):
+
+### `packages/core` — shared audit library (`@waf-checker/core`)
+- `packages/core/src/check.ts` — Main check execution logic.
+- `packages/core/src/payloads.ts`, `packages/core/src/payloads-data/` — Base attack payloads and categories (data in `payloads-data/base.ts`).
+- `packages/core/src/advanced-payloads.ts` — Advanced evasion techniques (`ADVANCED_PAYLOADS`, `generateWAFSpecificPayloads`) and the `wafBypassCandidates` switch for WAF-specific bypasses.
+- `packages/core/src/waf-detection.ts` — WAF fingerprinting logic; `packages/core/src/waf-signatures.ts` — vendor signatures (`WAF_SIGNATURES`).
+- `packages/core/src/encoding.ts` — Payload obfuscation/encoding utilities.
+- `packages/core/src/http-manipulation.ts` — HTTP protocol tampering (parameter pollution, verb tampering).
+- `packages/core/src/utils/security.ts` — SSRF protection (`isValidTargetUrl`); `packages/core/src/utils/payload-utils.ts` — payload helpers.
+- `packages/core/src/reports/` — Report formats (SARIF, JUnit, diff).
+- `packages/core/src/virtual-patch/` — Virtual-patch rule generators (nginx, ModSecurity, Cloudflare, AWS, etc.).
+- `packages/core/src/reverse-engineering/` — WAF rule/limit probing (anomaly score, body limit, rate limit, CRS rules).
+- Tests: `packages/core/test/`.
+
+### `packages/worker` — Cloudflare Worker (Web UI + API)
+- `packages/worker/src/api.ts` — Entry point and router.
+- `packages/worker/src/handlers/` — `check.ts`, `waf-detect.ts`, `http-manip.ts`, `schedule.ts` request handlers.
+- `packages/worker/src/services/` — `scan.ts`, `monitor.ts`, `email.ts`, `ownership.ts`, `rate-limiter.ts` (scheduled monitoring, KV, email).
+- `packages/worker/src/static/` — Frontend: `index.html`, `main.js`, `style.css` (served via `env.ASSETS`).
+- Tests: `packages/worker/test/`.
+
+### `packages/cli` — Node.js CLI
+- `packages/cli/src/index.ts` — CLI entry; `packages/cli/src/report.ts`, `packages/cli/src/reports/` — HTML/Markdown reports.
+
+### Config
+- `wrangler.toml` (root) and `packages/worker/wrangler.toml` — both point at the worker entry. `npm run dev:worker` / `npm run deploy` (in `packages/worker`) use `packages/worker/wrangler.toml`; running `npx wrangler` from the repo root uses the root one.
+- `vitest.workspace.ts`, `scripts/` (e2e, perf, schedule simulation), `docs/`.
 
 ## Development & Commands
-- **Run Worker Locally**: From the root directory, run `npm run dev:worker`.
-- **Build Core/CLI Packages**: Run `npm run build` from the root directory.
-- **Run Tests**: From the root directory, run `npm test`.
+- **Install & build** (core + CLI): `npm install && npm run build`
+- **Run Worker locally**: `npm run dev:worker` (root)
+- **Run tests** (builds first via `pretest`): `npm test`
+- **Deploy**: `npm run deploy --workspace=packages/worker`
+- **Docker e2e**: `npm run test:e2e`
 
 ## Git Workflow & Branching Policy
 - **Branching Rule**: Always create a separate branch for implementing any new features, changes, or experiments. Never perform new work directly on the main branch.
@@ -47,13 +69,13 @@ if (url && !isValidTargetUrl(url)) {
 ```
 
 ### 💉 Extending Payloads
-- **Base Payloads**: Add to `packages/core/src/payloads.ts`. Use `ParamCheck` for query/body params, `FileCheck` for path-based attacks, and `Header` for header-based attacks.
-- **Evasion**: Add complex or WAF-specific bypasses to `packages/core/src/advanced-payloads.ts`.
+- **Base Payloads**: Add to `packages/core/src/payloads-data/base.ts` (`payloads.ts` only re-exports them). Use `ParamCheck` for query/body params, `FileCheck` for path-based attacks, and `Header` for header-based attacks.
+- **Evasion**: Add advanced payload data to `packages/core/src/payloads-data/advanced.ts`; WAF-specific bypasses go through `wafBypassCandidates` in `packages/core/src/advanced-payloads.ts`.
 
 ### 🔍 WAF Detection
 When adding support for a new WAF:
-1. Update `packages/core/src/waf-detection.ts` with relevant header signatures or body patterns.
-2. Update the `WAF_BYPASS_PAYLOADS` in `packages/core/src/advanced-payloads.ts` if specific bypasses are known.
+1. Add the vendor's signatures to `WAF_SIGNATURES` in `packages/core/src/waf-signatures.ts`.
+2. Add a `WAFBypasses` candidate generator in `packages/core/src/encoding.ts` and a case in `wafBypassCandidates` in `packages/core/src/advanced-payloads.ts`.
 
 ### 🌐 Frontend
 The frontend is a single-page application. Update `packages/worker/src/static/main.js` for UI logic and `packages/worker/src/static/index.html` for layout changes.
@@ -61,4 +83,5 @@ The frontend is a single-page application. Update `packages/worker/src/static/ma
 ## Programmatic Checks
 Before submitting any changes to API handlers:
 1. **Check SSRF Validation**: Ensure all URL-accepting entry points use `isValidTargetUrl`.
-2. **Verify Tests**: All tests in the workspaces must pass via `npm test`.
+2. **Run SSRF grep**: `rtk grep "isValidTargetUrl" packages/worker/src/handlers/*.ts packages/worker/src/api.ts` (`handlers/check.ts` only re-exports core handlers; validated in `api.ts`).
+3. **Verify Tests**: All tests in the workspaces must pass via `npm test`.

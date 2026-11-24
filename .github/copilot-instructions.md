@@ -1,3 +1,11 @@
-<!-- Use this file to provide workspace-specific custom instructions to Copilot. For more details, visit https://code.visualstudio.com/docs/copilot/copilot-customization#_use-a-githubcopilotinstructionsmd-file -->
+<!-- Workspace-specific custom instructions for Copilot. -->
 
-This project is a Cloudflare Worker-like Python web service. It serves an index.html at '/', allows user input of a URL, and on submit, triggers a GET to '/api/check'. The backend tests the provided URL with grouped attack payloads (SQLi, XSS, Path Traversal, Command Injection, SSRF, NoSQLi, LFI) using GET/POST/PUT/DELETE, and returns an HTML summary with color-coded status codes: 2xx/5xx red, 403 green, other 4xx orange. Payloads are grouped by category for easy extension.
+WAF Checker is an NPM Workspaces monorepo (TypeScript): `packages/core` (payloads, encoding, WAF detection, `utils/security.ts`, reports, virtual-patch, reverse-engineering), `packages/worker` (Cloudflare Worker: `src/api.ts`, `src/handlers/`, `src/services/`, static Web UI in `src/static/`) and `packages/cli` (Node.js CLI).
+
+The Worker serves the UI at `/` and exposes `/api/*` endpoints that test a user-supplied URL with grouped attack payloads (SQLi, XSS, Path Traversal, Command Injection, SSRF, NoSQLi, LFI) and report status codes (403 = blocked; 2xx/5xx = not blocked). Payloads are grouped by category in `packages/core/src/payloads-data/base.ts` for easy extension.
+
+Rules:
+- Any endpoint accepting a target URL MUST validate it with `isValidTargetUrl` from `@waf-checker/core` (`packages/core/src/utils/security.ts`).
+- Commands (from repo root): `npm install && npm run build`, `npm run dev:worker`, `npm test`, `npm run deploy --workspace=packages/worker`.
+- Pre-push SSRF check: `grep isValidTargetUrl packages/worker/src/handlers/*.ts packages/worker/src/api.ts`.
+- Work on a separate branch; never commit directly to main.
