@@ -6,8 +6,17 @@ import { CORE_VERSION } from '../version';
 export interface SarifOptions {
 	/** tool.driver.version / semanticVersion. Defaults to the @waf-checker/core package version. */
 	toolVersion?: string;
-	/** runs[].automationDetails.id. Defaults to 'waf-checker/<target host>'. */
+	/**
+	 * runs[].automationDetails.id. Defaults to 'waf-checker/<target host>/' (the trailing
+	 * slash makes the whole id the GitHub code scanning category). Used as given for a
+	 * single-target report; in a multi-target report it is normalized to '<id>/<host>/'
+	 * per run so every run gets its own category.
+	 */
 	automationId?: string;
+	/** invocations[].startTimeUtc. Defaults to the report generation time. */
+	startTimeUtc?: string | Date;
+	/** invocations[].endTimeUtc. Defaults to the report generation time. */
+	endTimeUtc?: string | Date;
 }
 
 /** One scanned target: becomes one SARIF run. */
@@ -15,6 +24,10 @@ export interface SarifTarget {
 	targetUrl: string;
 	results: AuditResultItem[];
 	reverseEngineering?: ReverseEngineeringReport;
+	/** Overrides SarifOptions.startTimeUtc for this target's run. */
+	startTimeUtc?: string | Date;
+	/** Overrides SarifOptions.endTimeUtc for this target's run. */
+	endTimeUtc?: string | Date;
 }
 
 const SARIF_SCHEMA_URI = 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json';
@@ -255,7 +268,21 @@ function buildResult(r: AuditResultItem, targetUri: string, ruleIndex: number, d
 	};
 }
 
-function buildRun(target: { targetUrl?: string; results: AuditResultItem[]; reverseEngineering?: ReverseEngineeringReport }, options: SarifOptions, now: string) {
+/** ISO-8601 UTC timestamp; an absent or unparsable value falls back to `fallback`. */
+function toUtc(value: string | Date | undefined, fallback: string): string {
+	if (value === undefined || value === null || value === '') return fallback;
+	const d = value instanceof Date ? value : new Date(value);
+	return Number.isNaN(d.getTime()) ? fallback : d.toISOString();
+}
+
+/** '<base>/<host>/' without doubled slashes, e.g. 'ci/nightly' -> 'ci/nightly/example.com/'. */
+function perTargetAutomationId(base: string, host: string): string {
+	return `${base.endsWith('/') ? base : `${base}/`}${host}/`;
+}
+
+type RunInput = Omit<SarifTarget, 'targetUrl'> & { targetUrl?: string; automationId?: string };
+
+function buildRun(target: RunInput, options: SarifOptions, now: string) {
 	const results = target.results || [];
 	const targetUri = target.targetUrl || FALLBACK_TARGET_URL;
 	const toolVersion = options.toolVersion || CORE_VERSION;
@@ -269,8 +296,8 @@ function buildRun(target: { targetUrl?: string; results: AuditResultItem[]; reve
 	const errorCount = results.filter(isErrorResult).length;
 	const invocation: any = {
 		executionSuccessful: !(results.length > 0 && errorCount === results.length),
-		startTimeUtc: now,
-		endTimeUtc: now,
+		startTimeUtc: toUtc(target.startTimeUtc ?? options.startTimeUtc, now),
+		endTimeUtc: toUtc(target.endTimeUtc ?? options.endTimeUtc, now),
 	};
 	if (errorCount > 0) {
 		invocation.toolExecutionNotifications = [
@@ -292,7 +319,7 @@ function buildRun(target: { targetUrl?: string; results: AuditResultItem[]; reve
 			},
 		},
 		automationDetails: {
-			id: options.automationId || `waf-checker/${hostOf(targetUri)}`,
+			id: target.automationId || `waf-checker/${hostOf(targetUri)}/`,
 		},
 		invocations: [invocation],
 		columnKind: 'utf16CodeUnits',
@@ -315,11 +342,19 @@ export function generateSARIFReport(
 	reverseEngineering?: ReverseEngineeringReport,
 	options: SarifOptions = {},
 ): string {
-	return serialize([buildRun({ targetUrl, results, reverseEngineering }, options, new Date().toISOString())]);
+	return serialize([buildRun({ targetUrl, results, reverseEngineering, automationId: options.automationId }, options, new Date().toISOString())]);
 }
 
 /** One SARIF document with one run per target. */
 export function generateMultiTargetSARIFReport(targets: SarifTarget[], options: SarifOptions = {}): string {
 	const now = new Date().toISOString();
-	return serialize(targets.map((t) => buildRun(t, options, now)));
+	return serialize(
+		targets.map((t) =>
+			buildRun(
+				{ ...t, automationId: options.automationId ? perTargetAutomationId(options.automationId, hostOf(t.targetUrl)) : undefined },
+				options,
+				now,
+			),
+		),
+	);
 }

@@ -232,7 +232,7 @@ describe('Reports Module', () => {
 
 		it('records automationDetails and invocation timing', () => {
 			const run = JSON.parse(generateSARIFReport(mockResults, 'https://Example.com:8443/path')).runs[0];
-			expect(run.automationDetails.id).toBe('waf-checker/example.com:8443');
+			expect(run.automationDetails.id).toBe('waf-checker/example.com:8443/');
 			expect(run.invocations).toHaveLength(1);
 			const inv = run.invocations[0];
 			expect(inv.executionSuccessful).toBe(true);
@@ -248,6 +248,22 @@ describe('Reports Module', () => {
 				generateSARIFReport([{ category: 'XSS', payload: 'x', method: 'GET', status: 'ERR', responseTime: 0 }], 'https://example.com'),
 			);
 			expect(allFailed.runs[0].invocations[0].executionSuccessful).toBe(false);
+		});
+
+		it('uses caller-supplied invocation times (Date or string), falling back to now', () => {
+			const run = JSON.parse(
+				generateSARIFReport(mockResults, 'https://example.com', undefined, {
+					startTimeUtc: new Date('2026-01-02T03:04:05Z'),
+					endTimeUtc: '2026-01-02T03:14:05.500+00:00',
+				}),
+			).runs[0];
+			expect(run.invocations[0].startTimeUtc).toBe('2026-01-02T03:04:05.000Z');
+			expect(run.invocations[0].endTimeUtc).toBe('2026-01-02T03:14:05.500Z');
+
+			const before = Date.now();
+			const bad = JSON.parse(generateSARIFReport(mockResults, 'https://example.com', undefined, { startTimeUtc: 'not a date' })).runs[0];
+			expect(Date.parse(bad.invocations[0].startTimeUtc)).toBeGreaterThanOrEqual(before - 1000);
+			expect(validateSarif({ version: '2.1.0', runs: [bad] })).toEqual([]);
 		});
 
 		it('attaches the reverse engineering report as run properties', () => {
@@ -270,9 +286,9 @@ describe('Reports Module', () => {
 			expect(sarif.version).toBe('2.1.0');
 			expect(sarif.runs).toHaveLength(3);
 			expect(sarif.runs.map((r: any) => r.automationDetails.id)).toEqual([
-				'waf-checker/a.example',
-				'waf-checker/b.example',
-				'waf-checker/c.example',
+				'waf-checker/a.example/',
+				'waf-checker/b.example/',
+				'waf-checker/c.example/',
 			]);
 			expect(sarif.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri).toBe('https://a.example');
 			expect(sarif.runs[1].results[0].locations[0].physicalLocation.artifactLocation.uri).toBe('https://b.example/login');
@@ -281,6 +297,44 @@ describe('Reports Module', () => {
 			expect(sarif.runs[2].results).toEqual([]);
 			// Same finding on different hosts must not collapse into one alert.
 			expect(sarif.runs[0].results[0].partialFingerprints).not.toEqual(sarif.runs[1].results[0].partialFingerprints);
+		});
+
+		// GitHub code scanning: an id ending in '/' is the category; otherwise the category is the id up to its last '/'.
+		const githubCategory = (id: string) => (id.endsWith('/') ? id.slice(0, -1) : id.slice(0, Math.max(0, id.lastIndexOf('/'))));
+
+		it('gives every run its own automation category', () => {
+			const targets = [
+				{ targetUrl: 'https://a.example', results: mockResults },
+				{ targetUrl: 'https://b.example/x', results: mockResults },
+				{ targetUrl: 'https://b.example:8443', results: [] },
+			];
+			const hosts = ['a.example', 'b.example', 'b.example:8443'];
+			for (const [automationId, expected] of [
+				[undefined, hosts.map((h) => `waf-checker/${h}/`)],
+				['ci/nightly', hosts.map((h) => `ci/nightly/${h}/`)],
+				['ci/nightly/', hosts.map((h) => `ci/nightly/${h}/`)],
+			] as const) {
+				const doc = generateMultiTargetSARIFReport(targets, { automationId });
+				expect(validateSarif(doc)).toEqual([]);
+				const ids = JSON.parse(doc).runs.map((r: any) => r.automationDetails.id);
+				expect(ids).toEqual(expected);
+				const categories = ids.map(githubCategory);
+				expect(new Set(categories).size).toBe(targets.length);
+			}
+		});
+
+		it('lets per-target times override option times', () => {
+			const doc = generateMultiTargetSARIFReport(
+				[
+					{ targetUrl: 'https://a.example', results: mockResults, startTimeUtc: '2026-03-01T10:00:00Z', endTimeUtc: new Date('2026-03-01T10:05:00Z') },
+					{ targetUrl: 'https://b.example', results: mockResults },
+				],
+				{ startTimeUtc: '2026-03-01T09:00:00Z', endTimeUtc: '2026-03-01T11:00:00Z' },
+			);
+			expect(validateSarif(doc)).toEqual([]);
+			const [a, b] = JSON.parse(doc).runs.map((r: any) => r.invocations[0]);
+			expect([a.startTimeUtc, a.endTimeUtc]).toEqual(['2026-03-01T10:00:00.000Z', '2026-03-01T10:05:00.000Z']);
+			expect([b.startTimeUtc, b.endTimeUtc]).toEqual(['2026-03-01T09:00:00.000Z', '2026-03-01T11:00:00.000Z']);
 		});
 
 		it('matches the single-target report for a single target', () => {
