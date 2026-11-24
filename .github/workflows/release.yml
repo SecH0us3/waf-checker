@@ -24,6 +24,20 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
           echo "Detected version: $VERSION"
 
+      # A release bump made by hand can leave the core version (and the SARIF
+      # tool version generated from it) behind the CLI's. Refuse to tag then;
+      # `npm run version:bump -- <version>` updates all of them together.
+      - name: Verify package versions are in sync
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          CORE_VERSION=$(jq -r .version packages/core/package.json)
+          if [ "$CORE_VERSION" != "$VERSION" ]; then
+            echo "::error::packages/core/package.json ($CORE_VERSION) != packages/cli/package.json ($VERSION). Bump with: npm run version:bump -- <version>"
+            exit 1
+          fi
+          node packages/core/scripts/sync-version.mjs --check
+
       - name: Check if Git Tag exists
         id: check_tag
         run: |

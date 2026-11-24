@@ -46,6 +46,7 @@ NPM Workspaces monorepo (`packages/*`):
 - **Run Worker locally**: `npm run dev:worker` (root)
 - **Run tests** (builds first via `pretest`): `npm test`
 - **Deploy**: `npm run deploy --workspace=packages/worker`
+- **Release bump**: `npm run version:bump -- <version>` (root) — sets the core and CLI `package.json` + lockfile and regenerates `packages/core/src/version.ts`; merging to `main` tags and publishes the release. Never edit `version.ts` by hand (`npm run version:check` verifies it).
 - **Docker e2e**: `npm run test:e2e`
 
 ---
