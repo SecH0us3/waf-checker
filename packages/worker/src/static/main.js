@@ -2176,7 +2176,7 @@ async function downloadSarifReport(body, fallbackFilename) {
 }
 
 function exportAsSARIF(session) {
-	const body = { targetUrl: session.url, results: session.results };
+	const body = { targetUrl: session.url, results: session.results, startTimeUtc: session.startTime, endTimeUtc: session.endTime };
 	if (latestReverseEngineering && latestReverseEngineering.url === session.url) {
 		body.reverseEngineering = latestReverseEngineering.report;
 	}
@@ -2943,6 +2943,7 @@ async function startClientSideBatchProcessing() {
 		// Update current URL display
 		updateBatchProgress(url, i, urls.length);
 
+		const urlStartTime = new Date().toISOString();
 		try {
 			// Test single URL
 			const result = await testSingleUrlClient(url, config);
@@ -2952,6 +2953,7 @@ async function startClientSideBatchProcessing() {
 					url: url,
 					success: true,
 					results: result,
+					startTime: urlStartTime,
 					timestamp: new Date().toISOString(),
 					totalTests: result.length,
 					bypassedTests: result.filter((r) => r.status === 200 || r.status === '200').length,
@@ -3191,7 +3193,7 @@ function exportBatchResults(format = 'json') {
 		// One run per scanned URL; URLs whose scan failed have no results to report.
 		const targets = currentBatchJob.results
 			.filter((r) => r.success && Array.isArray(r.results))
-			.map((r) => ({ targetUrl: r.url, results: r.results }));
+			.map((r) => ({ targetUrl: r.url, results: r.results, startTimeUtc: r.startTime, endTimeUtc: r.timestamp }));
 		if (targets.length === 0) {
 			alert('No successful batch results to export');
 			return;

@@ -77,9 +77,35 @@ describe('POST /api/report/sarif', () => {
 		expectSarif210(doc, 3);
 		expect(doc.runs.map((r: any) => r.results.length)).toEqual([1, 0, 0]);
 		expect(doc.runs.map((r: any) => r.automationDetails?.id)).toEqual([
-			'waf-checker/a.example.com',
-			'waf-checker/b.example.com',
-			'waf-checker/c.example.com',
+			'waf-checker/a.example.com/',
+			'waf-checker/b.example.com/',
+			'waf-checker/c.example.com/',
+		]);
+	});
+
+	it('uses the supplied scan times for the invocation', async () => {
+		const single = await post({
+			targetUrl: 'https://a.example.com',
+			results: [bypass],
+			startTimeUtc: '2026-11-24T10:00:00.000Z',
+			endTimeUtc: '2026-11-24T10:05:00.000Z',
+		});
+		expect(single.status).toBe(200);
+		const singleDoc: any = await single.json();
+		expect(singleDoc.runs[0].invocations[0].startTimeUtc).toBe('2026-11-24T10:00:00.000Z');
+		expect(singleDoc.runs[0].invocations[0].endTimeUtc).toBe('2026-11-24T10:05:00.000Z');
+
+		const multi = await post({
+			targets: [
+				{ targetUrl: 'https://a.example.com', results: [], startTimeUtc: '2026-11-24T10:00:00.000Z', endTimeUtc: '2026-11-24T10:01:00.000Z' },
+				{ targetUrl: 'https://b.example.com', results: [], startTimeUtc: '2026-11-24T10:02:00.000Z', endTimeUtc: '2026-11-24T10:03:00.000Z' },
+			],
+		});
+		expect(multi.status).toBe(200);
+		const multiDoc: any = await multi.json();
+		expect(multiDoc.runs.map((r: any) => [r.invocations[0].startTimeUtc, r.invocations[0].endTimeUtc])).toEqual([
+			['2026-11-24T10:00:00.000Z', '2026-11-24T10:01:00.000Z'],
+			['2026-11-24T10:02:00.000Z', '2026-11-24T10:03:00.000Z'],
 		]);
 	});
 
@@ -134,6 +160,10 @@ describe('POST /api/report/sarif', () => {
 			['bypass info without hits', { results: [{ ...bypass, ipHeaderBypass: { bypassed: true } }] }],
 			['targetUrl not a string', { targetUrl: 42, results: [bypass] }],
 			['reverseEngineering not an object', { results: [bypass], reverseEngineering: 'x' }],
+			['unparseable startTimeUtc', { results: [bypass], startTimeUtc: 'yesterday-ish' }],
+			['numeric endTimeUtc', { results: [bypass], endTimeUtc: 1700000000000 }],
+			['start after end', { results: [bypass], startTimeUtc: '2026-11-24T11:00:00Z', endTimeUtc: '2026-11-24T10:00:00Z' }],
+			['bad per-target time', { targets: [{ targetUrl: 'https://a.example.com', results: [], startTimeUtc: 'nope' }] }],
 			['targets not an array', { targets: {} }],
 			['empty targets', { targets: [] }],
 			['target not an object', { targets: ['https://a.example.com'] }],

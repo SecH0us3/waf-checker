@@ -14,8 +14,11 @@ import {
  * report, but are still validated with isValidTargetUrl like every other
  * URL-accepting endpoint.
  *
- * Body: { targetUrl?, results, reverseEngineering? }  (one run)
- *    or { targets: [{ targetUrl, results, reverseEngineering? }, ...] }  (one run per target)
+ * Body: { targetUrl?, results, reverseEngineering?, startTimeUtc?, endTimeUtc? }  (one run)
+ *    or { targets: [{ targetUrl, results, reverseEngineering?, startTimeUtc?, endTimeUtc? }, ...] }  (one run per target)
+ *
+ * startTimeUtc / endTimeUtc are the real scan start / end (ISO 8601); when
+ * omitted the core falls back to the report generation time.
  */
 
 /** Largest accepted request body. A full single-target audit is well under 1 MB. */
@@ -121,6 +124,24 @@ function validateReverseEngineering(value: unknown, where: string): any {
 	return value;
 }
 
+/** Optional scan time; must be an ISO 8601 date-time string that Date can parse. */
+function validateTime(value: unknown, where: string): string | undefined {
+	if (value === undefined || value === null) return undefined;
+	if (typeof value !== 'string' || value.length > 64 || Number.isNaN(Date.parse(value))) {
+		throw new RequestError(400, `${where} must be an ISO 8601 date-time string`);
+	}
+	return value;
+}
+
+function validateTimes(source: Record<string, unknown>, where: string): { startTimeUtc?: string; endTimeUtc?: string } {
+	const startTimeUtc = validateTime(source.startTimeUtc, `${where}: startTimeUtc`);
+	const endTimeUtc = validateTime(source.endTimeUtc, `${where}: endTimeUtc`);
+	if (startTimeUtc && endTimeUtc && Date.parse(startTimeUtc) > Date.parse(endTimeUtc)) {
+		throw new RequestError(400, `${where}: startTimeUtc must not be after endTimeUtc`);
+	}
+	return { ...(startTimeUtc ? { startTimeUtc } : {}), ...(endTimeUtc ? { endTimeUtc } : {}) };
+}
+
 interface ParsedSarifRequest {
 	targets: SarifTarget[];
 	/** Single-target form: emit through generateSARIFReport, where targetUrl may be absent. */
@@ -140,8 +161,9 @@ export function parseSarifRequestBody(body: unknown): ParsedSarifRequest {
 		const results = validateResults(body.results, 'body');
 		if (results.length > MAX_SARIF_RESULTS) throw new RequestError(400, `Too many results (limit ${MAX_SARIF_RESULTS})`);
 		const reverseEngineering = validateReverseEngineering(body.reverseEngineering, 'body');
+		const times = validateTimes(body, 'body');
 		return {
-			targets: [{ targetUrl: targetUrl ?? '', results, ...(reverseEngineering ? { reverseEngineering } : {}) }],
+			targets: [{ targetUrl: targetUrl ?? '', results, ...(reverseEngineering ? { reverseEngineering } : {}), ...times }],
 			single: { targetUrl },
 		};
 	}
@@ -159,7 +181,7 @@ export function parseSarifRequestBody(body: unknown): ParsedSarifRequest {
 		total += results.length;
 		if (total > MAX_SARIF_RESULTS) throw new RequestError(400, `Too many results (limit ${MAX_SARIF_RESULTS})`);
 		const reverseEngineering = validateReverseEngineering(target.reverseEngineering, where);
-		return { targetUrl, results, ...(reverseEngineering ? { reverseEngineering } : {}) };
+		return { targetUrl, results, ...(reverseEngineering ? { reverseEngineering } : {}), ...validateTimes(target, where) };
 	});
 	return { targets };
 }
@@ -204,9 +226,12 @@ export async function handleSarifReport(request: Request): Promise<Response> {
 
 	let sarif: string;
 	try {
-		sarif = parsed.single
-			? generateSARIFReport(parsed.targets[0].results, parsed.single.targetUrl, parsed.targets[0].reverseEngineering)
-			: generateMultiTargetSARIFReport(parsed.targets);
+		if (parsed.single) {
+			const { results, reverseEngineering, startTimeUtc, endTimeUtc } = parsed.targets[0];
+			sarif = generateSARIFReport(results, parsed.single.targetUrl, reverseEngineering, { startTimeUtc, endTimeUtc });
+		} else {
+			sarif = generateMultiTargetSARIFReport(parsed.targets);
+		}
 	} catch (err) {
 		console.error('SARIF generation failed:', err);
 		return jsonError(500, 'Failed to generate SARIF report');

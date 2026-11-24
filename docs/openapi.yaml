@@ -434,6 +434,14 @@ components:
           type: object
           description: Optional report from /api/reverse-engineer, stored in the run's properties.
           additionalProperties: true
+        startTimeUtc:
+          type: string
+          format: date-time
+          description: Scan start, written to invocations[].startTimeUtc. Defaults to the report generation time.
+        endTimeUtc:
+          type: string
+          format: date-time
+          description: Scan end, written to invocations[].endTimeUtc. Defaults to the report generation time.
 
     SarifTarget:
       type: object
@@ -451,6 +459,14 @@ components:
         reverseEngineering:
           type: object
           additionalProperties: true
+        startTimeUtc:
+          type: string
+          format: date-time
+          description: Scan start, written to invocations[].startTimeUtc. Defaults to the report generation time.
+        endTimeUtc:
+          type: string
+          format: date-time
+          description: Scan end, written to invocations[].endTimeUtc. Defaults to the report generation time.
 
     SarifMultiTargetRequest:
       type: object
@@ -479,7 +495,7 @@ components:
           const: '2.1.0'
         runs:
           type: array
-          description: One run per target
+          description: One run per target; runs[].automationDetails.id is `waf-checker/<host>/`
           items:
             type: object
             additionalProperties: true
