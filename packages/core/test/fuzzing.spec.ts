@@ -3,7 +3,9 @@ import fc from 'fast-check';
 import { isValidTargetUrl } from '../src/utils/security';
 import { PayloadEncoder, WAFBypasses } from '../src/encoding';
 import { substitutePayload, processCustomHeaders, randomUppercase } from '../src/utils/payload-utils';
-import { generateSARIFReport } from '../src/reports/sarif';
+import { generateSARIFReport, generateMultiTargetSARIFReport } from '../src/reports/sarif';
+import { validateSarif } from './fixtures/sarif-validator';
+import { createHash } from 'node:crypto';
 import { calculateAuditStats, generateJSONReport } from '../src/reports';
 
 describe('Property-Based & Fuzz Testing (fast-check)', () => {
@@ -141,6 +143,19 @@ describe('Property-Based & Fuzz Testing (fast-check)', () => {
 	});
 
 	describe('Reports & Statistics Invariants', () => {
+		it('SARIF partialFingerprints are SHA-256 of category/method/payload/host for any input', () => {
+			fc.assert(
+				fc.property(fc.string({ unit: 'grapheme' }), fc.string({ unit: 'grapheme', maxLength: 300 }), (category, payload) => {
+					const doc = JSON.parse(
+						generateSARIFReport([{ category, payload, method: 'post', status: 200, responseTime: 1 }], 'https://Example.com/p'),
+					);
+					const expected = createHash('sha256').update([category, 'POST', payload, 'example.com'].join('\0')).digest('hex');
+					expect(doc.runs[0].results[0].partialFingerprints['wafCheckerFinding/v1']).toBe(expected);
+				}),
+				{ numRuns: 200 },
+			);
+		});
+
 		it('should calculate stats without NaN or infinite values for any combination of results', () => {
 			const checkResultArbitrary = fc.array(
 				fc.record({
@@ -189,6 +204,16 @@ describe('Property-Based & Fuzz Testing (fast-check)', () => {
 					expect(parsedSarif.version).toBe('2.1.0');
 					expect(Array.isArray(parsedSarif.runs)).toBe(true);
 					expect(parsedSarif.runs[0].tool.driver.name).toBe('WAF-Checker');
+					expect(validateSarif(parsedSarif)).toEqual([]);
+					for (const res of parsedSarif.runs[0].results) {
+						expect(parsedSarif.runs[0].tool.driver.rules[res.ruleIndex].id).toBe(res.ruleId);
+					}
+
+					const multi = generateMultiTargetSARIFReport([
+						{ targetUrl: 'https://a.example', results: results as any },
+						{ targetUrl: 'https://b.example:8443/x', results: results as any },
+					]);
+					expect(validateSarif(multi)).toEqual([]);
 
 					const jsonReport = generateJSONReport(results as any, 'https://example.com');
 					expect(() => JSON.parse(jsonReport)).not.toThrow();
