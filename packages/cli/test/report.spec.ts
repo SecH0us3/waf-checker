@@ -175,6 +175,17 @@ describe('Report Module', () => {
 				expect(targets[1]).not.toHaveProperty('endTimeUtc');
 			});
 
+			it('should carry each target\'s real scan times into its run invocation', () => {
+				const doc = writeBatchSarif([
+					{ ...detailedBatch[0], startTimeUtc: '2026-11-24T10:00:00.000Z', endTimeUtc: '2026-11-24T10:00:05.000Z' },
+					{ ...detailedBatch[1], startTimeUtc: '2026-11-24T10:00:01.000Z', endTimeUtc: '2026-11-24T10:00:09.000Z' },
+				]);
+				expect(doc.runs[0].invocations[0].startTimeUtc).toBe('2026-11-24T10:00:00.000Z');
+				expect(doc.runs[0].invocations[0].endTimeUtc).toBe('2026-11-24T10:00:05.000Z');
+				expect(doc.runs[1].invocations[0].startTimeUtc).toBe('2026-11-24T10:00:01.000Z');
+				expect(doc.runs[1].invocations[0].endTimeUtc).toBe('2026-11-24T10:00:09.000Z');
+			});
+
 			it('should strip per-payload results and scan times from batch summaries', () => {
 				const [summary] = toBatchSummaries([
 					{ ...detailedBatch[0], startTimeUtc: '2026-11-24T10:00:00.000Z', endTimeUtc: '2026-11-24T10:00:05.000Z' } as any,
