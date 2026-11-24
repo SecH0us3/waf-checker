@@ -20,8 +20,8 @@ NPM Workspaces monorepo (`packages/*`):
 ### `packages/core` — shared audit library (`@waf-checker/core`)
 - `packages/core/src/check.ts` — Main check execution logic.
 - `packages/core/src/payloads.ts`, `packages/core/src/payloads-data/` — Base attack payloads and categories (data in `payloads-data/base.ts`).
-- `packages/core/src/advanced-payloads.ts` — Advanced evasion techniques and `WAF_BYPASS_PAYLOADS`.
-- `packages/core/src/waf-detection.ts`, `packages/core/src/waf-signatures.ts` — WAF fingerprinting and vendor signatures.
+- `packages/core/src/advanced-payloads.ts` — Advanced evasion techniques (`ADVANCED_PAYLOADS`, `generateWAFSpecificPayloads`) and the `wafBypassCandidates` switch for WAF-specific bypasses.
+- `packages/core/src/waf-detection.ts` — WAF fingerprinting logic; `packages/core/src/waf-signatures.ts` — vendor signatures (`WAF_SIGNATURES`).
 - `packages/core/src/encoding.ts` — Payload obfuscation/encoding utilities.
 - `packages/core/src/http-manipulation.ts` — HTTP protocol tampering (parameter pollution, verb tampering).
 - `packages/core/src/utils/security.ts` — SSRF protection (`isValidTargetUrl`); `packages/core/src/utils/payload-utils.ts` — payload helpers.
@@ -74,8 +74,8 @@ if (url && !isValidTargetUrl(url)) {
 
 ### 🔍 WAF Detection
 When adding support for a new WAF:
-1. Update `packages/core/src/waf-detection.ts` with relevant header signatures or body patterns.
-2. Update the `WAF_BYPASS_PAYLOADS` in `packages/core/src/advanced-payloads.ts` if specific bypasses are known.
+1. Add the vendor's signatures to `WAF_SIGNATURES` in `packages/core/src/waf-signatures.ts`.
+2. Add a `WAFBypasses` candidate generator in `packages/core/src/encoding.ts` and a case in `wafBypassCandidates` in `packages/core/src/advanced-payloads.ts`.
 
 ### 🌐 Frontend
 The frontend is a single-page application. Update `packages/worker/src/static/main.js` for UI logic and `packages/worker/src/static/index.html` for layout changes.
