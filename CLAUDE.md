@@ -6,38 +6,34 @@ This file contains the architecture, file locations, build commands, and coding 
 
 ## 📂 Project Structure
 
-### Server-side (Cloudflare Worker in TypeScript)
+NPM Workspaces monorepo (`packages/*`):
 
-All backend source files are located in `app/src/`:
+### `packages/core` — shared audit library (`@waf-checker/core`)
+- `packages/core/src/check.ts` — Main check execution logic.
+- `packages/core/src/payloads.ts`, `packages/core/src/payloads-data/` — Base attack payloads and categories (data in `payloads-data/base.ts`).
+- `packages/core/src/advanced-payloads.ts` — Advanced evasion techniques and `WAF_BYPASS_PAYLOADS`.
+- `packages/core/src/waf-detection.ts`, `packages/core/src/waf-signatures.ts` — WAF fingerprinting and vendor signatures.
+- `packages/core/src/encoding.ts` — Payload obfuscation/encoding utilities.
+- `packages/core/src/http-manipulation.ts` — HTTP protocol tampering (parameter pollution, verb tampering).
+- `packages/core/src/utils/security.ts` — SSRF protection (`isValidTargetUrl`); `packages/core/src/utils/payload-utils.ts` — payload helpers.
+- `packages/core/src/reports/` — Report formats (SARIF, JUnit, diff).
+- `packages/core/src/virtual-patch/` — Virtual-patch rule generators (nginx, ModSecurity, Cloudflare, AWS, etc.).
+- `packages/core/src/reverse-engineering/` — WAF rule/limit probing (anomaly score, body limit, rate limit, CRS rules).
+- Tests: `packages/core/test/`.
 
-- **Entry Point & Router**:
-  - [app/src/api.ts](app/src/api.ts) — Receives all incoming HTTP requests, handles routing, and processes query parameters.
-- **API Request Handlers**:
-  - [app/src/handlers/check.ts](app/src/handlers/check.ts) — Main handler for checking payloads against target WAFs.
-  - [app/src/handlers/waf-detect.ts](app/src/handlers/waf-detect.ts) — Handler for detecting the target WAF type.
-  - [app/src/handlers/http-manip.ts](app/src/handlers/http-manip.ts) — Handler for testing HTTP protocol manipulations.
-- **Core Logic & Business Logic**:
-  - [app/src/payloads.ts](app/src/payloads.ts) — Base attack payloads and categories (SQLi, XSS, Path Traversal, etc.).
-  - [app/src/advanced-payloads.ts](app/src/advanced-payloads.ts) — Advanced WAF evasion techniques (comment injection, double encoding, etc.).
-  - [app/src/waf-detection.ts](app/src/waf-detection.ts) — Fingerprinting logic and signature mapping for different WAF vendors.
-  - [app/src/encoding.ts](app/src/encoding.ts) — Obfuscation and encoding routines (URL, Hex, Base64, Unicode).
-  - [app/src/http-manipulation.ts](app/src/http-manipulation.ts) — HTTP protocol tampering logic (Parameter Pollution, Verb Tampering).
-- **Utilities**:
-  - [app/src/utils/security.ts](app/src/utils/security.ts) — Critical security utilities, specifically SSRF validation.
-  - [app/src/utils/payload-utils.ts](app/src/utils/payload-utils.ts) — Helper functions for manipulating payload arrays.
+### `packages/worker` — Cloudflare Worker (Web UI + API)
+- `packages/worker/src/api.ts` — Entry point and router.
+- `packages/worker/src/handlers/` — `check.ts`, `waf-detect.ts`, `http-manip.ts`, `schedule.ts` request handlers.
+- `packages/worker/src/services/` — `scan.ts`, `monitor.ts`, `email.ts`, `ownership.ts`, `rate-limiter.ts` (scheduled monitoring, KV, email).
+- `packages/worker/src/static/` — Frontend: `index.html`, `main.js`, `style.css` (served via `env.ASSETS`).
+- Tests: `packages/worker/test/`.
 
-### Client-side (Static Assets)
+### `packages/cli` — Node.js CLI
+- `packages/cli/src/index.ts` — CLI entry; `packages/cli/src/report.ts`, `packages/cli/src/reports/` — HTML/Markdown reports.
 
-The frontend is served from `app/src/static/`:
-
-- [app/src/static/index.html](app/src/static/index.html) — The Single Page Application (SPA) HTML layout.
-- [app/src/static/main.js](app/src/static/main.js) — Frontend logic (initiating scans, rendering charts, exporting reports).
-- [app/src/static/style.css](app/src/static/style.css) — Custom stylesheets including Light/Dark mode transitions.
-
-### Tests & Configurations
-
-- [app/test/](app/test/) — Unit and integration tests using Vitest.
-- [wrangler.toml](wrangler.toml) — Global Wrangler configuration (run locally from the project root).
+### Config
+- `wrangler.toml` (root) and `packages/worker/wrangler.toml` — both point at the worker entry. `npm run dev:worker` / `npm run deploy` (in `packages/worker`) use `packages/worker/wrangler.toml`; running `npx wrangler` from the repo root uses the root one.
+- `vitest.workspace.ts`, `scripts/` (e2e, perf, schedule simulation), `docs/`.
 
 ---
 
@@ -46,37 +42,21 @@ The frontend is served from `app/src/static/`:
 > [!IMPORTANT]
 > When running shell commands, always prefix them with **`rtk`** (e.g., `rtk npm test`) to optimize token consumption and filter terminal output.
 
-- **Run Server Locally**:
-  ```bash
-  npx wrangler dev
-  # or using rtk in terminal:
-  rtk npx wrangler dev
-  ```
-  *(Run this from the project root directory)*
-
-- **Run Tests**:
-  ```bash
-  cd app && npm test
-  # or using rtk:
-  rtk npm test -- --run
-  ```
-
-- **Deploy to Cloudflare**:
-  ```bash
-  cd app && npm run deploy
-  # or using rtk:
-  rtk npm run deploy
-  ```
+- **Install & build** (core + CLI): `npm install && npm run build`
+- **Run Worker locally**: `npm run dev:worker` (root)
+- **Run tests** (builds first via `pretest`): `npm test`
+- **Deploy**: `npm run deploy --workspace=packages/worker`
+- **Docker e2e**: `npm run test:e2e`
 
 ---
 
 ## 🛡️ Coding Guidelines & Rules
 
 ### 1. SSRF Protection (Mandatory)
-Any endpoint that accepts a target URL **MUST** validate it using `isValidTargetUrl` from [app/src/utils/security.ts](app/src/utils/security.ts). This prevents the Cloudflare Worker from being used as an SSRF proxy to scan internal networks or local services.
+Any endpoint that accepts a target URL **MUST** validate it using `isValidTargetUrl` from [packages/core/src/utils/security.ts](packages/core/src/utils/security.ts). This prevents the Cloudflare Worker from being used as an SSRF proxy to scan internal networks or local services.
 
 ```typescript
-import { isValidTargetUrl } from './utils/security';
+import { isValidTargetUrl } from '@waf-checker/core';
 
 if (url && !isValidTargetUrl(url)) {
     return new Response(JSON.stringify({ error: 'Invalid URL or restricted IP' }), { status: 400 });
@@ -84,23 +64,24 @@ if (url && !isValidTargetUrl(url)) {
 ```
 
 ### 2. Payload Management
-- **Base Payloads**: Add new ones to [app/src/payloads.ts](app/src/payloads.ts) with correct injection types (`ParamCheck`, `FileCheck`, or `Header`).
-- **Evasion Payloads**: Add bypasses to [app/src/advanced-payloads.ts](app/src/advanced-payloads.ts).
+- **Base Payloads**: Add new ones to [packages/core/src/payloads.ts](packages/core/src/payloads.ts) with correct injection types (`ParamCheck`, `FileCheck`, or `Header`).
+- **Evasion Payloads**: Add bypasses to [packages/core/src/advanced-payloads.ts](packages/core/src/advanced-payloads.ts).
 
 ### 3. WAF Detection Signatures
 When adding a new WAF:
-1. Update [app/src/waf-detection.ts](app/src/waf-detection.ts) with new header signatures.
-2. Add specific evasion techniques to `WAF_BYPASS_PAYLOADS` in [app/src/advanced-payloads.ts](app/src/advanced-payloads.ts).
+1. Update [packages/core/src/waf-detection.ts](packages/core/src/waf-detection.ts) with new header signatures.
+2. Add specific evasion techniques to `WAF_BYPASS_PAYLOADS` in [packages/core/src/advanced-payloads.ts](packages/core/src/advanced-payloads.ts).
 
 ### 4. Verification Before Push
 Before pushing your changes:
 1. Verify SSRF validation in handlers:
-   ```bash
-   rtk grep "isValidTargetUrl" app/src/handlers/*.ts
+      ```bash
+   rtk grep "isValidTargetUrl" packages/worker/src/handlers/*.ts packages/worker/src/api.ts
    ```
+   (`handlers/check.ts` only re-exports core handlers; its URLs are validated in `api.ts`.)
 2. Run the test suite:
    ```bash
-   rtk npm test -- --run
+   rtk npm test
    ```
 
 ### 5. Git Branching Policy

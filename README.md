@@ -89,9 +89,9 @@ SQL Injection, XSS, Command Injection, Path Traversal, SSRF, Local File Inclusio
 
 The project is structured as an NPM Workspaces monorepo:
 
-- [**`packages/core/`**](file:///Users/alex/src/waf-checker/packages/core): The core security testing library, payloads definition, WAF fingerprinting signatures, and obfuscation encoders.
-- [**`packages/worker/`**](file:///Users/alex/src/waf-checker/packages/worker): Cloudflare Worker package serving the static HTML/JS Web UI and JSON API endpoints.
-- [**`packages/cli/`**](file:///Users/alex/src/waf-checker/packages/cli): Node.js command-line interface tool for executing audits directly from your terminal.
+- [**`packages/core/`**](packages/core): The core security testing library, payloads definition, WAF fingerprinting signatures, and obfuscation encoders.
+- [**`packages/worker/`**](packages/worker): Cloudflare Worker package serving the static HTML/JS Web UI and JSON API endpoints.
+- [**`packages/cli/`**](packages/cli): Node.js command-line interface tool for executing audits directly from your terminal.
 
 ---
 
@@ -120,7 +120,7 @@ The Web UI will be accessible at `http://localhost:8787` (or another port if 878
 
 To deploy the Worker to Cloudflare:
 ```bash
-npx wrangler deploy --workspace=packages/worker
+npm run deploy --workspace=packages/worker
 ```
 
 The Worker needs the **Workers Paid** plan: scan and audit pages are sized for its 10,000 subrequests per request (`[limits] subrequests` in `wrangler.toml`, `WORKER_SUBREQUEST_LIMIT` in `packages/core/src/check.ts`). The Free plan allows only 50 external subrequests per request: one scan page with the User-Agent bypass test (on by default in the UI) or with redirects followed goes past that.
