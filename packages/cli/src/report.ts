@@ -39,14 +39,17 @@ export interface BatchResult {
 	 * (SARIF) can be built; stripped from summary formats (JSON, CSV, HTML, Markdown).
 	 */
 	results?: CheckResult[];
+	/** When this target's scan started / finished (ISO 8601 UTC); carried into its SARIF run. */
+	startTimeUtc?: string;
+	endTimeUtc?: string;
 }
 
 /**
- * Drop the per-payload `results` from batch entries, leaving the summary shape
+ * Drop the per-payload `results` and scan timestamps from batch entries, leaving the summary shape
  * that the JSON batch report and `batch --json` have always emitted.
  */
 export function toBatchSummaries(results: BatchResult[]): BatchResult[] {
-	return results.map(({ results: _details, ...summary }) => summary);
+	return results.map(({ results: _details, startTimeUtc: _start, endTimeUtc: _end, ...summary }) => summary);
 }
 
 /**
@@ -57,7 +60,12 @@ export function toBatchSummaries(results: BatchResult[]): BatchResult[] {
 export function toSarifTargets(results: BatchResult[]): SarifTarget[] {
 	return results
 		.filter((r) => r.success && Array.isArray(r.results))
-		.map((r) => ({ targetUrl: r.url, results: r.results as AuditResultItem[] }));
+		.map((r) => ({
+			targetUrl: r.url,
+			results: r.results as AuditResultItem[],
+			...(r.startTimeUtc ? { startTimeUtc: r.startTimeUtc } : {}),
+			...(r.endTimeUtc ? { endTimeUtc: r.endTimeUtc } : {}),
+		}));
 }
 
 /**

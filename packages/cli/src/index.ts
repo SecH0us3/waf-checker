@@ -785,6 +785,7 @@ batchCmd
 							console.log(`[${++completed}/${totalValidUrls}] Scanning ${redactUrl(url)}...`);
 						}
 
+						const startTimeUtc = new Date().toISOString();
 						const res = await handleApiCheckFiltered(
 							url,
 							0,
@@ -815,6 +816,8 @@ batchCmd
 							bypassed: bypassed.length,
 							bypassRate: res.length ? Math.round(bypassed.length / res.length * 100) : 0,
 							results: res,
+							startTimeUtc,
+							endTimeUtc: new Date().toISOString(),
 						});
 					} catch (err: any) {
 						if (!options.json && !isQuiet) {

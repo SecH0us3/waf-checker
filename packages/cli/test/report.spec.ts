@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
-import { deduceFormat, writeReport } from '../src/report';
+import { deduceFormat, writeReport, toSarifTargets, toBatchSummaries } from '../src/report';
 
 vi.mock('fs', async () => {
 	const actual = await vi.importActual<typeof import('fs')>('fs');
@@ -154,6 +154,32 @@ describe('Report Module', () => {
 			it('should leave failed targets out instead of emitting an empty run', () => {
 				const doc = writeBatchSarif(detailedBatch);
 				expect(JSON.stringify(doc)).not.toContain('down.example.net');
+			});
+
+			it('should map scanned targets to SARIF targets with their real scan times', () => {
+				const timed = [
+					{ ...detailedBatch[0], startTimeUtc: '2026-11-24T10:00:00.000Z', endTimeUtc: '2026-11-24T10:00:05.000Z' },
+					detailedBatch[1],
+					detailedBatch[2],
+				];
+				const targets = toSarifTargets(timed as any);
+				expect(targets).toHaveLength(2);
+				expect(targets[0]).toEqual({
+					targetUrl: 'https://a.example.com/',
+					results: detailedBatch[0].results,
+					startTimeUtc: '2026-11-24T10:00:00.000Z',
+					endTimeUtc: '2026-11-24T10:00:05.000Z',
+				});
+				// No invented timestamps when the scan time is unknown
+				expect(targets[1]).not.toHaveProperty('startTimeUtc');
+				expect(targets[1]).not.toHaveProperty('endTimeUtc');
+			});
+
+			it('should strip per-payload results and scan times from batch summaries', () => {
+				const [summary] = toBatchSummaries([
+					{ ...detailedBatch[0], startTimeUtc: '2026-11-24T10:00:00.000Z', endTimeUtc: '2026-11-24T10:00:05.000Z' } as any,
+				]);
+				expect(summary).toEqual({ url: 'https://a.example.com/', success: true, total: 2, blocked: 1, bypassed: 1, bypassRate: 50 });
 			});
 
 			it('should keep a target with no bypasses as a run with no results', () => {

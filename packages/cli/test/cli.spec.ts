@@ -909,6 +909,8 @@ describe('CLI Argument Processing', () => {
 			for (const entry of entries) {
 				expect(entry.success).toBe(true);
 				expect(entry.results).toHaveLength(1);
+				expect(Date.parse(entry.startTimeUtc)).not.toBeNaN();
+				expect(Date.parse(entry.endTimeUtc)).toBeGreaterThanOrEqual(Date.parse(entry.startTimeUtc));
 			}
 			expect(consoleErrorSpy).not.toHaveBeenCalledWith(expect.stringContaining('Error writing SARIF report'));
 		});
