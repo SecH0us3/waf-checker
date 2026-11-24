@@ -20,6 +20,30 @@ export function normalizeHostname(host: string): string {
 	return normalized;
 }
 
+/**
+ * Whether the hex tail of an IPv6 address that embeds an IPv4 address
+ * (`::<hex>` or `::ffff:<hex>`, e.g. `7f00:1`) falls in a blocked private /
+ * reserved IPv4 range. `hex` must already be lowercase with the prefix removed.
+ */
+function isPrivateEmbeddedIpv4Hex(hex: string): boolean {
+	if (hex.startsWith('7f')) return true; // 127.0.0.0/8
+	// 10.0.0.0/8 hex is 0a00:0000 to 0aff:ffff; normalized can be a00:0 to aff:ffff
+	if (hex.match(/^a[0-9a-f]{2}(:|$)/)) return true;
+	// 172.16.0.0/12 -> ac10:0000 to ac1f:ffff
+	if (hex.startsWith('ac') && hex.match(/^ac1[0-9a-f]/)) return true;
+	if (hex.startsWith('c0a8')) return true; // 192.168.0.0/16
+	if (hex.startsWith('a9fe')) return true; // 169.254.0.0/16
+	// 100.64.0.0/10
+	if (hex.startsWith('6440') || (hex.startsWith('64:') && hex.slice(3).match(/^[4-7]/))) return true;
+	if (hex.startsWith('c000:')) return true; // 192.0.0.0/24 covers c000:0 to c000:ff
+	if (hex === 'c000') return true;
+	// 198.18.0.0/15
+	if (hex.startsWith('c612') || hex.startsWith('c613') || hex.startsWith('c6:12') || hex.startsWith('c6:13')) return true;
+	if (hex.startsWith('c633:64') || hex.startsWith('c633:100:')) return true; // 198.51.100.0/24
+	if (hex.startsWith('cb00:71') || hex.startsWith('cb00:113:')) return true; // 203.0.113.0/24
+	return false;
+}
+
 export function isValidTargetUrl(urlString: string, options: { allowLocal?: boolean } = {}): boolean {
 	try {
 		const url = new URL(urlString);
@@ -52,85 +76,42 @@ export function isValidTargetUrl(urlString: string, options: { allowLocal?: bool
 		// Block IPv6 internal ranges
 
 		// Unique Local Address (fc00::/7)
-		if (ipv6Normalized.toLowerCase().startsWith('fc') || ipv6Normalized.toLowerCase().startsWith('fd')) {
+		if (ipv6Normalized.startsWith('fc') || ipv6Normalized.startsWith('fd')) {
 			return false;
 		}
 		// Link-Local Address (fe80::/10)
 		if (
-			ipv6Normalized.toLowerCase().startsWith('fe8') ||
-			ipv6Normalized.toLowerCase().startsWith('fe9') ||
-			ipv6Normalized.toLowerCase().startsWith('fea') ||
-			ipv6Normalized.toLowerCase().startsWith('feb')
+			ipv6Normalized.startsWith('fe8') ||
+			ipv6Normalized.startsWith('fe9') ||
+			ipv6Normalized.startsWith('fea') ||
+			ipv6Normalized.startsWith('feb')
 		) {
 			return false;
 		}
 		// Site-Local Address (fec0::/10, deprecated but still routed on some networks)
 		if (
-			ipv6Normalized.toLowerCase().startsWith('fec') ||
-			ipv6Normalized.toLowerCase().startsWith('fed') ||
-			ipv6Normalized.toLowerCase().startsWith('fee') ||
-			ipv6Normalized.toLowerCase().startsWith('fef')
+			ipv6Normalized.startsWith('fec') ||
+			ipv6Normalized.startsWith('fed') ||
+			ipv6Normalized.startsWith('fee') ||
+			ipv6Normalized.startsWith('fef')
 		) {
 			return false;
 		}
 
 
 		// Check for IPv4-compatible IPv6 (::0:0/96)
-		if (ipv6Normalized.toLowerCase().startsWith('::') && !ipv6Normalized.toLowerCase().startsWith('::ffff:') && ipv6Normalized !== '::1') {
-			const hex = ipv6Normalized.toLowerCase().replace(/^::/, '');
-
-			// e.g. ::7f00:1
-			if (hex.startsWith('7f')) return false; // 127.0.0.0/8
-
-			// 10.0.0.0/8 hex is 0a00:0000 to 0aff:ffff. Normalized can be a00:0 to a00:ffff
-if (hex.match(/^a[0-9a-f]{2}(:|$)/)) return false;
-
-			if (hex.startsWith('ac')) {
-				// 172.16.0.0/12 -> ac10:0000 to ac1f:ffff
-const match = hex.match(/^ac1[0-9a-f]/);
-				if (match) return false;
-			}
-			if (hex.startsWith('c0a8')) return false; // 192.168.0.0/16
-			if (hex.startsWith('a9fe')) return false; // 169.254.0.0/16
-
-			// Additional ranges
-			if (hex.startsWith('6440') || (hex.startsWith('64:') && hex.slice(3).match(/^[4-7]/))) return false; // 100.64.0.0/10
-
-			if (hex.startsWith('c000:')) return false; // 192.0.0.0/24 covers c000:0 to c000:ff
-			if (hex === 'c000') return false;
-
-			if (hex.startsWith('c612') || hex.startsWith('c613') || hex.startsWith('c6:12') || hex.startsWith('c6:13')) return false; // 198.18.0.0/15
-			if (hex.startsWith('c633:64') || hex.startsWith('c633:100:')) return false; // 198.51.100.0/24
-			if (hex.startsWith('cb00:71') || hex.startsWith('cb00:113:')) return false; // 203.0.113.0/24
+		if (ipv6Normalized.startsWith('::') && !ipv6Normalized.startsWith('::ffff:') && ipv6Normalized !== '::1') {
+			if (isPrivateEmbeddedIpv4Hex(ipv6Normalized.replace(/^::/, ''))) return false;
 		}
 
 		// Check for IPv4-mapped IPv6 (::ffff:0:0/96)
-		if (ipv6Normalized.toLowerCase().startsWith('::ffff:')) {
+		if (ipv6Normalized.startsWith('::ffff:')) {
 			const lastPart = ipv6Normalized.split(':').pop() || '';
 			if (lastPart.includes('.')) {
 				hostname = lastPart; // Treat it as IPv4 for the next check
-			} else {
-				const hex = ipv6Normalized.toLowerCase().replace(/^::ffff:/, '');
-				// Handle hex-encoded IPv4-mapped IPv6
-				if (hex.startsWith('7f')) return false; // 127.0.0.0/8
-if (hex.match(/^a[0-9a-f]{2}(:|$)/)) return false; // 10.0.0.0/8
-				if (hex.startsWith('ac')) {
-					// 172.16.0.0/12
-const match = hex.match(/^ac1[0-9a-f]/);
-					if (match) return false;
-				}
-				if (hex.startsWith('c0a8')) return false; // 192.168.0.0/16
-				if (hex.startsWith('a9fe')) return false; // 169.254.0.0/16
-
-				// Additional ranges
-				if (hex.startsWith('6440') || (hex.startsWith('64:') && hex.slice(3).match(/^[4-7]/))) return false; // 100.64.0.0/10
-
-				if (hex.startsWith('c000:')) return false; // 192.0.0.0/24
-				if (hex === 'c000') return false;
-
-				if (hex.startsWith('c612') || hex.startsWith('c613') || hex.startsWith('c6:12') || hex.startsWith('c6:13')) return false; // 198.18.0.0/15
-				if (hex.startsWith('c633:64') || hex.startsWith('c633:100:')) return false; // 198.51.100.0/24
-				if (hex.startsWith('cb00:71') || hex.startsWith('cb00:113:')) return false; // 203.0.113.0/24
+			} else if (isPrivateEmbeddedIpv4Hex(ipv6Normalized.replace(/^::ffff:/, ''))) {
+				// Hex-encoded IPv4-mapped IPv6
+				return false;
 			}
 		}
 

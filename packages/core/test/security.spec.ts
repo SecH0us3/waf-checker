@@ -297,3 +297,43 @@ describe('applyOriginIpOverride', () => {
 		expect(applyOriginIpOverride('not-a-url', '8.8.8.8')).toBeNull();
 	});
 });
+
+describe('isValidTargetUrl embedded IPv4 hex ranges (pinned behavior)', () => {
+    const blocked: Array<[string, string]> = [
+        ['127.0.0.0/8', '7f00:1'],
+        ['127.0.0.0/8 (other)', '7f12:3456'],
+        ['10.0.0.0/8', 'a00:1'],
+        ['10.0.0.0/8 (high)', 'aff:ffff'],
+        ['172.16.0.0/12 (low)', 'ac10:1'],
+        ['172.16.0.0/12 (high)', 'ac1f:ffff'],
+        ['192.168.0.0/16', 'c0a8:101'],
+        ['169.254.0.0/16', 'a9fe:a9fe'],
+        ['100.64.0.0/10', '6440:1'],
+        ['192.0.0.0/24', 'c000:1'],
+        ['198.18.0.0/15 (198.18)', 'c612:1'],
+        ['198.18.0.0/15 (198.19)', 'c613:1'],
+        ['198.51.100.0/24', 'c633:6401'],
+        ['203.0.113.0/24', 'cb00:7101'],
+    ];
+    const allowed: Array<[string, string]> = [
+        ['8.8.8.8', '808:808'],
+        ['1.1.1.1', '101:101'],
+        ['172.32.0.1', 'ac20:1'],
+        ['93.184.216.34', '5db8:d822'],
+    ];
+
+    for (const prefix of ['::', '::ffff:']) {
+        describe(`${prefix}<hex> form`, () => {
+            for (const [name, hex] of blocked) {
+                it(`blocks ${name} (${prefix}${hex})`, () => {
+                    expect(isValidTargetUrl(`http://[${prefix}${hex}]/`)).toBe(false);
+                });
+            }
+            for (const [name, hex] of allowed) {
+                it(`allows public ${name} (${prefix}${hex})`, () => {
+                    expect(isValidTargetUrl(`http://[${prefix}${hex}]/`)).toBe(true);
+                });
+            }
+        });
+    }
+});
