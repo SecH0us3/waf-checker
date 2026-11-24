@@ -6,6 +6,6 @@ The Worker serves the UI at `/` and exposes `/api/*` endpoints that test a user-
 
 Rules:
 - Any endpoint accepting a target URL MUST validate it with `isValidTargetUrl` from `@waf-checker/core` (`packages/core/src/utils/security.ts`).
-- Commands (from repo root): `npm install && npm run build`, `npm run dev:worker`, `npm test`, `npm run deploy --workspace=packages/worker`.
+- Commands (from repo root): `npm install && npm run build`, `npm run dev:worker`, `npm test`, `npm run deploy --workspace=packages/worker`; release bump: `npm run version:bump -- <version>` (also regenerates `packages/core/src/version.ts`, never edit it by hand).
 - Pre-push SSRF check: `grep isValidTargetUrl packages/worker/src/handlers/*.ts packages/worker/src/api.ts`.
 - Work on a separate branch; never commit directly to main.

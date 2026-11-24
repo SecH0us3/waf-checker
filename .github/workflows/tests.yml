@@ -58,6 +58,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Must run before Build: the core's prebuild regenerates version.ts, which
+      # would hide a stale committed copy.
+      - name: Check core version.ts is in sync with package.json
+        run: npm run version:check
+
       # The worker and the CLI import @waf-checker/core from its built dist/.
       - name: Build
         run: npm run build
