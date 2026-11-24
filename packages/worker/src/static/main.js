@@ -907,6 +907,8 @@ async function runReverseEngineering() {
         }
 
         const report = await response.json();
+        // Kept so a SARIF export of a scan of the same URL can embed it.
+        latestReverseEngineering = { url, report };
         renderReverseEngineering(report);
         
     } catch (e) {
@@ -2096,6 +2098,8 @@ function sortResultsTable(col, type) {
 let currentTestSession = null;
 let currentBatchJob = null;
 let batchPollInterval = null;
+// Last reverse-engineering report ({ url, report }), embedded in SARIF exports of the same URL.
+let latestReverseEngineering = null;
 
 // Enhanced reporting and analytics functions
 function showExportControls() {
@@ -2131,6 +2135,9 @@ function exportResults(format) {
 			case 'pdf':
 				exportAsHTMLReport(currentTestSession);
 				break;
+			case 'sarif':
+				exportAsSARIF(currentTestSession).catch(reportExportError);
+				break;
 			default:
 				alert('Unknown export format');
 		}
@@ -2138,6 +2145,42 @@ function exportResults(format) {
 		console.error('Export failed:', error);
 		alert('Export failed. Please check the console for details.');
 	}
+}
+
+function reportExportError(error) {
+	console.error('Export failed:', error);
+	alert(`Export failed: ${error?.message || 'please check the console for details.'}`);
+}
+
+/**
+ * POSTs results to /api/report/sarif and downloads the SARIF file it returns.
+ * The server builds the document with the same generator the CLI uses.
+ */
+async function downloadSarifReport(body, fallbackFilename) {
+	const response = await fetch('/api/report/sarif', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(body),
+	});
+	if (!response.ok) {
+		let message = `HTTP ${response.status}`;
+		try {
+			const data = await response.json();
+			if (data && data.error) message = `${data.error} (HTTP ${response.status})`;
+		} catch {}
+		throw new Error(message);
+	}
+	const content = await response.text();
+	const match = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') || '');
+	downloadFile(content, match ? match[1] : fallbackFilename, 'application/sarif+json');
+}
+
+function exportAsSARIF(session) {
+	const body = { targetUrl: session.url, results: session.results };
+	if (latestReverseEngineering && latestReverseEngineering.url === session.url) {
+		body.reverseEngineering = latestReverseEngineering.report;
+	}
+	return downloadSarifReport(body, generateFilename(session.url, 'sarif'));
 }
 
 function exportAsJSON(session, includeAnalysis) {
@@ -3055,7 +3098,7 @@ function finalizeBatchTest() {
 
 	if (startBtn) startBtn.style.display = 'inline-block';
 	if (stopBtn) stopBtn.style.display = 'none';
-	if (exportBtn) exportBtn.style.display = 'inline-block';
+	if (exportBtn) exportBtn.style.display = 'inline-flex';
 
 	// Final progress update
 	const progressText = document.getElementById('batchProgressText');
@@ -3138,9 +3181,23 @@ function displayBatchResults(job) {
 	resultsDiv.style.display = 'block';
 }
 
-function exportBatchResults() {
+function exportBatchResults(format = 'json') {
 	if (!currentBatchJob || !currentBatchJob.results) {
 		alert('No batch results to export');
+		return;
+	}
+
+	if (format === 'sarif') {
+		// One run per scanned URL; URLs whose scan failed have no results to report.
+		const targets = currentBatchJob.results
+			.filter((r) => r.success && Array.isArray(r.results))
+			.map((r) => ({ targetUrl: r.url, results: r.results }));
+		if (targets.length === 0) {
+			alert('No successful batch results to export');
+			return;
+		}
+		const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+		downloadSarifReport({ targets }, `waf-checker_batch_${timestamp}.sarif`).catch(reportExportError);
 		return;
 	}
 

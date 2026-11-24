@@ -292,6 +292,10 @@
 						<button type="button" class="btn btn-outline-danger btn-sm" onclick="exportResults('pdf')">
 							Report
 						</button>
+						<button type="button" class="btn btn-outline-secondary btn-sm" onclick="exportResults('sarif')"
+							title="SARIF 2.1.0 for GitHub Code Scanning and other SAST dashboards">
+							SARIF
+						</button>
 						<button type="button" class="btn btn-outline-info btn-sm" onclick="showAnalytics()">
 							Analytics
 						</button>
@@ -556,10 +560,15 @@
 						onclick="stopBatchTest()">
 						⏹️ Stop Test
 					</button>
-					<button type="button" id="exportBatchBtn" class="btn btn-outline-primary" style="display: none"
-						onclick="exportBatchResults()">
-						📊 Export Results
-					</button>
+					<div id="exportBatchBtn" class="btn-group" role="group" aria-label="Export batch results" style="display: none">
+						<button type="button" class="btn btn-outline-primary" onclick="exportBatchResults('json')">
+							📊 Export JSON
+						</button>
+						<button type="button" class="btn btn-outline-secondary" onclick="exportBatchResults('sarif')"
+							title="One SARIF 2.1.0 file, one run per target">
+							SARIF
+						</button>
+					</div>
 				</div>
 			</div>
 		</div>

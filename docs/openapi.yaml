@@ -169,6 +169,73 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequestError'
 
+  /api/report/sarif:
+    post:
+      summary: Export audit results as SARIF 2.1.0
+      description: |
+        Converts audit results the caller already holds into a SARIF 2.1.0 log (for GitHub Code Scanning
+        and other SAST dashboards). The endpoint makes no network requests; target URLs are only written
+        into the report, but are still validated against the SSRF policy.
+
+        Send either `{ targetUrl?, results, reverseEngineering? }` for a single run, or `{ targets }`
+        for one SARIF document with one run per target. Limits: 5 MB request body, 100 targets,
+        20000 result items in total.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/SarifSingleTargetRequest'
+                - $ref: '#/components/schemas/SarifMultiTargetRequest'
+            examples:
+              single:
+                summary: One target
+                value:
+                  targetUrl: https://example.com
+                  results:
+                    - category: SQL Injection
+                      payload: "' OR 1=1 --"
+                      method: GET
+                      status: 200
+                      responseTime: 42
+              batch:
+                summary: Several targets
+                value:
+                  targets:
+                    - targetUrl: https://a.example.com
+                      results: []
+                    - targetUrl: https://b.example.com
+                      results: []
+      responses:
+        '200':
+          description: SARIF 2.1.0 log, sent as a file download
+          headers:
+            Content-Disposition:
+              description: '`attachment; filename="waf-checker_<host>_<timestamp>.sarif"` (`batch` as the host for several targets)'
+              schema:
+                type: string
+          content:
+            application/sarif+json:
+              schema:
+                $ref: '#/components/schemas/SarifLog'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '405':
+          description: Method other than POST
+        '413':
+          description: Request body larger than 5 MB
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Request body too large (limit 5242880 bytes)
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
   /api/audit:
     get:
       summary: Single-step unified audit
@@ -349,6 +416,73 @@ components:
           type: boolean
           description: True if more result pages exist
           example: true
+
+    SarifSingleTargetRequest:
+      type: object
+      required:
+        - results
+      properties:
+        targetUrl:
+          type: string
+          description: Scanned URL, written into result locations. Must pass the SSRF policy.
+          example: https://example.com
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditResultItem'
+        reverseEngineering:
+          type: object
+          description: Optional report from /api/reverse-engineer, stored in the run's properties.
+          additionalProperties: true
+
+    SarifTarget:
+      type: object
+      required:
+        - targetUrl
+        - results
+      properties:
+        targetUrl:
+          type: string
+          example: https://a.example.com
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditResultItem'
+        reverseEngineering:
+          type: object
+          additionalProperties: true
+
+    SarifMultiTargetRequest:
+      type: object
+      required:
+        - targets
+      properties:
+        targets:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/SarifTarget'
+
+    SarifLog:
+      type: object
+      description: SARIF 2.1.0 log (https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html)
+      required:
+        - version
+        - runs
+      properties:
+        $schema:
+          type: string
+          example: https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json
+        version:
+          type: string
+          const: '2.1.0'
+        runs:
+          type: array
+          description: One run per target
+          items:
+            type: object
+            additionalProperties: true
 
     VirtualPatchOptions:
       type: object

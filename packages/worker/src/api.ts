@@ -1,6 +1,7 @@
 import { handleApiCheckFiltered, handleApiCheckWithEnvelope } from './handlers/check';
 import { handleWAFDetection } from './handlers/waf-detect';
 import { handleHTTPManipulation } from './handlers/http-manip';
+import { handleSarifReport } from './handlers/report';
 import {
 	isValidTargetUrl,
 	isValidOriginIp,
@@ -366,6 +367,9 @@ export default {
 				}),
 				{ headers: { 'content-type': 'application/json; charset=UTF-8' } },
 			);
+		}
+		if (urlObj.pathname === '/api/report/sarif') {
+			return await handleSarifReport(request);
 		}
 		if (urlObj.pathname === '/api/http-manipulation') {
 			return await handleHTTPManipulation(request);
