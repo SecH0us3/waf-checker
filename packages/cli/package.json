@@ -13,7 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "commander": "^15.0.0",
+    "commander": "^15.1.0",
     "undici": "^8.12.3"
   },
   "devDependencies": {
