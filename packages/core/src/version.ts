@@ -9,4 +9,4 @@
  * compiled with `rootDir: ./src` and consumed from dist/ by both the Worker and
  * the CLI bundle. `test/reports.spec.ts` asserts this matches package.json.
  */
-export const CORE_VERSION = '1.8.0';
+export const CORE_VERSION = '1.9.0';
