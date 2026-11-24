@@ -21,27 +21,60 @@ export function normalizeHostname(host: string): string {
 }
 
 /**
+ * Whether a dotted IPv4 address (as four octets) falls in a blocked private /
+ * loopback / reserved range. The single source of truth for both dotted IPv4
+ * hosts and IPv4 addresses embedded in IPv6 (see `isPrivateEmbeddedIpv4Hex`).
+ */
+function isPrivateIpv4Octets(octets: number[]): boolean {
+	// 10.0.0.0/8
+	if (octets[0] === 10) return true;
+	// 100.64.0.0/10 (CGNAT)
+	if (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) return true;
+	// 127.0.0.0/8 (loopback)
+	if (octets[0] === 127) return true;
+	// 169.254.0.0/16 (link-local)
+	if (octets[0] === 169 && octets[1] === 254) return true;
+	// 172.16.0.0/12
+	if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return true;
+	// 192.0.0.0/24 (IETF Protocol Assignments)
+	if (octets[0] === 192 && octets[1] === 0 && octets[2] === 0) return true;
+	// 192.0.2.0/24 (TEST-NET-1)
+	if (octets[0] === 192 && octets[1] === 0 && octets[2] === 2) return true;
+	// 192.168.0.0/16
+	if (octets[0] === 192 && octets[1] === 168) return true;
+	// 192.88.99.0/24 (6to4 relay anycast)
+	if (octets[0] === 192 && octets[1] === 88 && octets[2] === 99) return true;
+	// 198.18.0.0/15 (Benchmarking)
+	if (octets[0] === 198 && octets[1] >= 18 && octets[1] <= 19) return true;
+	// 198.51.100.0/24 (TEST-NET-2)
+	if (octets[0] === 198 && octets[1] === 51 && octets[2] === 100) return true;
+	// 203.0.113.0/24 (TEST-NET-3)
+	if (octets[0] === 203 && octets[1] === 0 && octets[2] === 113) return true;
+	// 224.0.0.0/4 (Multicast)
+	if (octets[0] >= 224 && octets[0] <= 239) return true;
+	// 240.0.0.0/4 (Reserved)
+	if (octets[0] >= 240) return true;
+	// 0.0.0.0/8 ("this" network)
+	if (octets[0] === 0) return true;
+	return false;
+}
+
+/**
  * Whether the hex tail of an IPv6 address that embeds an IPv4 address
- * (`::<hex>` or `::ffff:<hex>`, e.g. `7f00:1`) falls in a blocked private /
- * reserved IPv4 range. `hex` must already be lowercase with the prefix removed.
+ * (`::<hex>` or `::ffff:<hex>`, e.g. `7f00:1`) decodes to a blocked IPv4 range.
+ * Decodes the trailing 16-bit groups into octets and reuses
+ * `isPrivateIpv4Octets`, so hex and dotted forms cannot drift. A single group
+ * (e.g. `::ffff:0:1` tail `0:1` has two; `::7f` has one) is the low 16 bits.
+ * Unparseable tails are not treated as embedded IPv4 (return false).
  */
 function isPrivateEmbeddedIpv4Hex(hex: string): boolean {
-	if (hex.startsWith('7f')) return true; // 127.0.0.0/8
-	// 10.0.0.0/8 hex is 0a00:0000 to 0aff:ffff; normalized can be a00:0 to aff:ffff
-	if (hex.match(/^a[0-9a-f]{2}(:|$)/)) return true;
-	// 172.16.0.0/12 -> ac10:0000 to ac1f:ffff
-	if (hex.startsWith('ac') && hex.match(/^ac1[0-9a-f]/)) return true;
-	if (hex.startsWith('c0a8')) return true; // 192.168.0.0/16
-	if (hex.startsWith('a9fe')) return true; // 169.254.0.0/16
-	// 100.64.0.0/10
-	if (hex.startsWith('6440') || (hex.startsWith('64:') && hex.slice(3).match(/^[4-7]/))) return true;
-	if (hex.startsWith('c000:')) return true; // 192.0.0.0/24 covers c000:0 to c000:ff
-	if (hex === 'c000') return true;
-	// 198.18.0.0/15
-	if (hex.startsWith('c612') || hex.startsWith('c613') || hex.startsWith('c6:12') || hex.startsWith('c6:13')) return true;
-	if (hex.startsWith('c633:64') || hex.startsWith('c633:100:')) return true; // 198.51.100.0/24
-	if (hex.startsWith('cb00:71') || hex.startsWith('cb00:113:')) return true; // 203.0.113.0/24
-	return false;
+	const groups = hex.split(':');
+	if (groups.length < 1 || groups.length > 2) return false;
+	if (!groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return false;
+	const [hi, lo] = groups.length === 2 ? groups : ['0', groups[0]];
+	const h = parseInt(hi, 16);
+	const l = parseInt(lo, 16);
+	return isPrivateIpv4Octets([h >> 8, h & 0xff, l >> 8, l & 0xff]);
 }
 
 export function isValidTargetUrl(urlString: string, options: { allowLocal?: boolean } = {}): boolean {
@@ -119,38 +152,7 @@ export function isValidTargetUrl(urlString: string, options: { allowLocal?: bool
 		const ipv4Regex = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
 		const match = hostname.match(ipv4Regex);
 		if (match) {
-			const octets = match.slice(1).map(Number);
-
-			// 10.0.0.0/8
-			if (octets[0] === 10) return false;
-			// 100.64.0.0/10 (CGNAT)
-			if (octets[0] === 100 && octets[1] >= 64 && octets[1] <= 127) return false;
-			// 127.0.0.0/8 (loopback)
-			if (octets[0] === 127) return false;
-			// 169.254.0.0/16 (link-local)
-			if (octets[0] === 169 && octets[1] === 254) return false;
-			// 172.16.0.0/12
-			if (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) return false;
-			// 192.0.0.0/24 (IETF Protocol Assignments)
-			if (octets[0] === 192 && octets[1] === 0 && octets[2] === 0) return false;
-			// 192.0.2.0/24 (TEST-NET-1)
-			if (octets[0] === 192 && octets[1] === 0 && octets[2] === 2) return false;
-			// 192.168.0.0/16
-			if (octets[0] === 192 && octets[1] === 168) return false;
-			// 192.88.99.0/24 (6to4 relay anycast)
-			if (octets[0] === 192 && octets[1] === 88 && octets[2] === 99) return false;
-			// 198.18.0.0/15 (Benchmarking)
-			if (octets[0] === 198 && octets[1] >= 18 && octets[1] <= 19) return false;
-			// 198.51.100.0/24 (TEST-NET-2)
-			if (octets[0] === 198 && octets[1] === 51 && octets[2] === 100) return false;
-			// 203.0.113.0/24 (TEST-NET-3)
-			if (octets[0] === 203 && octets[1] === 0 && octets[2] === 113) return false;
-			// 224.0.0.0/4 (Multicast)
-			if (octets[0] >= 224 && octets[0] <= 239) return false;
-			// 240.0.0.0/4 (Reserved)
-			if (octets[0] >= 240) return false;
-			// 0.0.0.0/8 ("this" network)
-			if (octets[0] === 0) return false;
+			if (isPrivateIpv4Octets(match.slice(1).map(Number))) return false;
 		}
 
 		return true;

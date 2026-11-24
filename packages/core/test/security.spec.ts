@@ -337,3 +337,49 @@ describe('isValidTargetUrl embedded IPv4 hex ranges (pinned behavior)', () => {
         });
     }
 });
+
+describe('isValidTargetUrl embedded IPv4 hex: parity with dotted IPv4', () => {
+    const gaps: Array<[string, string, string]> = [
+        ['192.88.99.1 (6to4 relay)', 'c058:6301', '192.88.99.1'],
+        ['224.0.0.1 (multicast)', 'e000:1', '224.0.0.1'],
+        ['240.0.0.1 (reserved)', 'f000:1', '240.0.0.1'],
+        ['255.255.255.255', 'ffff:ffff', '255.255.255.255'],
+    ];
+    for (const prefix of ['::', '::ffff:']) {
+        for (const [name, hex] of gaps) {
+            it(`blocks ${name} (${prefix}${hex})`, () => {
+                expect(isValidTargetUrl(`http://[${prefix}${hex}]/`)).toBe(false);
+            });
+        }
+    }
+    it('blocks 0.0.0.0/8 via [::ffff:0:1]', () => {
+        expect(isValidTargetUrl('http://[::ffff:0:1]/')).toBe(false);
+        expect(isValidTargetUrl('http://[::ffff:0.0.0.1]/')).toBe(false);
+    });
+    it('keeps :: and ::1 blocked', () => {
+        expect(isValidTargetUrl('http://[::]/')).toBe(false);
+        expect(isValidTargetUrl('http://[::1]/')).toBe(false);
+    });
+
+    // BEHAVIOR CHANGE: previously the 'c000:' prefix blocked all of 192.0.0.0/16
+    // in hex form. Now only 192.0.0.0/24 and 192.0.2.0/24 are blocked, exactly
+    // like the dotted form, so 192.0.1.x and 192.0.3.x are allowed.
+    for (const prefix of ['::', '::ffff:']) {
+        it(`${prefix}c000:101 (192.0.1.1) matches dotted form (allowed)`, () => {
+            expect(isValidTargetUrl('http://192.0.1.1/')).toBe(true);
+            expect(isValidTargetUrl(`http://[${prefix}c000:101]/`)).toBe(true);
+        });
+        it(`${prefix}c000:301 (192.0.3.1) matches dotted form (allowed)`, () => {
+            expect(isValidTargetUrl('http://192.0.3.1/')).toBe(true);
+            expect(isValidTargetUrl(`http://[${prefix}c000:301]/`)).toBe(true);
+        });
+        it(`${prefix}c000:201 (192.0.2.1) still blocked`, () => {
+            expect(isValidTargetUrl(`http://[${prefix}c000:201]/`)).toBe(false);
+        });
+        for (const [dotted, hex] of [['8.8.8.8', '808:808'], ['1.1.1.1', '101:101'], ['172.32.0.1', 'ac20:1']]) {
+            it(`${prefix}${hex} (${dotted}) stays allowed`, () => {
+                expect(isValidTargetUrl(`http://[${prefix}${hex}]/`)).toBe(true);
+            });
+        }
+    }
+});
