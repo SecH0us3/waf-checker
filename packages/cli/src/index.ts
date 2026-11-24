@@ -22,7 +22,7 @@ import {
 	parseStoredReport,
 	ScanDiff,
 } from '@waf-checker/core';
-import { writeReport, deduceFormat, ReportFormat } from './report';
+import { writeReport, deduceFormat, ReportFormat, toBatchSummaries } from './report';
 
 let useColor = true;
 
@@ -714,8 +714,9 @@ batchCmd
 	.option('--padding <size>', 'Enable WAF inspection buffer padding evasion (e.g. 8kb, 16kb, 64kb, 128kb)')
 	.option('--concurrency <number>', 'Number of concurrent URLs to test', '3')
 	.option('--json', 'Output results in JSON format')
-	.option('-f, --format <format>', 'Output format for report: json, csv, html, markdown')
+	.option('-f, --format <format>', 'Output format for report: json, csv, html, markdown, sarif (one SARIF run per target)')
 	.option('-o, --output <path>', 'File path to save the report to')
+	.option('--sarif-output <path>', 'File path to save a SARIF report to (one run per target, for GitHub Code Scanning)')
 	.option('--markdown-output <path>', 'File path to save Markdown report to')
 	.option('--html-output <path>', 'File path to save HTML report to')
 	.option('--threshold <percent>', 'Minimum average protection score percentage required across all targets')
@@ -784,6 +785,7 @@ batchCmd
 							console.log(`[${++completed}/${totalValidUrls}] Scanning ${redactUrl(url)}...`);
 						}
 
+						const startTimeUtc = new Date().toISOString();
 						const res = await handleApiCheckFiltered(
 							url,
 							0,
@@ -812,7 +814,10 @@ batchCmd
 							total: res.length,
 							blocked: blocked.length,
 							bypassed: bypassed.length,
-							bypassRate: res.length ? Math.round(bypassed.length / res.length * 100) : 0
+							bypassRate: res.length ? Math.round(bypassed.length / res.length * 100) : 0,
+							results: res,
+							startTimeUtc,
+							endTimeUtc: new Date().toISOString(),
 						});
 					} catch (err: any) {
 						if (!options.json && !isQuiet) {
@@ -831,7 +836,7 @@ batchCmd
 			await Promise.all(workers);
 
 			if (options.json) {
-				console.log(JSON.stringify(batchResults, null, 2));
+				console.log(JSON.stringify(toBatchSummaries(batchResults), null, 2));
 				return;
 			}
 
@@ -856,6 +861,15 @@ batchCmd
 					console.log(colors.green(`Batch report saved to ${options.output} (${format.toUpperCase()})`));
 				} catch (err: any) {
 					console.error(colors.red(`Error writing batch report: ${err.message}`));
+				}
+			}
+
+			if (options.sarifOutput) {
+				try {
+					writeReport(options.sarifOutput, 'sarif', 'batch', file, batchResults);
+					console.log(colors.green(`Batch SARIF report saved to ${options.sarifOutput}`));
+				} catch (err: any) {
+					console.error(colors.red(`Error writing SARIF report: ${err.message}`));
 				}
 			}
 

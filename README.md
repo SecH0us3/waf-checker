@@ -219,6 +219,23 @@ node packages/cli/dist/index.js check https://example.com -o summary.md
 ```
 > The report format is deduced from the output file extension, or set explicitly with `-f, --format` (`json`, `csv`, `html`, `sarif`, `markdown`, `junit`). Each attack payload becomes a JUnit `<testcase>`; WAF bypasses are reported as `failure`s and transport/server errors as `error`s, so CI runners surface them directly.
 
+#### 📑 SARIF & GitHub Code Scanning
+SARIF 2.1.0 reports plug straight into GitHub Code Scanning (the **Security → Code scanning** tab) and any other SARIF viewer. Every WAF bypass becomes a result under a per-category rule (`WAF-SQL-INJECTION`, `WAF-XSS`, …), located at the target URL.
+
+```bash
+# Single target: one SARIF run
+node packages/cli/dist/index.js check https://example.com --sarif-output waf-results.sarif
+
+# Batch: one SARIF document with one run per target URL
+node packages/cli/dist/index.js batch targets.txt --sarif-output waf-results.sarif
+# (equivalent: -o waf-results.sarif, or -f sarif -o <path>)
+```
+
+- **Batch mode** writes a single file in which each successfully scanned target gets its own run with its own `automationDetails.id` (`waf-checker/<host>/`) and its real scan start/end times, so GitHub tracks alerts per target. Targets that failed to scan are left out rather than written as an empty run, so a transient network error does not mark that target's open alerts as fixed.
+- **Web UI**: after a scan finishes, the SARIF export button next to the other report downloads saves the same format for the current target.
+- Target URLs are written into the report as-is — keep tokens and credentials out of the URLs you scan if the report is uploaded anywhere.
+- JUnit XML is still single-target only (`check`).
+
 #### CI/CD Integration & Protection Thresholds
 Fail CI/CD pipelines when protection rate is below required threshold or when bypasses are detected:
 ```bash
@@ -335,6 +352,32 @@ jobs:
         with:
           name: waf-audit-report
           path: waf-report.html
+```
+
+To audit several targets in one job, point the action at a batch file instead of `target-url`. The SARIF upload stays the same — the file contains one run per target:
+
+```yaml
+jobs:
+  waf-batch-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write # Required for SARIF upload
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run WAF Checker (batch)
+        uses: SecH0us3/waf-checker@main
+        with:
+          batch-file: 'waf-targets.txt' # one URL per line, '#' for comments
+          sarif-output: 'waf-results.sarif'
+
+      - name: Upload SARIF to GitHub Security Tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'waf-results.sarif'
+          # No `category:` here: each run already carries its own per-target automationDetails.id
 ```
 
 ### 3. Docker Version

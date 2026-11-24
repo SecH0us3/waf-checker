@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { generateSARIFReport, generateJUnitReport } from '@waf-checker/core';
+import { generateSARIFReport, generateMultiTargetSARIFReport, generateJUnitReport } from '@waf-checker/core';
+import type { AuditResultItem, SarifTarget } from '@waf-checker/core';
 import { generateCheckHtml, generateBatchHtml } from './reports/html';
 import { generateMarkdownReport, generateBatchMarkdown } from './reports/markdown';
 
@@ -33,6 +34,38 @@ export interface BatchResult {
 	bypassed: number;
 	bypassRate: number;
 	error?: string;
+	/**
+	 * Per-payload results of this target. Kept in memory so per-target formats
+	 * (SARIF) can be built; stripped from summary formats (JSON, CSV, HTML, Markdown).
+	 */
+	results?: CheckResult[];
+	/** When this target's scan started / finished (ISO 8601 UTC); carried into its SARIF run. */
+	startTimeUtc?: string;
+	endTimeUtc?: string;
+}
+
+/**
+ * Drop the per-payload `results` and scan timestamps from batch entries, leaving the summary shape
+ * that the JSON batch report and `batch --json` have always emitted.
+ */
+export function toBatchSummaries(results: BatchResult[]): BatchResult[] {
+	return results.map(({ results: _details, startTimeUtc: _start, endTimeUtc: _end, ...summary }) => summary);
+}
+
+/**
+ * Map batch entries to SARIF targets: one run per successfully scanned target.
+ * Failed targets are left out rather than emitted as an empty run, because an
+ * empty run would tell GitHub Code Scanning that the target's alerts are fixed.
+ */
+export function toSarifTargets(results: BatchResult[]): SarifTarget[] {
+	return results
+		.filter((r) => r.success && Array.isArray(r.results))
+		.map((r) => ({
+			targetUrl: r.url,
+			results: r.results as AuditResultItem[],
+			...(r.startTimeUtc ? { startTimeUtc: r.startTimeUtc } : {}),
+			...(r.endTimeUtc ? { endTimeUtc: r.endTimeUtc } : {}),
+		}));
 }
 
 /**
@@ -134,13 +167,12 @@ export function writeReport(
 		if (type === 'check') {
 			outputContent = JSON.stringify({ results, reverseEngineering, virtualPatches }, null, 2);
 		} else {
-			outputContent = JSON.stringify(results, null, 2);
+			outputContent = JSON.stringify(toBatchSummaries(results as BatchResult[]), null, 2);
 		}
 	} else if (format === 'sarif') {
-		if (type === 'batch') {
-			throw new Error('SARIF report format is only supported for single target audits (check command), not batch audits.');
-		}
-		outputContent = generateSARIFReport(results, urlOrFile, reverseEngineering);
+		outputContent = type === 'check'
+			? generateSARIFReport(results, urlOrFile, reverseEngineering)
+			: generateMultiTargetSARIFReport(toSarifTargets(results as BatchResult[]));
 	} else if (format === 'junit') {
 		if (type === 'batch') {
 			throw new Error('JUnit report format is only supported for single target audits (check command), not batch audits.');
@@ -159,7 +191,7 @@ export function writeReport(
 	} else {
 		outputContent = type === 'check'
 			? generateCheckHtml(urlOrFile, results as CheckResult[], reverseEngineering)
-			: generateBatchHtml(results as BatchResult[]);
+			: generateBatchHtml(toBatchSummaries(results as BatchResult[]));
 	}
 
 	// Ensure target directory exists
