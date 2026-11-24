@@ -7,62 +7,93 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Default for every job; jobs that push to GHCR widen this to packages: write.
+permissions:
+  contents: read
+
+env:
+  # Push only from main and release tags. Pull requests (and dispatches on other
+  # refs) still build every platform natively, so an arm64 break is caught at PR
+  # time rather than after merge — they just never log in or push.
+  PUSH: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
+  # Single source of truth for the image tags, used by both the per-platform
+  # build (labels) and the merge job (multi-arch manifest tags).
+  META_TAGS: |
+    type=ref,event=branch
+    type=ref,event=pr
+    type=semver,pattern={{version}}
+    type=semver,pattern={{major}}.{{minor}}
+    type=sha,format=long
+
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    # Emulated arm64 (QEMU) is much slower than native; bound it so a stuck build
-    # fails fast instead of drifting toward the 6h runner ceiling.
-    timeout-minutes: 30
+  # One leg per platform, each on a native runner — no QEMU emulation. Emulated
+  # arm64 used to crash intermittently ("qemu: uncaught target signal 4 (Illegal
+  # instruction)") during `npm ci` and then hang the job until its timeout.
+  # Docker recipe: https://docs.docker.com/build/ci/github-actions/multi-platform/#distribute-build-across-multiple-runners
+  build:
+    name: build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
     permissions:
       contents: read
-      packages: write
+      packages: write # push-by-digest on main/tags
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
 
     steps:
+      - name: Prepare
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}-cli" >> "$GITHUB_ENV"
+
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: ${{ env.META_TAGS }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
+        if: env.PUSH == 'true'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Downcase repo name
-        id: repo-name
-        run: |
-          echo "repo_name=${GITHUB_REPOSITORY,,}" >> $GITHUB_OUTPUT
-
-      - name: Extract Docker metadata
-        id: meta
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
-        with:
-          images: ghcr.io/${{ steps.repo-name.outputs.repo_name }}-cli
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha,format=long
-
+      # Trivy scans the amd64 image only (loaded locally). The OS and library
+      # packages are identical across arches, so one scan covers both. It runs
+      # before the push below, so a HIGH/CRITICAL finding stops the amd64 leg and,
+      # through `needs`, the merge job — no tagged image is published.
       - name: Build Docker image for scanning
+        if: matrix.platform == 'linux/amd64'
+        timeout-minutes: 15
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: ./Dockerfile
+          platforms: ${{ matrix.platform }}
           load: true
           tags: waf-checker-cli:scan
-          cache-from: type=gha,scope=amd64-scan
-          cache-to: type=gha,mode=max,scope=amd64-scan
+          cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
 
       - name: Scan Docker image with Trivy
+        if: matrix.platform == 'linux/amd64'
+        timeout-minutes: 10
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: waf-checker-cli:scan
@@ -72,23 +103,94 @@ jobs:
           vuln-type: 'os,library'
           severity: 'HIGH,CRITICAL'
 
-      # Build a multi-architecture image (Intel/AMD + ARM64) and push it on main /
-      # tags. The step runs on every event — including pull requests — but only
-      # pushes on main/tags; on a PR it still builds both platforms, so an arm64
-      # build break is caught at PR time rather than after merge. QEMU (set up
-      # above) emulates arm64. The Trivy scan above runs on the amd64 image it
-      # loaded locally (buildx cannot --load a multi-platform image); the OS and
-      # library packages are identical across arches, so one scan covers both.
-      - name: Build and push Docker image
+      # On main/tags: push the platform image by digest only (no tags); the merge
+      # job stitches the digests into one tagged multi-arch manifest. On PRs:
+      # build only (cacheonly output), nothing is pushed. On amd64 this reuses the
+      # layers just built for the scan, so it is effectively a cache hit.
+      - name: Build and push by digest
+        id: build
+        timeout-minutes: 15
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/') }}
-          tags: ${{ steps.meta.outputs.tags }}
+          platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          # Own cache scope so the emulated arm64 layers are written back and reused
-          # across runs (separate from the amd64-only scan cache above).
-          cache-from: type=gha,scope=multiarch
-          cache-to: type=gha,mode=max,scope=multiarch
+          tags: ${{ env.IMAGE }}
+          outputs: ${{ env.PUSH == 'true' && 'type=image,push-by-digest=true,name-canonical=true,push=true' || 'type=cacheonly' }}
+          cache-from: type=gha,scope=${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=${{ env.PLATFORM_PAIR }}
+
+      - name: Export digest
+        if: env.PUSH == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "${RUNNER_TEMP}/digests"
+          touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        if: env.PUSH == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # Combine the per-platform digests into one multi-arch manifest carrying the
+  # metadata-action tags. Only on main/tags — on PRs nothing was pushed.
+  merge:
+    needs: build
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write # create the tagged manifest list
+
+    steps:
+      - name: Prepare
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}-cli" >> "$GITHUB_ENV"
+
+      - name: Download digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: ${{ env.META_TAGS }}
+
+      - name: Create manifest list and push
+        timeout-minutes: 5
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          mapfile -t tag_args < <(jq -r '.tags[] | "-t", .' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          refs=()
+          for digest in *; do refs+=("${IMAGE}@sha256:${digest}"); done
+          if [ "${#refs[@]}" -ne 2 ]; then
+            echo "::error::expected 2 platform digests (amd64, arm64), got ${#refs[@]}"
+            exit 1
+          fi
+          docker buildx imagetools create "${tag_args[@]}" "${refs[@]}"
+
+      - name: Inspect image
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: docker buildx imagetools inspect "${IMAGE}:${VERSION}"
