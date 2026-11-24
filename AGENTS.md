@@ -69,8 +69,8 @@ if (url && !isValidTargetUrl(url)) {
 ```
 
 ### 💉 Extending Payloads
-- **Base Payloads**: Add to `packages/core/src/payloads.ts`. Use `ParamCheck` for query/body params, `FileCheck` for path-based attacks, and `Header` for header-based attacks.
-- **Evasion**: Add complex or WAF-specific bypasses to `packages/core/src/advanced-payloads.ts`.
+- **Base Payloads**: Add to `packages/core/src/payloads-data/base.ts` (`payloads.ts` only re-exports them). Use `ParamCheck` for query/body params, `FileCheck` for path-based attacks, and `Header` for header-based attacks.
+- **Evasion**: Add advanced payload data to `packages/core/src/payloads-data/advanced.ts`; WAF-specific bypasses go through `wafBypassCandidates` in `packages/core/src/advanced-payloads.ts`.
 
 ### 🔍 WAF Detection
 When adding support for a new WAF:

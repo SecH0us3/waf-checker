@@ -64,8 +64,8 @@ if (url && !isValidTargetUrl(url)) {
 ```
 
 ### 2. Payload Management
-- **Base Payloads**: Add new ones to [packages/core/src/payloads.ts](packages/core/src/payloads.ts) with correct injection types (`ParamCheck`, `FileCheck`, or `Header`).
-- **Evasion Payloads**: Add bypasses to [packages/core/src/advanced-payloads.ts](packages/core/src/advanced-payloads.ts).
+- **Base Payloads**: Add new ones to [packages/core/src/payloads-data/base.ts](packages/core/src/payloads-data/base.ts) (`payloads.ts` only re-exports them) with correct injection types (`ParamCheck`, `FileCheck`, or `Header`).
+- **Evasion Payloads**: Add bypass payload data to [packages/core/src/payloads-data/advanced.ts](packages/core/src/payloads-data/advanced.ts); WAF-specific bypass logic lives in `advanced-payloads.ts` (see below).
 
 ### 3. WAF Detection Signatures
 When adding a new WAF:
