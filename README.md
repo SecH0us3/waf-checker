@@ -231,9 +231,9 @@ node packages/cli/dist/index.js batch targets.txt --sarif-output waf-results.sar
 # (equivalent: -o waf-results.sarif, or -f sarif -o <path>)
 ```
 
-- **Batch mode** writes a single file in which each successfully scanned target gets its own run with its own `automationDetails.id` (`waf-checker/<host>/`) and its real scan start/end times, so GitHub tracks alerts per target. Targets that failed to scan are left out rather than written as an empty run, so a transient network error does not mark that target's open alerts as fixed.
+- **Batch mode** writes a single file in which each successfully scanned target gets its own run with its own `automationDetails.id` (`waf-checker/<host[:port]><path>/`, e.g. `waf-checker/example.com/` or `waf-checker/example.com/api/`; targets that still collide get a `-2`, `-3`, ... suffix in file order) and its real scan start/end times, so GitHub tracks alerts per target. Targets that failed to scan are left out rather than written as an empty run, so a transient network error does not mark that target's open alerts as fixed.
 - **Web UI**: after a scan finishes, the SARIF export button next to the other report downloads saves the same format for the current target.
-- Target URLs are written into the report as-is — keep tokens and credentials out of the URLs you scan if the report is uploaded anywhere.
+- Target URLs are redacted in the report: credentials (`user:pass@`) and the `#fragment` are removed and every query parameter value is replaced with `REDACTED` (names are kept); scheme, host, port and path are kept. An unparsable URL is written as `urn:waf-checker:invalid-target-url`. Attack payloads are reported verbatim.
 - JUnit XML is still single-target only (`check`).
 
 #### CI/CD Integration & Protection Thresholds

@@ -195,7 +195,7 @@ describe('Reports Module', () => {
 		it('locates results at the target URL without a fake file region', () => {
 			const run = JSON.parse(generateSARIFReport(mockResults, 'https://example.com/app?x=1')).runs[0];
 			const loc = run.results[0].locations[0];
-			expect(loc.physicalLocation.artifactLocation.uri).toBe('https://example.com/app?x=1');
+			expect(loc.physicalLocation.artifactLocation.uri).toBe('https://example.com/app?x=REDACTED');
 			expect(loc.physicalLocation.region).toBeUndefined();
 			expect(loc.logicalLocations[0]).toEqual({ name: 'POST XSS', kind: 'endpoint' });
 		});
@@ -232,7 +232,7 @@ describe('Reports Module', () => {
 
 		it('records automationDetails and invocation timing', () => {
 			const run = JSON.parse(generateSARIFReport(mockResults, 'https://Example.com:8443/path')).runs[0];
-			expect(run.automationDetails.id).toBe('waf-checker/example.com:8443/');
+			expect(run.automationDetails.id).toBe('waf-checker/example.com:8443/path/');
 			expect(run.invocations).toHaveLength(1);
 			const inv = run.invocations[0];
 			expect(inv.executionSuccessful).toBe(true);
@@ -273,6 +273,83 @@ describe('Reports Module', () => {
 		});
 	});
 
+	describe('SARIF target URL redaction', () => {
+		const SECRET_URL = 'https://alice:hunter2@Example.com:8443/app/login?token=s3cr3t&user=bob&flag#session=abc';
+		const bypass: AuditResultItem[] = [{ category: 'XSS', payload: '<svg onload=alert(1)>?token=keep', method: 'GET', status: 200, responseTime: 1 }];
+		const uriOf = (doc: string) => JSON.parse(doc).runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri;
+
+		it('strips userinfo and the fragment, redacts query values and keeps scheme, host, port and path', () => {
+			const doc = generateSARIFReport(bypass, SECRET_URL, { ...mockReverseEngineering, targetUrl: SECRET_URL });
+			expect(validateSarif(doc)).toEqual([]);
+			expect(uriOf(doc)).toBe('https://example.com:8443/app/login?token=REDACTED&user=REDACTED&flag');
+			const run = JSON.parse(doc).runs[0];
+			expect(run.properties.reverseEngineering.targetUrl).toBe('https://example.com:8443/app/login?token=REDACTED&user=REDACTED&flag');
+			expect(run.automationDetails.id).toBe('waf-checker/example.com:8443/app/login/');
+			for (const secret of ['alice', 'hunter2', 's3cr3t', 'bob', 'session', 'abc']) {
+				expect(doc).not.toContain(secret);
+			}
+			// Payloads are test attacks, not secrets: they are reported verbatim.
+			expect(run.results[0].properties.payload).toBe('<svg onload=alert(1)>?token=keep');
+			expect(run.results[0].message.text).toContain('<svg onload=alert(1)>?token=keep');
+		});
+
+		it('redacts every target of a multi-target report', () => {
+			const doc = generateMultiTargetSARIFReport([
+				{ targetUrl: SECRET_URL, results: bypass },
+				{ targetUrl: 'http://u@b.example/?api_key=XYZ123#x', results: bypass, reverseEngineering: { ...mockReverseEngineering, targetUrl: 'http://u@b.example/?api_key=XYZ123#x' } },
+			]);
+			expect(validateSarif(doc)).toEqual([]);
+			const runs = JSON.parse(doc).runs;
+			expect(runs[1].results[0].locations[0].physicalLocation.artifactLocation.uri).toBe('http://b.example/?api_key=REDACTED');
+			expect(runs[1].properties.reverseEngineering.targetUrl).toBe('http://b.example/?api_key=REDACTED');
+			for (const secret of ['alice', 'hunter2', 's3cr3t', 'XYZ123', 'session=abc', 'u@']) {
+				expect(doc).not.toContain(secret);
+			}
+		});
+
+		it('leaves URLs without secrets unchanged', () => {
+			for (const url of ['https://example.com', 'https://example.com/', 'https://example.com/a/b', 'http://example.com:8080/x/']) {
+				expect(uriOf(generateSARIFReport(bypass, url))).toBe(url);
+			}
+			// An empty query or fragment marker carries nothing and is dropped.
+			expect(uriOf(generateSARIFReport(bypass, 'https://example.com/a?#'))).toBe('https://example.com/a');
+		});
+
+		it('falls back to a placeholder for unparsable or hostless URLs without echoing them', () => {
+			for (const url of ['not a url ?token=s3cr3t', 'http://', 'data:text/plain,s3cr3t', 'mailto:s3cr3t@example.com']) {
+				const doc = generateSARIFReport(bypass, url, { ...mockReverseEngineering, targetUrl: url });
+				expect(validateSarif(doc)).toEqual([]);
+				expect(doc).not.toContain('s3cr3t');
+				const run = JSON.parse(doc).runs[0];
+				expect(uriOf(doc)).toBe('urn:waf-checker:invalid-target-url');
+				expect(run.properties.reverseEngineering.targetUrl).toBe('urn:waf-checker:invalid-target-url');
+				expect(run.automationDetails.id).toBe('waf-checker/invalid-target-url/');
+			}
+			// A missing URL keeps the legacy placeholder.
+			expect(uriOf(generateSARIFReport(bypass))).toBe('https://target.local');
+		});
+
+		it('derives partialFingerprints from the host only, never from userinfo, path, query or fragment', () => {
+			const fp = (url: string) => JSON.parse(generateSARIFReport(bypass, url)).runs[0].results[0].partialFingerprints['wafCheckerFinding/v1'];
+			const expected = createHash('sha256').update(['XSS', 'GET', bypass[0].payload, 'example.com:8443'].join('\0')).digest('hex');
+			expect(fp(SECRET_URL)).toBe(expected);
+			expect(fp('https://example.com:8443/app/login?token=other#x')).toBe(expected);
+			expect(fp('https://example.com:8443')).toBe(expected);
+			// Invalid URLs hash a constant, not the raw string.
+			expect(fp('not a url ?token=a')).toBe(fp('not a url ?token=b'));
+		});
+
+		it('keeps the default category of a path-less URL backward compatible', () => {
+			const id = (url: string) => JSON.parse(generateSARIFReport(mockResults, url)).runs[0].automationDetails.id;
+			expect(id('https://example.com')).toBe('waf-checker/example.com/');
+			expect(id('https://Example.com/')).toBe('waf-checker/example.com/');
+			expect(id('https://example.com/?token=s3cr3t#x')).toBe('waf-checker/example.com/');
+			expect(id('https://example.com:8443')).toBe('waf-checker/example.com:8443/');
+			// The path is part of the key, without query, fragment or trailing slash.
+			expect(id('https://example.com/api/v1/?q=1')).toBe('waf-checker/example.com/api/v1/');
+		});
+	});
+
 	describe('generateMultiTargetSARIFReport', () => {
 		it('emits one run per target in a single schema-valid document', () => {
 			const doc = generateMultiTargetSARIFReport([
@@ -287,7 +364,7 @@ describe('Reports Module', () => {
 			expect(sarif.runs).toHaveLength(3);
 			expect(sarif.runs.map((r: any) => r.automationDetails.id)).toEqual([
 				'waf-checker/a.example/',
-				'waf-checker/b.example/',
+				'waf-checker/b.example/login/',
 				'waf-checker/c.example/',
 			]);
 			expect(sarif.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri).toBe('https://a.example');
@@ -308,7 +385,7 @@ describe('Reports Module', () => {
 				{ targetUrl: 'https://b.example/x', results: mockResults },
 				{ targetUrl: 'https://b.example:8443', results: [] },
 			];
-			const hosts = ['a.example', 'b.example', 'b.example:8443'];
+			const hosts = ['a.example', 'b.example/x', 'b.example:8443'];
 			for (const [automationId, expected] of [
 				[undefined, hosts.map((h) => `waf-checker/${h}/`)],
 				['ci/nightly', hosts.map((h) => `ci/nightly/${h}/`)],
@@ -321,6 +398,48 @@ describe('Reports Module', () => {
 				const categories = ids.map(githubCategory);
 				expect(new Set(categories).size).toBe(targets.length);
 			}
+		});
+
+		it('separates targets on the same host by path', () => {
+			const targets = [
+				{ targetUrl: 'https://shop.example/api', results: mockResults },
+				{ targetUrl: 'https://shop.example/admin?token=s3cr3t', results: mockResults },
+				{ targetUrl: 'https://shop.example', results: mockResults },
+			];
+			for (const [automationId, prefix] of [
+				[undefined, 'waf-checker'],
+				['ci/nightly/', 'ci/nightly'],
+			] as const) {
+				const doc = generateMultiTargetSARIFReport(targets, { automationId });
+				expect(validateSarif(doc)).toEqual([]);
+				expect(doc).not.toContain('s3cr3t');
+				const ids = JSON.parse(doc).runs.map((r: any) => r.automationDetails.id);
+				expect(ids).toEqual([`${prefix}/shop.example/api/`, `${prefix}/shop.example/admin/`, `${prefix}/shop.example/`]);
+				expect(new Set(ids.map(githubCategory)).size).toBe(targets.length);
+			}
+		});
+
+		it('adds a deterministic suffix when target keys still collide', () => {
+			const targets = [
+				{ targetUrl: 'https://a.example/x', results: mockResults },
+				{ targetUrl: 'https://a.example/x/?page=2', results: mockResults },
+				{ targetUrl: 'https://A.example/x#frag', results: [] },
+				{ targetUrl: 'https://a.example/x-2', results: [] },
+				{ targetUrl: 'https://b.example', results: [] },
+			];
+			const ids = () => JSON.parse(generateMultiTargetSARIFReport(targets)).runs.map((r: any) => r.automationDetails.id);
+			const first = ids();
+			expect(first).toEqual([
+				'waf-checker/a.example/x/',
+				'waf-checker/a.example/x-2/',
+				'waf-checker/a.example/x-3/',
+				// Its own key is taken by the second target, so it moves on to the next free suffix.
+				'waf-checker/a.example/x-2-2/',
+				'waf-checker/b.example/',
+			]);
+			expect(new Set(first.map(githubCategory)).size).toBe(targets.length);
+			// Same input, same ids.
+			expect(ids()).toEqual(first);
 		});
 
 		it('lets per-target times override option times', () => {

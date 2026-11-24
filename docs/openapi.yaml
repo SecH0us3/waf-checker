@@ -495,7 +495,7 @@ components:
           const: '2.1.0'
         runs:
           type: array
-          description: One run per target; runs[].automationDetails.id is `waf-checker/<host>/`
+          description: One run per target; runs[].automationDetails.id is `waf-checker/<host[:port]><path>/` (a `-2`, `-3`, ... suffix is added if two targets still collide). Target URLs are redacted (no userinfo or fragment, query values replaced with `REDACTED`).
           items:
             type: object
             additionalProperties: true
