@@ -156,6 +156,34 @@ describe('Property-Based & Fuzz Testing (fast-check)', () => {
 			);
 		});
 
+		it('SARIF never leaks target userinfo, query values or fragment', () => {
+			const secret = fc.stringMatching(/^[A-Za-z0-9]{6,24}$/).map((s) => `SECRET${s}`);
+			const name = fc.stringMatching(/^[a-z_]{1,10}$/);
+			fc.assert(
+				fc.property(
+					secret,
+					secret,
+					fc.array(fc.tuple(name, secret), { minLength: 1, maxLength: 4 }),
+					secret,
+					fc.constantFrom('', '/', '/api', '/a/b/'),
+					(user, pass, query, fragment, path) => {
+						const qs = query.map(([k, v]) => `${k}=${v}`).join('&');
+						const url = `https://${user}:${pass}@example.com${path}?${qs}#${fragment}`;
+						const doc = generateMultiTargetSARIFReport([
+							{ targetUrl: url, results: [{ category: 'XSS', payload: 'x', method: 'GET', status: 200, responseTime: 1 }] },
+						]);
+						expect(doc).not.toContain('SECRET');
+						const run = JSON.parse(doc).runs[0];
+						const uri = run.results[0].locations[0].physicalLocation.artifactLocation.uri;
+						expect(uri).toBe(`https://example.com${path}?${query.map(([k]) => `${k}=REDACTED`).join('&')}`);
+						expect(run.automationDetails.id).toBe(`waf-checker/example.com${path.replace(/\/+$/, '')}/`);
+						expect(validateSarif(doc)).toEqual([]);
+					},
+				),
+				{ numRuns: 100 },
+			);
+		});
+
 		it('should calculate stats without NaN or infinite values for any combination of results', () => {
 			const checkResultArbitrary = fc.array(
 				fc.record({

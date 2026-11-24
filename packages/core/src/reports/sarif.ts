@@ -7,10 +7,13 @@ export interface SarifOptions {
 	/** tool.driver.version / semanticVersion. Defaults to the @waf-checker/core package version. */
 	toolVersion?: string;
 	/**
-	 * runs[].automationDetails.id. Defaults to 'waf-checker/<target host>/' (the trailing
-	 * slash makes the whole id the GitHub code scanning category). Used as given for a
-	 * single-target report; in a multi-target report it is normalized to '<id>/<host>/'
-	 * per run so every run gets its own category.
+	 * runs[].automationDetails.id. Defaults to 'waf-checker/<target key>/', where the target
+	 * key is host[:port] plus the target path without query, fragment or trailing slash
+	 * (so 'https://example.com' stays 'waf-checker/example.com/'). The trailing slash makes
+	 * the whole id the GitHub code scanning category. Used as given for a single-target
+	 * report; in a multi-target report it is normalized to '<id>/<target key>/' per run, and
+	 * targets whose keys collide get a '-2', '-3', ... suffix in target order, so every run
+	 * gets its own category.
 	 */
 	automationId?: string;
 	/** invocations[].startTimeUtc. Defaults to the report generation time. */
@@ -36,6 +39,15 @@ const INFORMATION_URI = 'https://github.com/SecH0us3/waf-checker';
 const HELP_URI = `${INFORMATION_URI}#readme`;
 /** Used only when a caller does not pass a target URL (legacy single-target calls). */
 const FALLBACK_TARGET_URL = 'https://target.local';
+/**
+ * Written instead of a target URL that cannot be parsed: an unparsable string cannot be
+ * reliably stripped of credentials or query values, so none of it is copied into the report.
+ */
+const INVALID_TARGET_URI = 'urn:waf-checker:invalid-target-url';
+/** Host / category key of an unparsable target URL. */
+const INVALID_TARGET_KEY = 'invalid-target-url';
+/** Replaces every query parameter value in a target URL written to the report. */
+const REDACTED = 'REDACTED';
 /** partialFingerprints key; bump the suffix if the fingerprint recipe ever changes. */
 const FINGERPRINT_KEY = 'wafCheckerFinding/v1';
 
@@ -83,12 +95,55 @@ function ruleIdForCategory(category: string): string {
 	return `WAF-${category.toUpperCase().replace(/[^A-Z0-9]/g, '-')}`;
 }
 
-function hostOf(url: string): string {
+/** How a target URL appears in the report. Nothing here carries userinfo, query values or the fragment. */
+interface TargetInfo {
+	/** Redacted URL for artifactLocation.uri and run properties. */
+	uri: string;
+	/** Lowercased host[:port]; the only part of the URL that feeds partialFingerprints. */
+	host: string;
+	/** host[:port] + path without trailing slash; the per-target part of automationDetails.id. */
+	key: string;
+}
+
+/** Keeps parameter names, replaces every value with REDACTED (a bare name stays a bare name). */
+function redactQuery(search: string): string {
+	const params = search
+		.replace(/^\?/, '')
+		.split('&')
+		.filter((p) => p.length > 0)
+		.map((p) => {
+			const eq = p.indexOf('=');
+			return eq === -1 ? p : `${p.slice(0, eq)}=${REDACTED}`;
+		});
+	return params.length > 0 ? `?${params.join('&')}` : '';
+}
+
+/**
+ * Parses a target URL into what the report may show: userinfo and the fragment are dropped,
+ * query values are replaced with REDACTED; scheme, host, port and path are kept. A missing URL
+ * falls back to FALLBACK_TARGET_URL; an unparsable or hostless one to INVALID_TARGET_URI (its
+ * text is never echoed).
+ */
+function describeTarget(targetUrl: string | undefined): TargetInfo {
+	const input = typeof targetUrl === 'string' ? targetUrl.trim() : '';
+	let u: URL;
 	try {
-		return new URL(url).host.toLowerCase();
+		u = new URL(input || FALLBACK_TARGET_URL);
 	} catch {
-		return url;
+		return { uri: INVALID_TARGET_URI, host: INVALID_TARGET_KEY, key: INVALID_TARGET_KEY };
 	}
+	const host = u.host.toLowerCase();
+	// Opaque or hostless URLs (data:, mailto:, file:///...) cannot be split into the parts
+	// the report keeps, so they are treated like unparsable input.
+	if (!host) return { uri: INVALID_TARGET_URI, host: INVALID_TARGET_KEY, key: INVALID_TARGET_KEY };
+	// Rebuilt from parts (never u.href) so userinfo and the fragment cannot leak, and so
+	// 'https://example.com' is not rewritten to 'https://example.com/' (keeps artifact URIs
+	// identical to earlier releases).
+	const beforeQuery = input.split(/[?#]/, 1)[0];
+	const uriPath = u.pathname === '/' && !/[/\\]$/.test(beforeQuery) ? '' : u.pathname;
+	const uri = `${u.protocol}//${host}${uriPath}${redactQuery(u.search)}`;
+	const keyPath = u.pathname.replace(/\/+$/, '');
+	return { uri, host, key: `${host}${keyPath}` };
 }
 
 function isBypassResult(r: AuditResultItem): boolean {
@@ -170,8 +225,8 @@ function sha256Hex(input: string): string {
  * Stable identity of a finding across scans: depends only on what was sent and
  * where, never on timing or response details.
  */
-function sarifFindingFingerprint(category: string, method: string, payload: string, targetUrl: string): string {
-	return sha256Hex([category, String(method).toUpperCase(), payload, hostOf(targetUrl)].join('\u0000'));
+function sarifFindingFingerprint(category: string, method: string, payload: string, host: string): string {
+	return sha256Hex([category, String(method).toUpperCase(), payload, host].join('\u0000'));
 }
 
 // ---------------------------------------------------------------------------
@@ -224,7 +279,7 @@ function buildRules(results: AuditResultItem[]) {
 	return { rules, indexById };
 }
 
-function buildResult(r: AuditResultItem, targetUri: string, ruleIndex: number, detectedWAF: string | undefined) {
+function buildResult(r: AuditResultItem, target: TargetInfo, ruleIndex: number, detectedWAF: string | undefined) {
 	const bypassDetails = r.ipHeaderBypass?.bypassed
 		? ` (IP Header bypass via ${r.ipHeaderBypass.hits.map((h) => `${h.headerName}: ${h.headerValue}`).join(', ')})`
 		: r.userAgentBypass?.bypassed
@@ -240,7 +295,7 @@ function buildResult(r: AuditResultItem, targetUri: string, ruleIndex: number, d
 		locations: [
 			{
 				physicalLocation: {
-					artifactLocation: { uri: targetUri },
+					artifactLocation: { uri: target.uri },
 				},
 				logicalLocations: [
 					{
@@ -251,7 +306,7 @@ function buildResult(r: AuditResultItem, targetUri: string, ruleIndex: number, d
 			},
 		],
 		partialFingerprints: {
-			[FINGERPRINT_KEY]: sarifFindingFingerprint(r.category, r.method, r.payload, targetUri),
+			[FINGERPRINT_KEY]: sarifFindingFingerprint(r.category, r.method, r.payload, target.host),
 		},
 		properties: {
 			method: r.method,
@@ -275,23 +330,23 @@ function toUtc(value: string | Date | undefined, fallback: string): string {
 	return Number.isNaN(d.getTime()) ? fallback : d.toISOString();
 }
 
-/** '<base>/<host>/' without doubled slashes, e.g. 'ci/nightly' -> 'ci/nightly/example.com/'. */
-function perTargetAutomationId(base: string, host: string): string {
-	return `${base.endsWith('/') ? base : `${base}/`}${host}/`;
+/** '<base>/<key>/' without doubled slashes, e.g. 'ci/nightly' -> 'ci/nightly/example.com/'. */
+function perTargetAutomationId(base: string, key: string): string {
+	return `${base.endsWith('/') ? base : `${base}/`}${key}/`;
 }
 
 type RunInput = Omit<SarifTarget, 'targetUrl'> & { targetUrl?: string; automationId?: string };
 
 function buildRun(target: RunInput, options: SarifOptions, now: string) {
 	const results = target.results || [];
-	const targetUri = target.targetUrl || FALLBACK_TARGET_URL;
+	const info = describeTarget(target.targetUrl);
 	const toolVersion = options.toolVersion || CORE_VERSION;
 	const { detectedWAF } = calculateAuditStats(results, target.targetUrl);
 	const { rules, indexById } = buildRules(results);
 
 	const sarifResults = results
 		.filter(isBypassResult)
-		.map((r) => buildResult(r, targetUri, indexById.get(ruleIdForCategory(r.category))!, detectedWAF));
+		.map((r) => buildResult(r, info, indexById.get(ruleIdForCategory(r.category))!, detectedWAF));
 
 	const errorCount = results.filter(isErrorResult).length;
 	const invocation: any = {
@@ -319,7 +374,7 @@ function buildRun(target: RunInput, options: SarifOptions, now: string) {
 			},
 		},
 		automationDetails: {
-			id: target.automationId || `waf-checker/${hostOf(targetUri)}/`,
+			id: target.automationId || perTargetAutomationId('waf-checker', info.key),
 		},
 		invocations: [invocation],
 		columnKind: 'utf16CodeUnits',
@@ -327,7 +382,10 @@ function buildRun(target: RunInput, options: SarifOptions, now: string) {
 	};
 
 	if (target.reverseEngineering) {
-		run.properties = { reverseEngineering: target.reverseEngineering };
+		const re = target.reverseEngineering;
+		run.properties = {
+			reverseEngineering: typeof re.targetUrl === 'string' ? { ...re, targetUrl: describeTarget(re.targetUrl).uri } : re,
+		};
 	}
 	return run;
 }
@@ -348,13 +406,15 @@ export function generateSARIFReport(
 /** One SARIF document with one run per target. */
 export function generateMultiTargetSARIFReport(targets: SarifTarget[], options: SarifOptions = {}): string {
 	const now = new Date().toISOString();
+	const base = options.automationId || 'waf-checker';
+	const used = new Set<string>();
 	return serialize(
-		targets.map((t) =>
-			buildRun(
-				{ ...t, automationId: options.automationId ? perTargetAutomationId(options.automationId, hostOf(t.targetUrl)) : undefined },
-				options,
-				now,
-			),
-		),
+		targets.map((t) => {
+			const key = describeTarget(t.targetUrl).key;
+			let automationId = perTargetAutomationId(base, key);
+			for (let n = 2; used.has(automationId); n++) automationId = perTargetAutomationId(base, `${key}-${n}`);
+			used.add(automationId);
+			return buildRun({ ...t, automationId }, options, now);
+		}),
 	);
 }
