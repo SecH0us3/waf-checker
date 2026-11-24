@@ -6,6 +6,7 @@ export * from './diff';
 import { AuditReportStats, AuditResultItem, calculateAuditStats } from './types';
 import { generateSARIFReport } from './sarif';
 import { generateJUnitReport } from './junit';
+import { ReverseEngineeringReport } from '../reverse-engineering/types';
 
 export function generateJSONReport(
 	results: AuditResultItem[],
@@ -30,10 +31,11 @@ export function generateReport(
 	results: AuditResultItem[],
 	targetUrl?: string,
 	statsOverride?: Partial<AuditReportStats>,
+	reverseEngineering?: ReverseEngineeringReport,
 ): string {
 	switch (format) {
 		case 'sarif':
-			return generateSARIFReport(results, targetUrl);
+			return generateSARIFReport(results, targetUrl, reverseEngineering);
 		case 'junit':
 			return generateJUnitReport(results, targetUrl);
 		case 'json':
