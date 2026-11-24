@@ -50,7 +50,7 @@ inputs:
     description: 'Enable WAF inspection buffer padding evasion (8kb, 16kb, 64kb, 128kb)'
     required: false
   sarif-output:
-    description: 'Path to save SARIF report (e.g., "waf-results.sarif")'
+    description: 'Path to save SARIF report (e.g., "waf-results.sarif"). Works with both target-url and batch-file: a batch audit writes one SARIF run per target URL. Upload it with github/codeql-action/upload-sarif@v3 (needs permissions: security-events: write).'
     required: false
     default: 'waf-results.sarif'
   html-output:
@@ -161,7 +161,7 @@ runs:
           ARGS+=("--markdown-output" "$INPUT_SUMMARY_OUTPUT")
         fi
 
-        if [ -n "$INPUT_SARIF_OUTPUT" ] && [ -n "$INPUT_TARGET_URL" ]; then
+        if [ -n "$INPUT_SARIF_OUTPUT" ]; then
           ARGS+=("--sarif-output" "$INPUT_SARIF_OUTPUT")
         fi
 

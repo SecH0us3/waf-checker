@@ -889,6 +889,50 @@ describe('CLI Argument Processing', () => {
 			expect(writeReport).toHaveBeenCalledWith('batch-report.html', 'html', 'batch', mockFile, expect.any(Array));
 		});
 
+		it('should write a batch SARIF report with per-target results via --sarif-output', async () => {
+			vi.mocked(core.handleApiCheckFiltered)
+				.mockResolvedValueOnce([
+					{ status: 403, method: 'GET', payload: 'test', responseTime: 120, category: 'SQL Injection' }
+				])
+				.mockResolvedValueOnce([
+					{ status: 200, method: 'GET', payload: 'bypass', responseTime: 80, category: 'SQL Injection' }
+				]);
+
+			await expect(
+				program.parseAsync(['node', 'index.js', 'batch', mockFile, '--sarif-output', 'batch.sarif'])
+			).resolves.toBeDefined();
+
+			expect(writeReport).toHaveBeenCalledWith('batch.sarif', 'sarif', 'batch', mockFile, expect.any(Array));
+			const sarifCall = vi.mocked(writeReport).mock.calls.find((c) => c[0] === 'batch.sarif')!;
+			const entries = sarifCall[4] as any[];
+			expect(entries.map((e) => e.url).sort()).toEqual(['https://example.com', 'https://google.com']);
+			for (const entry of entries) {
+				expect(entry.success).toBe(true);
+				expect(entry.results).toHaveLength(1);
+			}
+			expect(consoleErrorSpy).not.toHaveBeenCalledWith(expect.stringContaining('Error writing SARIF report'));
+		});
+
+		it('should deduce SARIF for batch --output with a .sarif extension', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'batch', mockFile, '--output', 'batch.sarif'])
+			).resolves.toBeDefined();
+
+			expect(writeReport).toHaveBeenCalledWith('batch.sarif', 'sarif', 'batch', mockFile, expect.any(Array));
+		});
+
+		it('should keep per-payload results out of batch --json output', async () => {
+			await expect(
+				program.parseAsync(['node', 'index.js', 'batch', mockFile, '--json'])
+			).resolves.toBeDefined();
+
+			const printed = consoleLogSpy.mock.calls.map((c: any[]) => String(c[0])).find((line) => line.trim().startsWith('['));
+			expect(printed).toBeDefined();
+			for (const entry of JSON.parse(printed!)) {
+				expect(entry).not.toHaveProperty('results');
+			}
+		});
+
 		it('should fail when targets file does not exist', async () => {
 			vi.mocked(fs.existsSync).mockReturnValueOnce(false);
 

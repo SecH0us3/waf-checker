@@ -80,10 +80,104 @@ describe('Report Module', () => {
 			}).toThrow(/only supported for single target/);
 		});
 
-		it('should throw error when requesting SARIF for batch report', () => {
-			expect(() => {
-				writeReport('batch.sarif', 'sarif', 'batch', 'targets.txt', batchResults);
-			}).toThrow('SARIF report format is only supported for single target audits');
+		it('should keep single-target SARIF as one run with its bypasses', () => {
+			vi.mocked(fs.writeFileSync).mockClear();
+			writeReport('report.sarif', 'sarif', 'check', 'https://example.com', checkResults);
+			const doc = JSON.parse(vi.mocked(fs.writeFileSync).mock.calls[0][1] as string);
+			expect(doc.version).toBe('2.1.0');
+			expect(doc.runs).toHaveLength(1);
+			expect(doc.runs[0].results).toHaveLength(1);
+			expect(doc.runs[0].results[0].ruleId).toBe('WAF-XSS');
+		});
+
+		describe('batch SARIF', () => {
+			const detailedBatch = [
+				{
+					url: 'https://a.example.com/', success: true, total: 2, blocked: 1, bypassed: 1, bypassRate: 50,
+					results: [
+						{ status: 403, method: 'GET', payload: 'a-sql', responseTime: 10, category: 'SQL Injection' },
+						{ status: 200, method: 'GET', payload: 'a-xss', responseTime: 12, category: 'XSS' },
+					],
+				},
+				{
+					url: 'https://b.example.org/', success: true, total: 2, blocked: 0, bypassed: 2, bypassRate: 100,
+					results: [
+						{ status: 200, method: 'GET', payload: 'b-sql', responseTime: 10, category: 'SQL Injection' },
+						{ status: 200, method: 'POST', payload: 'b-xss', responseTime: 11, category: 'XSS' },
+					],
+				},
+				{ url: 'https://down.example.net/', success: false, total: 0, blocked: 0, bypassed: 0, bypassRate: 0, error: 'Connection failure' },
+			];
+
+			const writeBatchSarif = (results: any[]) => {
+				vi.mocked(fs.writeFileSync).mockClear();
+				writeReport('batch.sarif', 'sarif', 'batch', 'targets.txt', results);
+				expect(fs.writeFileSync).toHaveBeenCalledTimes(1);
+				const [outPath, content, encoding] = vi.mocked(fs.writeFileSync).mock.calls[0];
+				expect(outPath).toBe('batch.sarif');
+				expect(encoding).toBe('utf8');
+				return JSON.parse(content as string);
+			};
+
+			it('should write one valid SARIF 2.1.0 document with one run per scanned target', () => {
+				const doc = writeBatchSarif(detailedBatch);
+				expect(doc.version).toBe('2.1.0');
+				expect(doc.$schema).toContain('sarif');
+				expect(doc.runs).toHaveLength(2);
+				for (const run of doc.runs) {
+					expect(run.tool.driver.name).toBeTruthy();
+					expect(Array.isArray(run.results)).toBe(true);
+				}
+			});
+
+			it('should attribute each target\'s bypasses to its own run', () => {
+				const doc = writeBatchSarif(detailedBatch);
+				const [runA, runB] = doc.runs;
+				expect(runA.results).toHaveLength(1);
+				expect(runB.results).toHaveLength(2);
+				expect(runA.results[0].locations[0].physicalLocation.artifactLocation.uri).toBe('https://a.example.com/');
+				for (const result of runB.results) {
+					expect(result.locations[0].physicalLocation.artifactLocation.uri).toBe('https://b.example.org/');
+				}
+				expect(JSON.stringify(runA)).not.toContain('b-sql');
+				expect(JSON.stringify(runB)).not.toContain('a-xss');
+			});
+
+			it('should give every run a distinct automation id per target host', () => {
+				const doc = writeBatchSarif(detailedBatch);
+				const ids = doc.runs.map((run: any) => run.automationDetails?.id);
+				expect(ids[0]).toContain('a.example.com');
+				expect(ids[1]).toContain('b.example.org');
+				expect(new Set(ids).size).toBe(ids.length);
+			});
+
+			it('should leave failed targets out instead of emitting an empty run', () => {
+				const doc = writeBatchSarif(detailedBatch);
+				expect(JSON.stringify(doc)).not.toContain('down.example.net');
+			});
+
+			it('should keep a target with no bypasses as a run with no results', () => {
+				const doc = writeBatchSarif([
+					{
+						url: 'https://safe.example.com/', success: true, total: 1, blocked: 1, bypassed: 0, bypassRate: 0,
+						results: [{ status: 403, method: 'GET', payload: 'blocked', responseTime: 10, category: 'XSS' }],
+					},
+				]);
+				expect(doc.runs).toHaveLength(1);
+				expect(doc.runs[0].results).toEqual([]);
+			});
+		});
+
+		it('should keep per-target payload details out of batch JSON and HTML reports', () => {
+			const withDetails = [
+				{ ...batchResults[0], results: [{ status: 200, method: 'GET', payload: 'secret-detail-payload', responseTime: 1, category: 'XSS' }] },
+			];
+			vi.mocked(fs.writeFileSync).mockClear();
+			writeReport('batch.json', 'json', 'batch', 'targets.txt', withDetails);
+			writeReport('batch.html', 'html', 'batch', 'targets.txt', withDetails);
+			const [jsonCall, htmlCall] = vi.mocked(fs.writeFileSync).mock.calls;
+			expect(JSON.parse(jsonCall[1] as string)).toEqual([batchResults[0]]);
+			expect(htmlCall[1]).not.toContain('secret-detail-payload');
 		});
 
 		it('should write Markdown check reports with stats and bypassed table', () => {
